@@ -1,0 +1,80 @@
+{
+  "_comment": "Garden, coast, lake, dam, then back into the bushes. The closing garden is the same plate as the opening one, so it belongs to the same painting rather than arriving from somewhere else.",
+  "out_width": 0,
+  "road_width": 94,
+  "overlap": 200,
+  "chunk_height": 640,
+  "segments": [
+    {
+      "src": "plates/refA.png",
+      "kind": "repeat",
+      "count": 3,
+      "rows": [
+        0,
+        560
+      ],
+      "bias": 0.0,
+      "_": "garden lead-in - the plate's own bushes, before any sand",
+      "petals": [
+        0,
+        560
+      ]
+    },
+    {
+      "src": "plates/refA.png",
+      "kind": "once",
+      "bias": 0.0,
+      "stops": [
+        400,
+        1200
+      ],
+      "_": "garden, then the coast where the beach is widest",
+      "petals": [
+        0,
+        620
+      ]
+    },
+    {
+      "src": "plates/refB-tucked.png",
+      "kind": "once",
+      "bias": 0.0,
+      "stops": [
+        980,
+        1300
+      ],
+      "_": "the lake opening on the left, then the dam alongside the road"
+    },
+    {
+      "src": "plates/refA.png",
+      "kind": "repeat",
+      "count": 2,
+      "rows": [
+        0,
+        560
+      ],
+      "bias": 0.0,
+      "petals": [
+        0,
+        560
+      ],
+      "_": "the road comes back into the bushes after the dam"
+    },
+    {
+      "src": "plates/refA.png",
+      "kind": "once",
+      "rows": [
+        0,
+        560
+      ],
+      "bias": 0.0,
+      "stops": [
+        300
+      ],
+      "petals": [
+        0,
+        560
+      ],
+      "_": "closing garden, and where the drive comes to rest"
+    }
+  ]
+}

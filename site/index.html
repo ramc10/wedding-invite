@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b2416">
+<title>Wedding Road</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2325401F'/%3E%3Crect x='13' y='0' width='6' height='32' fill='%232B2C2E'/%3E%3Crect x='12' y='12' width='8' height='11' rx='3' fill='%23DD6A92'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="fonts.css">
+<link rel="preload" as="image" href="art/ribbon-000.webp">
+<link rel="stylesheet" href="road.css">
+</head>
+<body>
+
+<!-- the ground plane: one painted ribbon, moved by a single transform -->
+<div class="world" aria-hidden="true">
+  <div class="ribbon" id="ribbon"></div>
+  <div class="streaks" id="streaks"></div>
+  <div class="vignette"></div>
+</div>
+
+<!-- atmosphere, above the ground, below the car -->
+<div class="clouds" id="clouds" aria-hidden="true"></div>
+
+<!-- the car sits still; the world moves under it -->
+<div class="car-anchor" aria-hidden="true">
+  <div class="car-drop">
+    <div class="car-track" id="car">
+      <div class="car-idle"><img src="art/car.webp" alt=""></div>
+    </div>
+  </div>
+</div>
+
+<div class="tint" id="tint" aria-hidden="true"></div>
+<div class="dusk" id="dusk" aria-hidden="true"></div>
+<div class="grain" id="grain" aria-hidden="true"></div>
+
+<!-- scroll spine: one section per stop, each drive-then-hold -->
+<main class="legs" id="legs"></main>
+
+<nav class="rail" id="rail" aria-label="Route"></nav>
+<div class="cue" id="cue" aria-hidden="true"><span></span></div>
+
+<script src="road.js"></script>
+<script src="petals.js"></script>
+</body>
+</html>
