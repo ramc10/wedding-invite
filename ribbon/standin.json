@@ -1,12 +1,12 @@
 {
-  "_comment": "Garden, coast, lake, dam, then back into the bushes. The closing garden is the same plate as the opening one, so it belongs to the same painting rather than arriving from somewhere else.",
+  "_comment": "Garden, coast (wide plate), coast again further down, then back into the original garden bushes. The closing garden is the same plate as the opening one, so it belongs to the same painting rather than arriving from somewhere else.",
   "out_width": 0,
   "road_width": 94,
   "overlap": 200,
   "chunk_height": 640,
   "segments": [
     {
-      "src": "plates/refA.png",
+      "src": "plates/garden-wide.png",
       "kind": "repeat",
       "count": 3,
       "rows": [
@@ -21,31 +21,31 @@
       ]
     },
     {
-      "src": "plates/refA.png",
+      "src": "plates/coast-wide.png",
       "kind": "once",
       "bias": 0.0,
       "stops": [
         400,
-        1200
+        700
       ],
       "_": "garden, then the coast where the beach is widest",
       "petals": [
         0,
-        620
+        400
       ]
     },
     {
-      "src": "plates/refB-tucked.png",
+      "src": "plates/coast-wide.png",
       "kind": "once",
       "bias": 0.0,
       "stops": [
-        980,
+        1000,
         1300
       ],
-      "_": "the lake opening on the left, then the dam alongside the road"
+      "_": "further down the coast, boats and the island offshore"
     },
     {
-      "src": "plates/refA.png",
+      "src": "plates/garden-wide.png",
       "kind": "repeat",
       "count": 2,
       "rows": [
@@ -57,10 +57,10 @@
         0,
         560
       ],
-      "_": "the road comes back into the bushes after the dam"
+      "_": "the road comes back into the bushes after the coast"
     },
     {
-      "src": "plates/refA.png",
+      "src": "plates/garden-wide.png",
       "kind": "once",
       "rows": [
         0,
