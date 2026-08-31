@@ -59,6 +59,19 @@
       "_": "further down the coast, boats and the island offshore"
     },
     {
+      "src": "plates/dam.png",
+      "kind": "once",
+      "rows": [
+        0,
+        1550
+      ],
+      "bias": 0.0,
+      "stops": [
+        1250
+      ],
+      "_": "coast fades into garden, then the lake opens on the left and the dam sits alongside the road"
+    },
+    {
       "src": "plates/garden-wide.png",
       "kind": "repeat",
       "count": 2,
@@ -71,7 +84,7 @@
         0,
         560
       ],
-      "_": "the road comes back into the bushes after the coast"
+      "_": "the road comes back into the bushes after the dam"
     },
     {
       "src": "plates/garden-wide.png",
