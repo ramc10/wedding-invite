@@ -5,3 +5,4 @@ __pycache__/
 site/bundle.html
 site-v2/bundle.html
 site-3d/bundle.html
+.vercel
