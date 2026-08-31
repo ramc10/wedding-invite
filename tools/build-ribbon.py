@@ -338,7 +338,10 @@ def main():
         # bias -1..+1 slides the visible window toward one side, so a subject that
         # runs to the frame edge survives the crop at the cost of the emptier side.
         bz = np.full(len(a), float(s.get("bias", 0.0)), dtype=np.float32)
-        seg_start = 0 if prev is None else cursor - min(OVER, len(a) // 2, len(prev[0]) // 2)
+        # A segment can override the global overlap — 0 for a hard cut where the two
+        # plates are unrelated content (a scene change) rather than the same terrain.
+        seg_over = s.get("overlap", OVER)
+        seg_start = 0 if prev is None else cursor - min(seg_over, len(a) // 2, len(prev[0]) // 2)
         cursor = seg_start + len(a)
         sc = meas[key(s)][3]                        # plate -> ribbon scale
         for row in s.get("stops", []):
@@ -346,7 +349,7 @@ def main():
         if s.get("petals"):
             pa, pb = s["petals"]          # not a, b — those hold this segment's pixels
             petals.append((seg_start + pa * sc, seg_start + pb * sc))
-        v = min(OVER, len(a) // 2, len(prev[0]) // 2) if prev is not None else 0
+        v = min(seg_over, len(a) // 2, len(prev[0]) // 2) if prev is not None else 0
         if prev is None:
             strip_parts.append(a); centre_parts.append(c); bias_parts.append(bz)
         else:

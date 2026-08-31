@@ -21,6 +21,20 @@
       ]
     },
     {
+      "src": "plates/garden-coast-transition.png",
+      "kind": "once",
+      "rows": [
+        0,
+        1100
+      ],
+      "bias": 0.0,
+      "_": "garden on both sides, sand only starting to show at the very end - bridges into coast-wide.png",
+      "petals": [
+        0,
+        900
+      ]
+    },
+    {
       "src": "plates/coast-wide.png",
       "kind": "once",
       "bias": 0.0,
