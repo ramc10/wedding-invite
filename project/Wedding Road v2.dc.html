@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b2416">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Mrs+Saint+Delafield&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#1b2416; }
+  body { -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; overscroll-behavior-y:none; }
+  * { box-sizing:border-box; }
+  a { color:#E8C66A; text-decoration:none; }
+  a:hover { color:#F0A2BD; }
+  @keyframes sway { 0%,100% { transform:rotate(-0.45deg) translateY(0); } 50% { transform:rotate(0.45deg) translateY(-3px); } }
+  @keyframes cue { 0%,100% { opacity:.3; transform:translateY(0); } 50% { opacity:.85; transform:translateY(7px); } }
+  @keyframes carIn { from { transform:translate3d(0,-125vh,0); } to { transform:translate3d(0,0,0); } }
+  @keyframes shimmer { 0%,100% { background-position:0% 0%; } 50% { background-position:9% 6%; } }
+  @media (prefers-reduced-motion: reduce) {
+    [data-legtext] { opacity:1 !important; transform:none !important; }
+    [data-streaks] { display:none !important; }
+    [data-idle] { animation:none !important; }
+    [data-carin] { animation:none !important; }
+    [data-shimmer] { animation:none !important; }
+  }
+</style>
+</helmet>
+<div ref="{{rootRef}}" style="position:relative">
+
+  <div data-legmeasure="y" style="position:absolute;top:0;left:0;width:0;height:var(--legH,150vh);pointer-events:none"></div>
+
+  <div ref="{{worldRef}}" style="position:fixed;inset:0;overflow:hidden;background:#1E2A18;z-index:0;filter:contrast(1.12) saturate(1.16)">
+
+    <div ref="{{panelLRef}}" style="position:absolute;top:0;bottom:0;left:0;right:calc(50% + clamp(20px, 8vw, 70px));overflow:hidden;background:#25401F">
+      <div ref="{{hillLRef}}" data-aspect="3.7624" style="position:absolute;top:0;left:0;right:0;height:calc(100% + 3000px);background-image:url(art/hills-l.jpg);background-repeat:repeat-y;background-size:100% auto;will-change:transform"></div>
+      <div ref="{{gardenMaskLRef}}" style="position:absolute;inset:0;overflow:hidden;will-change:mask-image">
+        <div ref="{{gardenLRef}}" data-aspect="1.7506" style="position:absolute;top:0;left:0;right:0;height:calc(100% + 3000px);background-image:url(art/garden-l.jpg);background-repeat:repeat-y;background-size:100% auto;will-change:transform"></div>
+      </div>
+    </div>
+
+    <div style="position:absolute;top:0;bottom:0;right:0;left:calc(50% + clamp(20px, 8vw, 70px));overflow:hidden;background:#25401F">
+      <div ref="{{hillRRef}}" data-aspect="3.7624" style="position:absolute;top:0;left:0;right:0;height:calc(100% + 3000px);background-image:url(art/hills-r.jpg);background-repeat:repeat-y;background-size:100% auto;will-change:transform"></div>
+      <div ref="{{gardenMaskRRef}}" style="position:absolute;inset:0;overflow:hidden;will-change:mask-image">
+        <div ref="{{gardenRRef}}" data-aspect="1.7506" style="position:absolute;top:0;left:0;right:0;height:calc(100% + 3000px);background-image:url(art/garden-r.jpg);background-repeat:repeat-y;background-size:100% auto;will-change:transform"></div>
+      </div>
+      <div ref="{{coastMaskRRef}}" style="position:absolute;inset:0;overflow:hidden;opacity:0;mask-image:url(art/coast-edge.png?v5);-webkit-mask-image:url(art/coast-edge.png?v5);mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;will-change:mask-position, opacity">
+        <div ref="{{coastRRef}}" data-aspect="2.4462" data-xscale="1.34" style="position:absolute;top:0;left:0;right:0;height:calc(100% + 3000px);background-image:url(art/coast-r.png);background-repeat:repeat-y;background-size:134% auto;background-position:0 0;will-change:transform"></div>
+        <div data-shimmer="y" ref="{{waterTexRef}}" style="position:absolute;inset:0;pointer-events:none;opacity:.16;mix-blend-mode:overlay;background-repeat:repeat;background-size:180px 180px;animation:shimmer 9s ease-in-out infinite"></div>
+      </div>
+    </div>
+
+    <div style="position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:clamp(180px, 52vw, 400px)">
+      <div ref="{{roadRef}}" data-aspect="11.8519" style="position:absolute;top:0;left:18.4%;right:18.4%;height:calc(100% + 3100px);background-image:url(art/road-clean.webp);background-repeat:repeat-y;background-size:100% auto;will-change:transform">
+        <div ref="{{roadGrainRef}}" style="position:absolute;inset:0;pointer-events:none;opacity:.44;mix-blend-mode:overlay;background-repeat:repeat;background-size:96px 96px"></div>
+        <div ref="{{vergeLRef}}" style="position:absolute;top:0;bottom:0;left:-22.1%;width:31.6%;pointer-events:none;background-image:url(art/verge.png);background-repeat:repeat-y;background-size:100% auto"></div>
+        <div ref="{{vergeRRef}}" style="position:absolute;top:0;bottom:0;right:-22.1%;width:31.6%;pointer-events:none;transform:scaleX(-1);background-image:url(art/verge.png);background-repeat:repeat-y;background-size:100% auto"></div>
+        <div data-streaks="y" ref="{{streakRef}}" data-bg="art/streaks.webp" style="position:absolute;inset:0;opacity:0;pointer-events:none;background-repeat:repeat-y;background-size:100% auto;will-change:transform, opacity"></div>
+      </div>
+    </div>
+
+    <div ref="{{vigRef}}" style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(112% 58% at 50% 10%, rgba(255,248,226,.20), rgba(255,248,226,0) 56%), radial-gradient(150% 98% at 50% 106%, rgba(8,14,6,.66), rgba(8,14,6,0) 54%)"></div>
+  </div>
+
+  <div ref="{{cloudRef}}" style="position:fixed;left:-6%;right:-6%;top:0;height:calc(100% + 1600px);z-index:6;pointer-events:none;opacity:.13;background-repeat:repeat-y;background-size:100% 1600px;will-change:transform;background-image:radial-gradient(58% 24% at 22% 11%, rgba(255,252,244,.62), rgba(255,252,244,0) 70%), radial-gradient(43% 19% at 79% 37%, rgba(255,250,238,.48), rgba(255,250,238,0) 72%), radial-gradient(64% 21% at 44% 62%, rgba(255,247,234,.42), rgba(255,247,234,0) 74%), radial-gradient(36% 15% at 11% 85%, rgba(255,252,246,.34), rgba(255,252,246,0) 76%)"></div>
+
+  <div style="position:fixed;top:56%;left:0;right:0;z-index:12;display:flex;justify-content:center;transform:translateY(-50%)">
+    <div data-carin="y" style="animation:carIn 2.5s cubic-bezier(.28,1.12,.6,1) both">
+      <div ref="{{carRef}}" style="will-change:transform">
+        <div data-idle="y" style="width:min(24vw,110px);aspect-ratio:340 / 620;position:relative;animation:sway 7s ease-in-out infinite;filter:drop-shadow(0 14px 18px rgba(10,16,8,.55))">
+          <img src="art/car.webp" alt="" style="width:100%;height:100%;object-fit:contain;display:block;transform:rotate(180deg)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div ref="{{tintRef}}" style="position:fixed;inset:0;z-index:18;pointer-events:none;mix-blend-mode:soft-light;background-color:rgba(255,217,160,0.18)"></div>
+  <div ref="{{duskRef}}" style="position:fixed;inset:0;z-index:19;pointer-events:none;background-color:rgba(20,26,40,0)"></div>
+
+  <div ref="{{grainRef}}" style="position:fixed;inset:0;z-index:20;pointer-events:none;opacity:.17;mix-blend-mode:overlay;background-size:140px 140px"></div>
+
+  <div style="position:relative;z-index:10;pointer-events:none">
+
+    <section data-leg="1" data-screen-label="01 Garden" style="position:relative;height:calc(var(--legH,150vh) + 100vh)">
+      <div style="position:sticky;top:0;height:0">
+        <div data-legtext="y" style="position:absolute;top:0;left:0;right:0;height:100vh;display:flex;flex-direction:column;align-items:center;padding:19vh 7vw 0;opacity:1;will-change:opacity, transform">
+        </div>
+      </div>
+    </section>
+
+    <section data-leg="2" data-screen-label="02 Into the hills" style="position:relative;height:calc(var(--legH,150vh) + 100vh)">
+      <div style="position:sticky;top:0;height:0">
+        <div data-legtext="y" style="position:absolute;top:0;left:0;right:0;height:100vh;display:flex;flex-direction:column;align-items:center;padding:19vh 7vw 0;opacity:0;will-change:opacity, transform">
+        </div>
+      </div>
+    </section>
+
+    <section data-leg="3" data-screen-label="03 The coast" style="position:relative;height:calc(var(--legH,150vh) + 100vh)">
+      <div style="position:sticky;top:0;height:0">
+        <div data-legtext="y" style="position:absolute;top:0;left:0;right:0;height:100vh;display:flex;flex-direction:column;align-items:center;padding:19vh 7vw 0;opacity:0;will-change:opacity, transform">
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 430, &quot;height&quot;: 932 },
+  &quot;punch&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1.12, &quot;min&quot;: 1, &quot;max&quot;: 1.35, &quot;step&quot;: 0.01, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Atmosphere&quot; },
+  &quot;clouds&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 0.13, &quot;min&quot;: 0, &quot;max&quot;: 0.4, &quot;step&quot;: 0.01, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Atmosphere&quot; },
+  &quot;driveShare&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 0.55, &quot;min&quot;: 0.3, &quot;max&quot;: 0.8, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Motion&quot; },
+  &quot;roadSpeed&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1.5, &quot;min&quot;: 0.8, &quot;max&quot;: 3, &quot;step&quot;: 0.1, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Motion&quot; },
+  &quot;hedgeLead&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1.08, &quot;min&quot;: 1, &quot;max&quot;: 1.25, &quot;step&quot;: 0.01, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Motion&quot; },
+  &quot;legScroll&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 150, &quot;min&quot;: 110, &quot;max&quot;: 260, &quot;step&quot;: 10, &quot;unit&quot;: &quot;vh&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Motion&quot; },
+  &quot;gardenEnd&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1.5, &quot;min&quot;: 0.5, &quot;max&quot;: 9, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Landscape&quot; },
+  &quot;gardenFade&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 0.9, &quot;min&quot;: 0.2, &quot;max&quot;: 3, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Landscape&quot; },
+  &quot;coastStart&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1.85, &quot;min&quot;: 1, &quot;max&quot;: 4, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Landscape&quot; },
+  &quot;coastLen&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 0.5, &quot;min&quot;: 0.2, &quot;max&quot;: 2, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Landscape&quot; }
+}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.r = {};
+    ['root','world','road','roadGrain','vergeL','vergeR','panelL','hillL','hillR','gardenL','gardenR','gardenMaskL','gardenMaskR','coastR','coastMaskR','waterTex','vig','cloud','streak','tint','dusk','car','grain'].forEach(k => { this.r[k] = React.createRef(); });
+    this.last = -1;
+    this.hot = 0;
+    this.raf = 0;
+    this.y = -1;
+    this.tileHd = 1440;
+  }
+
+  cfg() {
+    const p = this.props || {};
+    return {
+      drive: Math.max(.2, Math.min(.9, p.driveShare ?? .55)),
+      mul: Math.max(.4, p.roadSpeed ?? 1.5),
+      lead: p.hedgeLead ?? 1.08,
+      legVh: p.legScroll ?? 150,
+      gardenEnd: p.gardenEnd ?? 1.5,
+      gardenFade: Math.max(.15, p.gardenFade ?? .9),
+      punch: p.punch ?? 1.12,
+      clouds: p.clouds ?? .13,
+      coastStart: p.coastStart ?? 1.85,
+      coastLen: Math.max(.15, p.coastLen ?? .5)
+    };
+  }
+
+  componentDidMount() {
+    this.rm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const g = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.62'/%3E%3C/svg%3E";
+    if (this.r.grain.current) this.r.grain.current.style.backgroundImage = 'url("' + g + '")';
+    // the asphalt plate is only 108px wide and stretches ~2.3x, so it arrives as a
+    // smooth grey. procedural aggregate puts the grain back at native resolution.
+    const ag = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='a'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23a)' opacity='.55'/%3E%3C/svg%3E";
+    if (this.r.roadGrain.current) this.r.roadGrain.current.style.backgroundImage = 'url("' + ag + '")';
+    // stretched noise — wide, shallow cells read as swell rather than static grain
+    const wt = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.035 0.09' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23w)' opacity='.6'/%3E%3C/svg%3E";
+    if (this.r.waterTex.current) {
+      this.r.waterTex.current.style.backgroundImage = 'url("' + wt + '")';
+      // hold the shimmer to the open water, off the sand and foliage
+      const sm = 'linear-gradient(255deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 24%, rgba(0,0,0,0) 44%)';
+      this.r.waterTex.current.style.maskImage = sm;
+      this.r.waterTex.current.style.webkitMaskImage = sm;
+    }
+    this.collect();
+    this.apply();
+    this.measure();
+    this.tick(window.scrollY);
+    window.addEventListener('scroll', this.ping, { passive: true });
+    window.addEventListener('resize', this.onResize);
+  }
+
+  componentDidUpdate() {
+    this.collect();
+    this.apply();
+    this.measure();
+    this.tick(window.scrollY);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('scroll', this.ping);
+    window.removeEventListener('resize', this.onResize);
+    if (this.raf) cancelAnimationFrame(this.raf);
+  }
+
+  collect() {
+    const root = this.r.root.current;
+    if (!root) return;
+    this.legs = Array.prototype.slice.call(root.querySelectorAll('[data-leg]'));
+    this.texts = this.legs.map(el => el.querySelector('[data-legtext]'));
+  }
+
+  apply() {
+    const c = this.cfg(), root = this.r.root.current;
+    if (!root) return;
+    root.style.setProperty('--legH', c.legVh + 'vh');
+    root.style.setProperty('--driveH', (c.drive * 100).toFixed(2) + '%');
+    root.style.setProperty('--driveVh', (c.drive * c.legVh).toFixed(2) + 'vh');
+    if (this.r.world.current) this.r.world.current.style.filter = 'contrast(' + c.punch.toFixed(3) + ') saturate(' + (1 + (c.punch - 1) * 1.3).toFixed(3) + ')';
+    if (this.r.cloud.current) this.r.cloud.current.style.opacity = c.clouds.toFixed(3);
+  }
+
+  measure() {
+    const road = this.r.road.current;
+    // the asphalt plate tiles at its own aspect ratio
+    const rar = road ? parseFloat(road.getAttribute('data-aspect')) || 5 : 5;
+    this.tileR = road ? road.clientWidth * rar : window.innerHeight * 1.25;
+    // the streaks ride the road layer, so pin their tile to the road's wrap period
+    if (this.r.streak.current && this.tileR) this.r.streak.current.style.backgroundSize = '100% ' + this.tileR.toFixed(1) + 'px';
+    if (!this.tileR) this.tileR = window.innerHeight * 1.25;
+    // the verge rides inside the road layer, so its tile must divide the road's wrap
+    // period exactly — otherwise the strip jumps every time the asphalt recycles
+    const vw = this.r.vergeL.current ? this.r.vergeL.current.clientWidth : 0;
+    if (vw) {
+      const nat = vw * 8.75;
+      const n = Math.max(1, Math.round(this.tileR / nat));
+      const vt = (this.tileR / n).toFixed(1) + 'px';
+      if (this.r.vergeL.current) this.r.vergeL.current.style.backgroundSize = '100% ' + vt;
+      if (this.r.vergeR.current) this.r.vergeR.current.style.backgroundSize = '100% ' + vt;
+    }
+    const m = this.r.root.current ? this.r.root.current.querySelector('[data-legmeasure]') : null;
+    this.legPx = m ? m.offsetHeight : window.innerHeight * 1.5;
+    const hl = this.r.hillL.current;
+    // the hillside plate tiles at its own aspect ratio
+    const ar = hl ? parseFloat(hl.getAttribute('data-aspect')) || 3 : 3;
+    this.tileHill = hl && hl.clientWidth ? hl.clientWidth * ar : 900;
+    const gl = this.r.gardenL.current;
+    const gar = gl ? parseFloat(gl.getAttribute('data-aspect')) || 1.75 : 1.75;
+    this.tileGarden = gl && gl.clientWidth ? gl.clientWidth * gar : 700;
+    this.tileCloud = Math.max(900, window.innerHeight * 1.7);
+    if (this.r.cloud.current) {
+      // must outrun a full tile of travel, or the box itself leaves the frame
+      this.r.cloud.current.style.height = (window.innerHeight + this.tileCloud + 40).toFixed(0) + 'px';
+      this.r.cloud.current.style.backgroundSize = '100% ' + this.tileCloud.toFixed(0) + 'px';
+    }
+    // every scrolling layer must outrun one full tile of travel, whatever the panel width is
+    const fit = (els, tile) => {
+      const need = (window.innerHeight + tile + 40).toFixed(0) + 'px';
+      els.forEach(el => { if (el) el.style.height = need; });
+    };
+    fit([this.r.hillL.current, this.r.hillR.current], this.tileHill);
+    fit([this.r.gardenL.current, this.r.gardenR.current], this.tileGarden);
+    // The final leg is the reference painting, cut either side of its own road. It does
+    // not tile: each plate is sized to its true painted height and scrolls through ONCE,
+    // coming to rest with its last frame — the lake and the weir — filling the view.
+    const cr = this.r.coastR.current;
+    const car = cr ? parseFloat(cr.getAttribute('data-aspect')) || 5.83 : 5.83;
+    // blown up past the panel width and anchored to the road edge, so the palmy green
+    // margin reads wide and the open sea is cropped back to an outer strip
+    const cxs = cr ? parseFloat(cr.getAttribute('data-xscale')) || 1 : 1;
+    this.tileCoast = cr && cr.clientWidth ? cr.clientWidth * cxs * car : 2000;
+    fit([cr], this.tileCoast);
+    const pl = this.r.panelL.current;
+    this.panelW = pl && pl.clientWidth ? pl.clientWidth : window.innerWidth * .3;
+    if (this.r.root.current) this.r.root.current.style.setProperty('--panelW', this.panelW.toFixed(1) + 'px');
+    if (!this.legPx) this.legPx = window.innerHeight * 1.5;
+  }
+
+  // time of day across a fixed ten-stop schedule, so it holds while stops are still being added
+  static DAY = [
+    [0.00, 255,217,160, .18,  20, 26, 40, .00],
+    [0.18, 255,240,204, .11,  20, 26, 40, .00],
+    [0.40, 255,248,232, .06,  20, 26, 40, .00],
+    [0.62, 255,192,120, .21,  46, 30, 32, .06],
+    [0.80, 255,154, 90, .26,  34, 26, 46, .17],
+    [0.92, 118,116,186, .30,  16, 18, 40, .34],
+    [1.00,  74, 92,150, .34,  10, 12, 30, .46]
+  ];
+
+  daylight(f) {
+    const K = Component.DAY;
+    let i = 0;
+    while (i < K.length - 2 && f > K[i + 1][0]) i++;
+    const a = K[i], b = K[i + 1];
+    const t = Math.max(0, Math.min(1, (f - a[0]) / (b[0] - a[0])));
+    const L = (j) => a[j] + (b[j] - a[j]) * t;
+    if (this.r.tint.current) {
+      this.r.tint.current.style.backgroundColor =
+        'rgba(' + Math.round(L(1)) + ',' + Math.round(L(2)) + ',' + Math.round(L(3)) + ',' + L(4).toFixed(3) + ')';
+    }
+    if (this.r.dusk.current) {
+      this.r.dusk.current.style.backgroundColor =
+        'rgba(' + Math.round(L(5)) + ',' + Math.round(L(6)) + ',' + Math.round(L(7)) + ',' + L(8).toFixed(3) + ')';
+    }
+  }
+
+  // attach an off-screen layer's artwork the first time it is actually needed
+  lazy(key) {
+    if (!this._lz) this._lz = {};
+    if (this._lz[key]) return;
+    this._lz[key] = 1;
+  }
+
+  onResize = () => { this.measure(); this.y = -1; this.ping(); };
+
+  ping = () => {
+    this.hot = 12;
+    if (!this.raf) this.raf = requestAnimationFrame(this.frame);
+  };
+
+  frame = () => {
+    this.raf = 0;
+    const y = window.scrollY;
+    if (y !== this.y) { this.y = y; this.hot = 12; this.tick(y); }
+    else if (this.hot > 0) this.hot--;
+    if (this.hot > 0) this.raf = requestAnimationFrame(this.frame);
+  };
+
+  alpha(i, t, n) {
+    if (i === 0) return (n === 1 || t < .78) ? 1 : Math.max(0, 1 - (t - .78) / .12);
+    if (i >= n - 1) return t < .46 ? 0 : Math.min(1, (t - .46) / .12);
+    if (t < .46) return 0;
+    if (t < .58) return (t - .46) / .12;
+    if (t < .93) return 1;
+    return Math.max(0, 1 - (t - .93) / .06);
+  }
+
+  tick(y) {
+    if (!this.legs || !this.legs.length) { this.collect(); this.measure(); }
+    if (!this.legs || !this.legs.length) return;
+    const c = this.cfg();
+    const n = this.legs.length;
+    const legPx = this.legPx || window.innerHeight * 1.5;
+    let i = Math.floor(y / legPx);
+    if (i < 0) i = 0;
+    if (i > n - 1) i = n - 1;
+    let t = (y - i * legPx) / legPx;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    const u = Math.min(1, t / c.drive);
+    const p = 1 - Math.pow(1 - u, 3);
+    const vh = window.innerHeight;
+
+    if (!this.rm) {
+      const d = (i + p) * vh * 1.25 * c.mul;           // road px travelled
+      if (this.r.road.current) this.r.road.current.style.transform = 'translate3d(0,' + (-(d % this.tileR)).toFixed(2) + 'px,0)';
+      // both hillsides ride one clock, a touch faster than the road for parallax
+      const T2 = this.tileHill;
+      if (this.r.hillL.current) this.r.hillL.current.style.transform = 'translate3d(0,' + (-((d * c.lead) % T2)).toFixed(2) + 'px,0)';
+      if (this.r.hillR.current) this.r.hillR.current.style.transform = 'translate3d(0,' + (-((d * c.lead + T2 * .37) % T2)).toFixed(2) + 'px,0)';
+      // the garden runs first and dissolves into the hills — same speed, so nothing slides
+      const T3 = this.tileGarden;
+      if (this.r.gardenL.current) this.r.gardenL.current.style.transform = 'translate3d(0,' + (-((d * c.lead) % T3)).toFixed(2) + 'px,0)';
+      if (this.r.gardenR.current) this.r.gardenR.current.style.transform = 'translate3d(0,' + (-((d * c.lead + T3 * .41) % T3)).toFixed(2) + 'px,0)';
+      // the hedgerow ends at one fixed place on the ground. the seam rides down the
+      // screen at the terrain's own speed, so the car drives past the last bush and
+      // the hills fill in behind it — one continuous landscape, not a cross-fade
+      // Both plates are the same aerial ground plane, road margin on the inner edge —
+      // so the terrain change runs ACROSS the verge, not along the road. The flowering
+      // bushes withdraw toward the asphalt as the hills open up away from it, and they
+      // never fully leave: a verge of blossom rides beside the car the whole drive.
+      const sg = (x) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
+      const k = sg(((i + p) - (c.gardenEnd - c.gardenFade)) / c.gardenFade);
+      // the coast is the arrival: the sea opens from the right panel's OUTER edge
+      // inward, and the blossom finishes its retreat so the palms take the roadside
+      const k3 = sg(((i + p) - c.coastStart) / c.coastLen);
+      const VERGE = 76, FEATHER = 26;
+      const band = (f, deg) => {
+        const a = (f - FEATHER).toFixed(1), b = (f - FEATHER * .45).toFixed(1), e = f.toFixed(1);
+        return 'linear-gradient(' + deg + 'deg, rgba(0,0,0,0) ' + a + '%, rgba(0,0,0,.5) ' + b + '%, rgba(0,0,0,1) ' + e + '%)';
+      };
+      // No fade anywhere in the coast. The boundary is a painted alpha edge — an
+      // irregular leafy silhouette cut once into art/coast-edge.png?v5 — and it simply
+      // TRAVELS. The plates scroll upward, so the coastline enters at the bottom of the
+      // frame and rides up past the car. Every pixel is either hills or coast at full
+      // strength; nothing is ever semi-transparent, so the sand, surf and palms read
+      // exactly as painted in the reference.
+      const setMask = (el, g) => { if (!el) return; el.style.maskImage = g; el.style.webkitMaskImage = g; };
+      // 76% of the retreat belongs to the hills leg; the last 24% is the hand-off to palms
+      const gf = VERGE * k + (100 - VERGE) * k3;
+      const paint = (el, deg) => {
+        if (!el) return;
+        if (gf <= .05) {
+          if (el._m !== 'full') { el._m = 'full'; el.style.maskImage = 'none'; el.style.webkitMaskImage = 'none'; }
+          return;
+        }
+        el._m = 'band';
+        setMask(el, band(gf, deg));
+      };
+      // mirrored per side: each panel's garden clings to the edge that faces the road
+      paint(this.r.gardenMaskL.current, 105);
+      paint(this.r.gardenMaskR.current, 255);
+      const cm = this.r.coastMaskR.current;
+      if (cm) {
+        if (k3 <= .001) {
+          if (cm.style.opacity !== '0') cm.style.opacity = '0';
+        } else {
+          if (cm.style.opacity !== '1') cm.style.opacity = '1';
+          const u = 'url("art/coast-edge.png?v5")';
+          if (cm.style.maskImage !== u) cm.style.maskImage = cm.style.webkitMaskImage = u;
+          // mask art is 2× the frame: transparent top half, opaque bottom half. Slide it
+          // up by one frame height and the edge crosses the view exactly once.
+          const C = cm.clientHeight || window.innerHeight;
+          cm.style.maskSize = cm.style.webkitMaskSize = '100% ' + (C * 2).toFixed(0) + 'px';
+          cm.style.maskPosition = cm.style.webkitMaskPosition = '0 ' + (-C * k3).toFixed(1) + 'px';
+        }
+        // same clock as the hills, so the two plates never slide against each other
+        const cr2 = this.r.coastR.current;
+        if (cr2) cr2.style.transform = 'translate3d(0,' + (-((d * c.lead) % this.tileCoast)).toFixed(2) + 'px,0)';
+      }
+      // the arrival is bright: the dark vignette floor and the warm wash both pull
+      // back over the coast, or the turquoise reads as muddy green
+      if (this.r.vig.current) this.r.vig.current.style.opacity = (1 - .62 * k3).toFixed(3);
+      if (this.r.tint.current) this.r.tint.current.style.opacity = (1 - .55 * k3).toFixed(3);
+      // the plate carries its own palmy roadside margin, so the generated verge clears
+      // out — but only once the seam has swept most of the frame, or it would thin out
+      // over hillside the car hasn't reached yet
+      const vk = sg((k3 - .5) / .42);
+      if (this.r.vergeR.current) this.r.vergeR.current.style.opacity = (1 - .95 * vk).toFixed(3);
+      // high thin cloud drifts far slower than the ground — parallax, and it never
+      // catches the car up
+      if (this.r.cloud.current) {
+        this.r.cloud.current.style.transform = 'translate3d(0,' + (-((d * .055) % this.tileCloud)).toFixed(2) + 'px,0)';
+        // the hills plate carries its own painted mist; the garden doesn't — so the
+        // veil sits heaviest over the opening and thins out as the hills take over
+        const early = 1 - Math.min(1, (i + p) / 1.4);
+        this.r.cloud.current.style.opacity = (c.clouds * (1 + 1.1 * early)).toFixed(3);
+      }
+      const v = this.pd === undefined ? 0 : Math.abs(d - this.pd);
+      this.pd = d;
+      this.vs = (this.vs || 0) * .68 + Math.min(1, v / (vh * .018)) * .32;
+      const vs = this.vs < .01 ? 0 : this.vs;
+      if (this.r.streak.current) {
+        if (vs > 0 && !this._sk) { this._sk = 1;
+          const b = this.r.streak.current.getAttribute('data-bg');
+          if (b) this.r.streak.current.style.backgroundImage = 'url(' + b + ')'; }
+        // rides the road layer; this extra offset drifts it 12% faster
+        this.r.streak.current.style.transform = 'translate3d(0,' + (-((d * .12) % this.tileR)).toFixed(2) + 'px,0)';
+        this.r.streak.current.style.opacity = (vs * .85).toFixed(3);
+      }
+      if (this.r.car.current) {
+        this.r.car.current.style.transform = 'translate3d(0,' + (-5 * vs).toFixed(2) + 'px,0) rotate(' + (Math.sin(d / (vh * .7)) * 1.8 * vs).toFixed(3) + 'deg)';
+      }
+      const a = this.alpha(i, t, n);
+      const el = this.texts && this.texts[i];
+      if (el) {
+        el.style.opacity = a.toFixed(3);
+        el.style.transform = 'translate3d(0,' + ((1 - a) * 16).toFixed(2) + 'px,0)';
+      }
+      if (this.last !== i && this.last >= 0 && this.texts && this.texts[this.last]) {
+        const o = this.texts[this.last];
+        o.style.opacity = '0';
+        o.style.transform = 'translate3d(0,16px,0)';
+      }
+    }
+    this.daylight(Math.max(0, Math.min(1, (i + p) / 9)));
+    this.last = i;
+  }
+
+  renderVals() {
+    return {
+      rootRef: this.r.root, worldRef: this.r.world, roadRef: this.r.road, roadGrainRef: this.r.roadGrain, vergeLRef: this.r.vergeL, vergeRRef: this.r.vergeR, panelLRef: this.r.panelL,
+      hillLRef: this.r.hillL, hillRRef: this.r.hillR,
+      gardenLRef: this.r.gardenL, gardenRRef: this.r.gardenR,
+      gardenMaskLRef: this.r.gardenMaskL, gardenMaskRRef: this.r.gardenMaskR,
+      coastRRef: this.r.coastR, coastMaskRRef: this.r.coastMaskR, waterTexRef: this.r.waterTex,
+      vigRef: this.r.vig,
+      streakRef: this.r.streak, cloudRef: this.r.cloud,
+      tintRef: this.r.tint, duskRef: this.r.dusk,
+      carRef: this.r.car, grainRef: this.r.grain
+    };
+  }
+}
+</script>
+</body>
+</html>

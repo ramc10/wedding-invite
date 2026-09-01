@@ -1,0 +1,107 @@
+{
+  "_comment": "Garden, coast (wide plate), coast again further down, then back into the original garden bushes. The closing garden is the same plate as the opening one, so it belongs to the same painting rather than arriving from somewhere else.",
+  "out_width": 0,
+  "road_width": 94,
+  "overlap": 200,
+  "chunk_height": 640,
+  "segments": [
+    {
+      "src": "plates/garden-wide.png",
+      "kind": "repeat",
+      "count": 3,
+      "rows": [
+        0,
+        560
+      ],
+      "bias": 0.0,
+      "_": "garden lead-in - the plate's own bushes, before any sand",
+      "petals": [
+        0,
+        560
+      ]
+    },
+    {
+      "src": "plates/garden-coast-transition.png",
+      "kind": "once",
+      "rows": [
+        0,
+        1100
+      ],
+      "bias": 0.0,
+      "_": "garden on both sides, sand only starting to show at the very end - bridges into coast-wide.png",
+      "petals": [
+        0,
+        900
+      ]
+    },
+    {
+      "src": "plates/coast-wide.png",
+      "kind": "once",
+      "bias": 0.0,
+      "stops": [
+        400,
+        700
+      ],
+      "_": "garden, then the coast where the beach is widest",
+      "petals": [
+        0,
+        400
+      ]
+    },
+    {
+      "src": "plates/coast-wide.png",
+      "kind": "once",
+      "bias": 0.0,
+      "stops": [
+        1000,
+        1300
+      ],
+      "_": "further down the coast, boats and the island offshore"
+    },
+    {
+      "src": "plates/dam.png",
+      "kind": "once",
+      "rows": [
+        0,
+        1550
+      ],
+      "bias": 0.0,
+      "stops": [
+        1250
+      ],
+      "_": "coast fades into garden, then the lake opens on the left and the dam sits alongside the road"
+    },
+    {
+      "src": "plates/garden-wide.png",
+      "kind": "repeat",
+      "count": 2,
+      "rows": [
+        0,
+        560
+      ],
+      "bias": 0.0,
+      "petals": [
+        0,
+        560
+      ],
+      "_": "the road comes back into the bushes after the dam"
+    },
+    {
+      "src": "plates/garden-wide.png",
+      "kind": "once",
+      "rows": [
+        0,
+        560
+      ],
+      "bias": 0.0,
+      "stops": [
+        300
+      ],
+      "petals": [
+        0,
+        560
+      ],
+      "_": "closing garden, and where the drive comes to rest"
+    }
+  ]
+}

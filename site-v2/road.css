@@ -1,0 +1,100 @@
+/* Wedding Road — sectioned build.
+   Each section owns its scroll and its band of the painting, so one can be
+   rebuilt without moving any other. */
+
+:root {
+  --ground:  #141b12;
+  --gold:    #E8C66A;
+  --text:    #FFFFFF;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--ground); }
+body {
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  font-family: "EB Garamond", Georgia, serif;
+  color: var(--text);
+}
+
+.world {
+  position: fixed; inset: 0; overflow: hidden; z-index: 0;
+  background: var(--ground);
+  filter: contrast(1.06) saturate(1.08);
+}
+/* On a window wider than the column, the painting itself lights the surround —
+   one already-decoded chunk, blurred hard. Never shown on a phone, where the
+   column fills the width and this stays display:none. */
+.ambient {
+  position: absolute; inset: -8%; width: 116%; height: 116%;
+  object-fit: cover; display: none; pointer-events: none;
+  filter: blur(54px) saturate(1.25) brightness(.42);
+  transform: translateZ(0);
+}
+.world.wide .ambient { display: block; }
+
+/* The painting is a portrait column. Wider windows letterbox it rather than
+   scaling it up — that keeps rows-per-screen, and so the whole composition,
+   identical on a phone and a desktop. */
+.ribbon {
+  position: absolute; top: 0; left: 50%;
+  will-change: transform; transform: translate3d(0,0,0);
+}
+.ribbon img { position: absolute; left: 0; width: 100%; display: block; }
+
+.vignette {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 62% at 50% 8%,  rgba(255,248,226,.14), rgba(255,248,226,0) 58%),
+    radial-gradient(155% 96% at 50% 104%, rgba(10,18,8,.40),   rgba(10,18,8,0)   56%);
+}
+
+.tint  { position: fixed; inset: 0; z-index: 18; pointer-events: none; mix-blend-mode: soft-light; background-color: rgba(255,217,160,.13); }
+.grain { position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: .09; mix-blend-mode: overlay; background-size: 140px 140px; }
+
+.car-anchor {
+  position: fixed; top: 56%; left: 0; right: 0; z-index: 12;
+  display: flex; justify-content: center;
+  transform: translateY(-50%); pointer-events: none;
+}
+.car-drop  { animation: carIn 2.5s cubic-bezier(.28,1.12,.6,1) both; }
+.car-track { will-change: transform; }
+.car-idle  { filter: drop-shadow(0 8px 12px rgba(10,16,8,.45)); }
+.car-idle img { display: block; width: 100%; height: auto; transform: rotate(180deg); }
+@keyframes carIn { from { transform: translate3d(0,-125vh,0); } to { transform: translate3d(0,0,0); } }
+
+.sections { position: relative; z-index: 10; pointer-events: none; }
+.sec { position: relative; }
+.sec .pin { position: sticky; top: 0; height: 0; }
+.sec .copy {
+  position: absolute; top: 0; left: 0; right: 0; height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 19vh 7vw 0; text-align: center; opacity: 0;
+  will-change: opacity, transform;
+}
+.sec .copy::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: radial-gradient(64% 34% at 50% 27%, rgba(12,20,10,.5), rgba(12,20,10,0) 72%);
+}
+.place {
+  font-size: clamp(10px, 2.7vw, 13px); font-weight: 500; text-transform: uppercase;
+  letter-spacing: .36em; text-indent: .36em; color: var(--gold);
+}
+.ceremony { font-size: clamp(30px, 9.4vw, 52px); font-weight: 500; line-height: 1.1; margin: .38em 0 .3em; }
+.when { font-style: italic; font-size: clamp(15px, 4.3vw, 20px); color: #F4EBDD; }
+
+.cue {
+  position: fixed; bottom: 5vh; left: 0; right: 0; z-index: 22;
+  display: flex; justify-content: center; pointer-events: none;
+  transition: opacity .5s ease;
+}
+.cue span {
+  width: 1px; height: 44px;
+  background: linear-gradient(rgba(255,255,255,0), rgba(255,255,255,.8));
+  animation: cue 2.4s ease-in-out infinite;
+}
+@keyframes cue { 0%,100% { opacity:.25; transform: translateY(0); } 50% { opacity:.9; transform: translateY(8px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .car-drop, .cue span { animation: none !important; }
+  .sec .copy { opacity: 1 !important; transform: none !important; }
+}

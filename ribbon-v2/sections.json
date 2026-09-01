@@ -1,0 +1,20 @@
+{
+  "_comment": "One entry per section. A section owns its own scroll length and its own band of ribbon rows, so changing one cannot move another. 'stop' is rows into the section. out_width caps the frame: a wider frame eats more rows per screen, so it trades framing against how far a section can travel on the art available.",
+  "road_width": 94,
+  "overlap": 200,
+  "chunk_height": 640,
+  "sections": [
+    {
+      "id": "Garden",
+      "scrollVh": 110,
+      "stop": 1180,
+      "petals": true,
+      "plates": [
+        {
+          "src": "../ribbon/plates/p1787562456718.png"
+        }
+      ]
+    }
+  ],
+  "out_width": 560
+}
