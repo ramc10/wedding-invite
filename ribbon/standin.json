@@ -6,18 +6,18 @@
   "chunk_height": 640,
   "segments": [
     {
-      "src": "plates/garden-wide.png",
+      "src": "plates/garden-coast-transition.png",
       "kind": "repeat",
       "count": 3,
       "rows": [
         0,
-        560
+        500
       ],
       "bias": 0.0,
-      "_": "garden lead-in - the plate's own bushes, before any sand",
+      "_": "garden lead-in - same painting as the coast transition, before any sand, so the whole opening is one consistent style",
       "petals": [
         0,
-        560
+        500
       ]
     },
     {
@@ -63,45 +63,14 @@
       "kind": "once",
       "rows": [
         0,
-        1550
+        1844
       ],
       "bias": 0.0,
       "stops": [
-        1250
+        1250,
+        1750
       ],
-      "_": "coast fades into garden, then the lake opens on the left and the dam sits alongside the road"
-    },
-    {
-      "src": "plates/garden-wide.png",
-      "kind": "repeat",
-      "count": 2,
-      "rows": [
-        0,
-        560
-      ],
-      "bias": 0.0,
-      "petals": [
-        0,
-        560
-      ],
-      "_": "the road comes back into the bushes after the dam"
-    },
-    {
-      "src": "plates/garden-wide.png",
-      "kind": "once",
-      "rows": [
-        0,
-        560
-      ],
-      "bias": 0.0,
-      "stops": [
-        300
-      ],
-      "petals": [
-        0,
-        560
-      ],
-      "_": "closing garden, and where the drive comes to rest"
+      "_": "coast fades into garden, the lake and dam, then the road returns to forest in the plate's own tail - closing garden and where the drive comes to rest"
     }
   ]
 }

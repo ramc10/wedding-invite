@@ -284,23 +284,15 @@ def main():
         print(f"  {os.path.basename(s['src'])[:26]:26s}{rows:16s} {im.size[0]}x{im.size[1]}"
               f"  road {med:5.1f}px  field {avail / ROAD_W:5.2f} road-widths  x{scale:.3f}")
 
-    # The frame is as wide as the *dominant* plate can cover — weighted by how many
-    # output rows each plate actually fills across the sequence (repeats included) —
-    # rather than clamped to whichever single plate is narrowest. A plate narrower
-    # than the frame just repeats its own edge pixels outward (see render()), which
-    # reads as a soft edge rather than an obviously invented one as long as it stays
-    # a minority of the ribbon's rows.
-    weight = {}
-    for s in seq:
-        k = key(s)
-        weight[k] = weight.get(k, 0) + meas[k][0].height
-    dom_key = max(weight, key=lambda k: weight[k])
-    avail = meas[dom_key][4]
-    narrowest = min(m[4] for m in meas.values())
+    # The frame is as wide as the narrowest plate can actually cover. Widening past
+    # that would mean inventing pixels at the edges, which reads as horizontal
+    # streaking down the side of the scene.
+    avail = min(m[4] for m in meas.values())
     OUT_W = int(min(OUT_W, avail) if OUT_W else avail) // 2 * 2
-    if narrowest < OUT_W * 0.9:
-        print(f"  ! narrowest plate covers {narrowest:.0f}px vs frame {OUT_W:.0f}px — "
-              f"its edges will repeat outward to fill the frame")
+    widest = max(m[4] for m in meas.values())
+    if avail < widest * 0.9:
+        print(f"  ! narrowest plate covers {avail:.0f}px vs {widest:.0f}px — "
+              f"the frame is being cropped to suit it")
     print(f"  frame width {OUT_W}px")
 
     cache, plates = {}, []
