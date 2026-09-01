@@ -17,19 +17,11 @@
    * from the ribbon's segment count instead. To add copy, push one object per
    * stop: { place, ceremony, when } or { hero } for the opening card. */
   var STOPS = [
-    { hero: 'Bhavya & Ramcharan', city: 'Bengaluru' },
-    { city: 'Visakhapatnam',                     // the beach
-      events: [
-        { name: 'Reception', when: '17th November at 7 PM' },
-        { name: 'Haldi',     when: '18th November at 9 AM' },
-        { name: 'Wedding',   when: '18th November at 8:30 PM' }
-      ] },
-    {},                                          // the lake — a quiet stretch
-    { city: 'Karimnagar',                        // the dam
-      events: [
-        { name: 'Reception', when: '21st November at 7:30 PM' }
-      ] },
-    { hero: 'The Beginning' }                    // the closing garden
+    {},
+    {},
+    {},
+    {},
+    {}
   ];
 
   /* Scroll model. Legs used to get an equal slice of the page each, but the stops
