@@ -39,23 +39,15 @@
       "bias": 0.0,
       "stops": [
         400,
-        700
+        700,
+        1000,
+        1300
       ],
-      "_": "garden, then the coast where the beach is widest",
+      "_": "the coast, in one pass - beach widest first, then further down to the boats and the island offshore. Was two segments both rendering the same full plate back to back, which repeated the same painting twice",
       "petals": [
         0,
         400
       ]
-    },
-    {
-      "src": "plates/coast-wide.png",
-      "kind": "once",
-      "bias": 0.0,
-      "stops": [
-        1000,
-        1300
-      ],
-      "_": "further down the coast, boats and the island offshore"
     },
     {
       "src": "plates/dam.png",
