@@ -10,28 +10,28 @@
       "kind": "repeat",
       "count": 3,
       "rows": [
-        0,
-        500
+        700,
+        1100
       ],
       "bias": 0.0,
-      "_": "garden lead-in - same painting as the coast transition, before any sand, so the whole opening is one consistent style",
+      "_": "garden lead-in - rows 700-1100 are where left and right sides of this plate actually match in density/style; rows before 700 do not",
       "petals": [
         0,
-        500
+        400
       ]
     },
     {
       "src": "plates/garden-coast-transition.png",
       "kind": "once",
       "rows": [
-        0,
-        1100
+        700,
+        1536
       ],
       "bias": 0.0,
-      "_": "garden on both sides, sand only starting to show at the very end - bridges into coast-wide.png",
+      "_": "garden on both sides, sand only starting to show partway through - bridges into coast-wide.png",
       "petals": [
         0,
-        900
+        400
       ]
     },
     {
