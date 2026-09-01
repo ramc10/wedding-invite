@@ -6,18 +6,17 @@
   "chunk_height": 640,
   "segments": [
     {
-      "src": "plates/garden-coast-transition.png",
-      "kind": "repeat",
-      "count": 3,
+      "src": "plates/garden-extra.png",
+      "kind": "once",
       "rows": [
-        700,
-        1100
+        0,
+        1536
       ],
       "bias": 0.0,
-      "_": "garden lead-in - rows 700-1100 are where left and right sides of this plate actually match in density/style; rows before 700 do not",
+      "_": "garden lead-in - dense forest bank on the left, grassy hills on the right, held consistently the whole plate. Adds real length to the opening instead of repeating a short band",
       "petals": [
         0,
-        400
+        1536
       ]
     },
     {
@@ -28,7 +27,7 @@
         1536
       ],
       "bias": 0.0,
-      "_": "garden on both sides, sand only starting to show partway through - bridges into coast-wide.png",
+      "_": "garden on both sides at first, sand only starting to show partway through - bridges into coast-wide.png. Rows before 700 don't match left to right, so this is the full usable band",
       "petals": [
         0,
         400
