@@ -50,18 +50,17 @@
       ]
     },
     {
-      "src": "plates/dam.png",
+      "src": "plates/garden-extra.png",
       "kind": "once",
       "rows": [
         0,
-        1844
+        1536
       ],
       "bias": 0.0,
       "stops": [
-        1250,
-        1750
+        700
       ],
-      "_": "coast fades into garden, the lake and dam, then the road returns to forest in the plate's own tail - closing garden and where the drive comes to rest"
+      "_": "closing garden, and where the drive comes to rest"
     }
   ]
 }
