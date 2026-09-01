@@ -284,15 +284,17 @@ def main():
         print(f"  {os.path.basename(s['src'])[:26]:26s}{rows:16s} {im.size[0]}x{im.size[1]}"
               f"  road {med:5.1f}px  field {avail / ROAD_W:5.2f} road-widths  x{scale:.3f}")
 
-    # The frame is as wide as the narrowest plate can actually cover. Widening past
-    # that would mean inventing pixels at the edges, which reads as horizontal
-    # streaking down the side of the scene.
+    # The frame is as wide as the narrowest plate can actually cover, unless the
+    # manifest sets an explicit out_width — then that's respected as-is, even past
+    # what the narrowest plate covers. Widening past a plate's own field means its
+    # edges repeat outward (see render()), which reads as a soft edge rather than an
+    # obviously invented one as long as the plate is a minority of the ribbon's rows.
     avail = min(m[4] for m in meas.values())
-    OUT_W = int(min(OUT_W, avail) if OUT_W else avail) // 2 * 2
+    OUT_W = int(OUT_W) // 2 * 2 if OUT_W else int(avail) // 2 * 2
     widest = max(m[4] for m in meas.values())
-    if avail < widest * 0.9:
-        print(f"  ! narrowest plate covers {avail:.0f}px vs {widest:.0f}px — "
-              f"the frame is being cropped to suit it")
+    if avail < OUT_W * 0.9:
+        print(f"  ! narrowest plate covers {avail:.0f}px vs frame {OUT_W:.0f}px — "
+              f"its edges will repeat outward to fill the frame")
     print(f"  frame width {OUT_W}px")
 
     cache, plates = {}, []

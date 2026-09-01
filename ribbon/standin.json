@@ -43,24 +43,11 @@
         1000,
         1300
       ],
-      "_": "the coast, in one pass - beach widest first, then further down to the boats and the island offshore. Was two segments both rendering the same full plate back to back, which repeated the same painting twice",
+      "_": "the coast, in one pass - beach widest first, then further down to the boats and the island offshore. Was two segments both rendering the same full plate back to back, which repeated the same painting twice. The drive now ends here - no closing garden segment",
       "petals": [
         0,
         400
       ]
-    },
-    {
-      "src": "plates/garden-extra.png",
-      "kind": "once",
-      "rows": [
-        0,
-        1536
-      ],
-      "bias": 0.0,
-      "stops": [
-        700
-      ],
-      "_": "closing garden, and where the drive comes to rest"
     }
   ]
 }
