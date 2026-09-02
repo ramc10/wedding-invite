@@ -1,12 +1,12 @@
 /* Blossom drifting over the garden — same idea as the old flat-canvas petals.js,
  * rebuilt as real 3D geometry (bent, twisted, lit) instead of a painted ellipse.
  *
- * Petals ride the ground — their position lives in the same travelled-px space as
- * the ribbon, at nearly the ground's own scroll speed (GROUND_SPEED) — plus a small
- * independent drift/fall, which is what reads as "in the air" rather than pinned
- * to the road. Confined to the road's own painted width (not the letterboxed
- * viewport) and to the ribbon rows the manifest marks as garden (petalZones),
- * fading in and out at each zone's edge. Reduced motion removes them entirely.
+ * Petals live entirely in their own space: their fall/drift/spin runs on elapsed
+ * time alone, never on scroll distance. Scroll only ever decides whether they are
+ * visible at all (zoneAlpha, are we over a garden stretch right now) — it never
+ * moves them. That's what makes them read as air in front of the scene rather than
+ * an object riding the ground with it. Confined to the road's own painted width
+ * (not the letterboxed viewport). Reduced motion removes them entirely.
  */
 (function () {
   'use strict';
@@ -15,7 +15,6 @@
   if (!window.THREE) return;
 
   var MAX_DPR   = 2;
-  var GROUND_SPEED = 0.94; // share of the ground's own scroll speed a petal keeps up with
   var FADE_ROWS = 260;    // ribbon rows over which a zone eases in and out
   var FPS       = 30;     // slow drift needs no more, and holds cost half as much
   var TINTS = ['#F6DDE3', '#FFF4E8', '#F0A2BD', '#FBE7C6'];
@@ -23,22 +22,22 @@
 
   var THREE = window.THREE;
   var cv, renderer, scene, camera, mesh, dummy, colorAttr, ribbonEl;
-  var W = 0, H = 0, roadX0 = 0, roadW = 0, ps = [], last = 0, prevD = 0, raf = 0, za = 0;
+  var W = 0, H = 0, roadX0 = 0, roadW = 0, ps = [], last = 0, raf = 0, za = 0;
 
   function rnd(a, b) { return a + Math.random() * (b - a); }
 
   function make(fx) {
     var fx2 = fx === undefined ? Math.random() : fx;
     return {
-      x: rnd(-0.05, 1.05),                 // 0..1 across the viewport
+      x: rnd(-0.05, 1.05),                 // 0..1 across the road's own width
       y: fx2,                              // 0..1 down the viewport, at spawn
-      py: 0,                               // accumulated lag, in travelled px
+      fall: 0,                             // accumulated fall, in px — its own clock only
       size: rnd(6, 13),                    // px radius, roughly — scaled to world units below
       spin: rnd(-0.7, 0.7),
       tumble: rnd(-0.5, 0.5),
       phase: rnd(0, 6.28),
       driftX: rnd(-7, 5),                  // px/s of its own wind
-      driftY: rnd(5, 15),
+      driftY: rnd(5, 15),                  // px/s of its own fall
       z: rnd(-0.4, 0.4),                   // slight depth scatter, purely visual
       tint: TINTS[(Math.random() * TINTS.length) | 0]
     };
@@ -82,7 +81,6 @@
   }
 
   function resize() {
-    var fx = window.RoadFX;
     var dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     W = window.innerWidth; H = window.innerHeight;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
@@ -101,7 +99,6 @@
     while (ps.length < want) ps.push(make());
     ps.length = want;
     if (mesh) mesh.count = want;
-    if (fx) prevD = fx.d;
   }
 
   /* 0 outside every garden stretch, 1 well inside one */
@@ -125,30 +122,27 @@
     var fx = window.RoadFX;
     if (!fx || !fx.ribbon) return;
 
-    /* zoneAlpha already ramps smoothly over FADE_ROWS of scroll — a second, slower
-     * ease on top of that just adds lag, which is what let petals visibly outlive
-     * their zone (still drawing, faded, over the beach). Use it directly. */
+    /* only thing scroll ever touches: is a garden zone in view right now, and by
+     * how much (zoneAlpha ramps smoothly over FADE_ROWS on its own). */
     za = zoneAlpha(fx);
 
     if (za <= 0.003) {
       if (cv.style.opacity !== '0') cv.style.opacity = '0';
-      prevD = fx.d;
       return;
     }
     if (cv.style.opacity !== '1') cv.style.opacity = '1';
 
     updateRoadBounds();
-    var dd = fx.d - prevD; prevD = fx.d;
 
     for (var i = 0; i < ps.length; i++) {
       var p = ps[i];
-      p.py += dd * GROUND_SPEED + p.driftY * dt;
-      p.x  += (p.driftX * dt) / roadW;
+      p.fall += p.driftY * dt;             // fall/drift run on their own clock — scroll never touches this
+      p.x    += (p.driftX * dt) / roadW;
       p.phase += (p.spin + p.tumble) * dt;
 
-      var sy = p.y * H + p.py;
+      var sy = p.y * H + p.fall;
       if (sy < -30 || sy > H + 30 || p.x < -0.1 || p.x > 1.1) {
-        ps[i] = p = make(dd >= 0 ? -0.04 : 1.04);
+        ps[i] = p = make(-0.04);
       }
 
       var sx = roadX0 + p.x * roadW;
