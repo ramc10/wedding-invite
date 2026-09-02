@@ -36,8 +36,8 @@
       spin: rnd(-0.7, 0.7),
       tumble: rnd(-0.5, 0.5),
       phase: rnd(0, 6.28),
-      driftX: rnd(-7, 5),                  // px/s of its own wind
-      driftY: rnd(5, 15),                  // px/s of its own fall
+      driftX: rnd(-20, 14),                // px/s of its own wind
+      driftY: rnd(16, 42),                 // px/s of its own fall
       z: rnd(-0.4, 0.4),                   // slight depth scatter, purely visual
       tint: TINTS[(Math.random() * TINTS.length) | 0]
     };
