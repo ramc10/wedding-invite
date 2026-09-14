@@ -115,15 +115,23 @@
 
   function buildRibbon() {
     var frag = document.createDocumentFragment();
+    /* Chunks can finish loading out of order. Revealed one at a time, a late
+     * chunk briefly shows the page's dark ground through the gap next to its
+     * already-painted neighbour — which reads as a hard seam, not a loading
+     * state. Hold the whole ribbon hidden until every chunk has arrived. */
+    el.ribbon.style.visibility = 'hidden';
+    var loads = [];
     C = R.chunks.map(function (c, i) {
       var img = new Image();
       img.alt = ''; img.decoding = 'async';
+      loads.push(new Promise(function (res) { img.onload = img.onerror = res; }));
       img.src = c.src;                              // whole ribbon is small; load it all now
       frag.appendChild(img);
 
       return { img: img, y: c.y, h: c.h, top: 0, hpx: 0 };
     });
     el.ribbon.appendChild(frag);
+    Promise.all(loads).then(function () { el.ribbon.style.visibility = ''; });
   }
 
   function legCount() {
