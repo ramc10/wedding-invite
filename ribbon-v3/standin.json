@@ -15,11 +15,17 @@
       "src": "plates/garden-beach.png",
       "kind": "once",
       "bias": 0.0,
+      "_": "garden opens out into a beach and turquoise water in the bottom right"
+    },
+    {
+      "src": "plates/beach-cove.png",
+      "kind": "once",
+      "bias": 0.0,
       "stops": [
         1100,
         1400
       ],
-      "_": "garden opens out into a beach and turquoise water in the bottom right - the drive's ending beach reveal, for now"
+      "_": "the small beach corner from garden-beach.png widens gradually into a fuller cove with an offshore islet and boats - the drive's ending beach reveal, for now. Top edge matched to garden-beach.png's bottom by explicit prompt before generating. Source was 1024x572; pre-upscaled to 2752x1537 with LANCZOS + unsharp mask (same fix as coast-open.png) since Gemini ignored the resolution request again."
     }
   ]
 }
