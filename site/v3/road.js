@@ -16,7 +16,21 @@
   /* Ceremony copy. Empty until the stops are confirmed — the leg count then comes
    * from the ribbon's segment count instead. To add copy, push one object per
    * stop: { place, ceremony, when } or { hero } for the opening card. */
-  var STOPS = [];
+  var STOPS = [
+    { hero: 'Bhavya & Ramcharan', city: 'Bengaluru' },
+    { city: 'Visakhapatnam',                     // the beach
+      events: [
+        { name: 'Reception', when: '17th November at 7 PM' },
+        { name: 'Haldi',     when: '18th November at 9 AM' },
+        { name: 'Wedding',   when: '18th November at 8:30 PM' }
+      ] },
+    {},                                          // the lake — a quiet stretch
+    { city: 'Karimnagar',                        // the dam
+      events: [
+        { name: 'Reception', when: '21st November at 7:30 PM' }
+      ] },
+    { hero: 'The Beginning' }                    // the closing garden
+  ];
 
   /* Scroll model. Legs used to get an equal slice of the page each, but the stops
    * they drive between are not equally spaced along the ribbon — so one leg crawled
@@ -129,7 +143,11 @@
   }
 
   function legCount() {
-    return (R.stops && R.stops.length) || STOPS.length || R.legs || R.segments || 3;
+    /* STOPS wins when it carries copy — each block needs its own leg to show in,
+     * however many arrival rows the ribbon itself has defined so far. Only fall
+     * back to the ribbon's own rest rows, then its segment count, when there is
+     * no copy driving the layout at all. */
+    return STOPS.length || (R.stops && R.stops.length) || R.legs || R.segments || 3;
   }
 
 
