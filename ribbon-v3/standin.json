@@ -3,7 +3,8 @@
   "out_width": 0,
   "road_width": 94,
   "overlap": 200,
-  "chunk_height": 640,
+  "chunk_height": 4000,
+  "_chunking": "Route is short enough (~2237px stitched) to fit in one chunk, so pick a chunk_height above the whole route height and avoid the boundary-placement problem entirely rather than aim it at a moving target: both segment joins are now hard cuts (0 overlap - garden/garden-beach/beach-cove are three distinct compositions, not continuous terrain), so their rows shift whenever a plate/rows/overlap value changes upstream. An internal chunk boundary that isn't pinned to a hard cut shows as a faint line even when the pixels either side are identical - a browser seam between two separately-rasterized <img> elements, the same class of artifact 25aa6c5 fixed once already by merging chunks. Revisit if the route grows past a few thousand px.",
   "segments": [
     {
       "src": "plates/garden.png",
@@ -18,18 +19,28 @@
     {
       "src": "plates/garden-beach.png",
       "kind": "once",
+      "overlap": 32,
       "bias": 0.0,
-      "_": "garden opens out into a beach and turquoise water in the bottom right"
+      "wide": 1758,
+      "_": "garden opens out into a beach and turquoise water in the bottom right. garden.png's ending (a rock cluster, sparse trailside flowers) and this plate's top (palms, a different rock arrangement, a path curving in from the left) are different compositions, not the same terrain continuing - the old 200px overlap averaged the two into a soft double-exposure ghost across the seam, wide enough to read as blur. A hard cut (0) instead swapped that for a flat brightness/tone step with no transition, which read as broken too. 32px is short enough that mismatched content doesn't have room to double-expose, while still softening the step into a quick dissolve rather than a jump cut. wide:1758 added to match section 3's canvas width - this plate's own avail (~1906px) supports it, so it's not a crop change, just rendering at the same frame width as beach-cove instead of the narrower 1510 base (which garden.png, the narrowest plate in the route, forces everyone else down to by default)."
     },
     {
-      "src": "plates/beach-cove.png",
+      "src": "plates/beach-cove-v3.png",
       "kind": "once",
+      "overlap": 200,
+      "impose": true,
+      "blend": 14,
       "bias": 0.0,
-      "stops": [
-        1100,
-        1400
+      "wide": 1758,
+      "rows": [
+        450,
+        1536
       ],
-      "_": "the small beach corner from garden-beach.png widens gradually into a fuller cove with an offshore islet and boats - the drive's ending beach reveal, for now. Top edge matches garden-beach.png's bottom. Native 2752x1536 - no upscaling needed, replaced an earlier 1024x572 version of this same scene that needed a LANCZOS+unsharp pre-upscale fix."
+      "stops": [
+        650,
+        950
+      ],
+      "_": "the offshore islet and second boat this segment is for. Top 450px cropped off. Stops shifted -450 to match. overlap:200 with impose:true - section 2's last 200px are dropped/covered, section 3's own full (post-crop) head is what shows there, genuinely imposed on top. blend:14 feathers 7px on each side of that seam, in place, without moving position. wide:1758 (5% narrower than the 1850 that first reached the islet; avail caps at ~1855) so the frame reaches the islet, which sits ~930px right of the road centre. Mobile MIN_SCALE crop + bias:1.0 pan-toward-islet fix reverted (both were part of the mobile optimisation pass, undone on request). The extra width on garden.png/garden-beach.png's rows is transparent padding, not stretched pixels. Native 2752x1536."
     }
   ]
 }

@@ -191,7 +191,14 @@
   function measure() {
     S.vw = window.innerWidth;
     S.vh = window.innerHeight;
-    S.scale = Math.min(S.vw / R.width * ZOOM, MAX_SCALE);
+    /* Fit-to-viewport zoom is computed against zoomWidth (the normal frame width),
+     * not R.width (the ribbon's actual pixel width) — the two differ when a
+     * "wide" segment made the canvas wider than the rest of the route for one
+     * subject's sake. Scaling to R.width there would shrink the whole journey to
+     * fit that one segment's extra margin; instead every segment renders at the
+     * same scale, and only the wide one runs past the viewport at the edges,
+     * same as any painting wider than the screen already does below. */
+    S.scale = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
     S.n = legCount();

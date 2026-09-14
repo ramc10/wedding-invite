@@ -165,7 +165,10 @@ def water_slice(alpha, y0, y1, scale):
     return out
 
 
-def render(im, centres, scale, out_w):
+EDGE_FEATHER = 48   # px over which a padded segment's edge fades to transparent
+
+
+def render(im, centres, scale, out_w, canvas_w=None, side="right"):
     """Rescale to the common altitude and straighten the road onto the frame centre.
 
     Sliding a whole plate by its *median* road position — which is what this did —
@@ -178,29 +181,58 @@ def render(im, centres, scale, out_w):
     and every plate now starts and ends centred, so repeats line up by construction.
     The cost is a slight horizontal shear of the terrain — tens of pixels spread over
     a plate's full height, in foliage, which does not read.
+
+    out_w is this plate's own frame width (as much as it can cover without inventing
+    edge pixels). canvas_w is the ribbon's shared strip width, which can be wider when
+    another segment needed more room for a subject off to one side (an islet past
+    where a narrower segment in the same route would have to crop). Where out_w is
+    less than canvas_w, the rendered content is centred on the same road-aligned
+    midline as every other segment and the leftover canvas is transparent, feathered
+    at the seam — not stretched pixels, which read as horizontal streaking.
     """
+    canvas_w = canvas_w or out_w
     nw, nh = max(1, round(im.width * scale)), max(1, round(im.height * scale))
     im2 = im.convert("RGB").resize((nw, nh), Image.LANCZOS)
     c2 = np.interp(np.linspace(0, len(centres) - 1, nh),
                    np.arange(len(centres)), centres) * scale
 
     src = np.asarray(im2, dtype=np.float32)
-    out = np.empty((nh, out_w, 3), dtype=np.float32)
+    content = np.empty((nh, out_w, 3), dtype=np.float32)
     xs = np.arange(nw, dtype=np.float32)
     want = np.arange(out_w, dtype=np.float32) - out_w / 2.0
     for y in range(nh):
         # clip should not bite — out_w is chosen so every row covers the frame
         take = np.clip(want + c2[y], 0, nw - 1)
         for ch in range(3):
-            out[y, :, ch] = np.interp(take, xs, src[y, :, ch])
-    return (Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)),
-            np.zeros(nh, dtype=np.float32))
+            content[y, :, ch] = np.interp(take, xs, src[y, :, ch])
+    content = np.clip(content, 0, 255)
+
+    if canvas_w == out_w:
+        out = np.dstack([content, np.full((nh, out_w), 255, dtype=np.float32)])
+        return Image.fromarray(out.astype(np.uint8)), np.zeros(nh, dtype=np.float32)
+
+    # centre this plate's content on the ribbon's shared midline; pad the rest
+    # transparent, feathered so the fade is soft rather than a hard alpha edge
+    pad = canvas_w - out_w
+    left = pad // 2
+    out = np.zeros((nh, canvas_w, 4), dtype=np.float32)
+    out[:, left:left + out_w, :3] = content
+    alpha = np.zeros(canvas_w, dtype=np.float32)
+    alpha[left:left + out_w] = 255
+    f = min(EDGE_FEATHER, out_w // 2)
+    if f > 0:
+        ramp = np.linspace(0, 255, f, dtype=np.float32)
+        alpha[left:left + f] = np.minimum(alpha[left:left + f], ramp)
+        alpha[left + out_w - f:left + out_w] = np.minimum(
+            alpha[left + out_w - f:left + out_w], ramp[::-1])
+    out[:, :, 3] = alpha[np.newaxis, :]
+    return Image.fromarray(out.astype(np.uint8)), np.zeros(nh, dtype=np.float32)
 
 # ----------------------------------------------------------------- exposure
 
 def asphalt_rgb(im, centres, road_w):
     """Median colour of the asphalt core — the reference material for exposure."""
-    a = np.asarray(im, dtype=np.float32)
+    a = np.asarray(im, dtype=np.float32)[:, :, :3]      # ignore alpha, if any
     h, w = a.shape[:2]
     half = max(2, int(road_w * 0.30))
     cols = []
@@ -215,7 +247,10 @@ def asphalt_rgb(im, centres, road_w):
 
 
 def apply_gain(im, gain):
-    a = np.asarray(im, dtype=np.float32) * gain.reshape(1, 1, 3)
+    """Grade RGB only — an image may carry a padding alpha channel, which the
+    exposure match must leave untouched."""
+    a = np.asarray(im, dtype=np.float32)
+    a[:, :, :3] *= gain.reshape(1, 1, 3)
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 # ------------------------------------------------------------------ joining
@@ -226,7 +261,12 @@ def smoothstep(n):
 
 
 def crossblend(tail, head, v):
-    """Blend the last v rows of `tail` into the first v rows of `head`."""
+    """Blend the last v rows of `tail` into the first v rows of `head`.
+    v=0 is a hard cut - there are no rows to blend, so `-v:` (which Python
+    treats as `-0:`, i.e. all of `a`) would silently mix in a whole extra
+    segment's worth of pixels rather than none."""
+    if v == 0:
+        return np.zeros((0,) + tail.shape[1:], dtype=np.uint8)
     a = np.asarray(tail, dtype=np.float32)
     b = np.asarray(head, dtype=np.float32)
     w = smoothstep(v)
@@ -241,6 +281,13 @@ def main():
     ap.add_argument("--water", action="store_true",
                     help="also emit per-chunk open-water masks")
     ap.add_argument("--quality", type=int, default=78)
+    ap.add_argument("--mark-seams", nargs="?", const="all", default=None,
+                     help="paint a bright magenta line across segment joins in the "
+                          "stitched strip, so a seam is unmistakable and its exact row "
+                          "known while debugging - never use for a real build. Bare "
+                          "flag marks every join; pass a 1-based join index (1 = the "
+                          "first join, between segment 1 and 2) or comma-separated "
+                          "list, e.g. --mark-seams 2, to mark only that one.")
     args = ap.parse_args()
 
     mf = json.load(open(args.manifest))
@@ -295,12 +342,30 @@ def main():
               f"the frame is being cropped to suit it")
     print(f"  frame width {OUT_W}px")
 
+    # A segment can ask for more than the shared frame width — "wide": <px>, capped
+    # to what its own plate actually covers — and lean that extra width to one side
+    # with "wide_side" ("left"/"right", default right), for a subject (an islet, a
+    # second boat) that sits past where the narrowest plate in the route would force
+    # everyone to crop. The canvas is then the widest any segment asks for; narrower
+    # segments keep rendering at OUT_W and are padded out to canvas width with a
+    # transparent, feathered edge rather than stretched pixels (see render()).
+    def seg_width(s):
+        w = int(s.get("wide", 0))
+        if not w:
+            return OUT_W
+        return min(w, int(meas[key(s)][4])) // 2 * 2   # meas[...] = (im, centres, med, scale, avail)
+    CANVAS_W = max([OUT_W] + [seg_width(s) for s in seq])
+    if CANVAS_W > OUT_W:
+        print(f"  canvas widened to {CANVAS_W}px for wide segment(s)")
+
     cache, plates = {}, []
     for s in seq:
         k = key(s)
         if k not in cache:
             im, centres, med, scale, _ = meas[k]
-            norm, c2 = render(im, centres, scale, OUT_W)
+            sw = seg_width(s)
+            side = s.get("wide_side", "right")
+            norm, c2 = render(im, centres, scale, sw, CANVAS_W, side)
             cache[k] = (norm, c2, scale, med, im.size)
         plates.append(cache[k])
 
@@ -321,7 +386,7 @@ def main():
     # Where each leg should come to rest. Arrivals divided evenly across the journey
     # land wherever they land — usually on filler, because a painting's subjects are
     # not evenly spaced. A segment names the row worth stopping at instead.
-    stops, petals, cursor, prev = [], [], 0, None
+    stops, petals, joins, cursor, prev = [], [], [], 0, None
     for i, s in enumerate(seq):
         im, centres = graded[key(s)]
         a = np.asarray(im, dtype=np.uint8)
@@ -330,10 +395,32 @@ def main():
         # bias -1..+1 slides the visible window toward one side, so a subject that
         # runs to the frame edge survives the crop at the cost of the emptier side.
         bz = np.full(len(a), float(s.get("bias", 0.0)), dtype=np.float32)
-        # A segment can override the global overlap — 0 for a hard cut where the two
-        # plates are unrelated content (a scene change) rather than the same terrain.
-        seg_over = s.get("overlap", OVER)
+
+        # A segment can ask for empty space before it starts — overlap only ever
+        # pulls two segments closer (down to a flush 0), it cannot push them apart.
+        # The gap is transparent (same treatment as the "wide" side padding), not
+        # painted content, so there is nothing there to blend against: insert it as
+        # its own borderless spacer, then join the segment to *that* at overlap 0.
+        gap = int(s.get("gap", 0))
+        if gap > 0 and prev is not None:
+            spacer = np.zeros((gap, CANVAS_W, 4), dtype=np.uint8)
+            strip_parts.append(spacer)
+            centre_parts.append(np.zeros(gap, dtype=np.float32))
+            bias_parts.append(np.zeros(gap, dtype=np.float32))
+            cursor += gap
+            prev = (spacer, centre_parts[-1])
+
+        # "overlap" controls POSITION ONLY: how much of this segment is pulled up
+        # into the previous one's span (down to a flush 0 - it cannot push segments
+        # apart; use "gap" for that). "blend" controls the crossfade width, feathered
+        # in place at whatever position overlap already decided, entirely separate -
+        # changing one must never silently move the other, which is what happened
+        # when overlap did both jobs at once (raising it for more blend also pulled
+        # the join upward, dropping it for less blend pushed the join back down).
+        seg_over = 0 if gap > 0 else s.get("overlap", OVER)
         seg_start = 0 if prev is None else cursor - min(seg_over, len(a) // 2, len(prev[0]) // 2)
+        if prev is not None:
+            joins.append((seg_start, s["src"]))
         cursor = seg_start + len(a)
         sc = meas[key(s)][3]                        # plate -> ribbon scale
         for row in s.get("stops", []):
@@ -342,16 +429,110 @@ def main():
             pa, pb = s["petals"]          # not a, b — those hold this segment's pixels
             petals.append((seg_start + pa * sc, seg_start + pb * sc))
         v = min(seg_over, len(a) // 2, len(prev[0]) // 2) if prev is not None else 0
+        # "trim": at v>0, overlap's default is to CROSSBLEND those v rows - which
+        # is itself a second, separate blend, on top of (and easy to mistake for)
+        # "blend" above. trim:true instead just drops A's last v rows and B's first
+        # v rows outright and butts what's left together - overlap still sets
+        # position (v), but with no blending of its own, so pulling a segment up
+        # can be made blur-free even at v>0, independent of "blend".
+        #
+        # "impose": which segment's pixels survive in the overlapping v-row band.
+        # trim (and the default crossblend) both keep A intact and drop B's first
+        # v rows - B's content effectively starts only after A ends, so nothing
+        # ever visually sits "on top of" the other, just two ranges butted
+        # together. impose:true is the opposite: A's LAST v rows are dropped
+        # instead, and B keeps its full head - so B's own painted content is what
+        # shows in the overlap band, reading as B laid over A rather than B
+        # starting where A left off. Net length drops by v either way.
+        trim = bool(s.get("trim", False))
+        impose = bool(s.get("impose", False))
         if prev is None:
             strip_parts.append(a); centre_parts.append(c); bias_parts.append(bz)
         else:
             pa, pc, pb = strip_parts.pop(), centre_parts.pop(), bias_parts.pop()
-            joined = crossblend(pa, a, v)
-            strip_parts.append(np.concatenate([pa[:-v], joined], 0))
-            w = smoothstep(v).reshape(v)
-            centre_parts.append(np.concatenate([pc[:-v], pc[-v:] * (1 - w) + c[:v] * w]))
-            bias_parts.append(np.concatenate([pb[:-v], pb[-v:] * (1 - w) + bz[:v] * w]))
-            strip_parts.append(a[v:]); centre_parts.append(c[v:]); bias_parts.append(bz[v:])
+            # v=0 is a hard cut: `pa[:-0]` means `pa[:0]` in Python, i.e. empty,
+            # not "everything" - so the whole-array case must be spelled out.
+            # Copy only when blend will touch it in place - pa itself can be
+            # read-only (e.g. straight off a decoded image).
+            if v == 0:
+                strip_parts.append(pa.copy() if int(s.get("blend", 0)) > 0 else pa)
+                centre_parts.append(pc)
+                bias_parts.append(pb)
+            elif impose:
+                # A loses its last v rows (covered by B); B below keeps its FULL
+                # head rather than dropping v, so B is what actually appears in
+                # the overlap band. Copy only when blend will touch this array
+                # in place afterward - pa[:-v] is a view, and pa can itself be
+                # read-only (e.g. straight off a decoded image), which the
+                # in-place blend write would otherwise fail against.
+                a_head = pa[:-v].copy() if int(s.get("blend", 0)) > 0 else pa[:-v]
+                strip_parts.append(a_head)
+                centre_parts.append(pc[:-v])
+                bias_parts.append(pb[:-v])
+            elif trim:
+                # Net length must drop by exactly v, same as the blend path (A
+                # loses v, B loses v below, then a v-row blended result is
+                # re-inserted - net -v). B's own v-row head-drop (a[v:]) happens
+                # unconditionally below for the default/trim case, so trim must
+                # NOT also drop v from A here - that would be -2v total, pulling
+                # the join up an extra v px beyond what "overlap" asked for. A is
+                # therefore left untouched in this branch; only B's drop below
+                # contributes, giving the correct net -v with no blending
+                # inserted at the join. Copy only when blend will touch it in
+                # place - pa itself can be read-only.
+                strip_parts.append(pa.copy() if int(s.get("blend", 0)) > 0 else pa)
+                centre_parts.append(pc)
+                bias_parts.append(pb)
+            else:
+                joined = crossblend(pa, a, v)
+                strip_parts.append(np.concatenate([pa[:-v], joined], 0))
+                w = smoothstep(v).reshape(v)
+                centre_parts.append(np.concatenate([pc[:-v], pc[-v:] * (1 - w) + c[:v] * w]))
+                bias_parts.append(np.concatenate([pb[:-v], pb[-v:] * (1 - w) + bz[:v] * w]))
+            # a[v:] is a VIEW into `a`, not a copy - the in-place blend below writes
+            # through it, which would otherwise corrupt `a` itself (shared, e.g., if
+            # this same plate/key is reused by a later repeated segment). Copy only
+            # when blend will actually touch it; the common no-blend path stays a
+            # cheap view as before. impose keeps B's FULL head (nothing dropped),
+            # matching A's v-row drop above so the net length still comes out -v.
+            if impose:
+                b_side = a.copy() if int(s.get("blend", 0)) > 0 else a
+                strip_parts.append(b_side); centre_parts.append(c); bias_parts.append(bz)
+            else:
+                b_side = a[v:].copy() if int(s.get("blend", 0)) > 0 else a[v:]
+                strip_parts.append(b_side); centre_parts.append(c[v:]); bias_parts.append(bz[v:])
+
+            # "blend" feathers the two segments' pixels across a FIXED join, entirely
+            # separate from "overlap" (which only ever sets position, via v above).
+            # It operates on the exact boundary between strip_parts[-2] and
+            # strip_parts[-1] regardless of v: at v=0 that boundary is the raw,
+            # untouched hard cut; at v>0 its last v rows are already the overlap's
+            # own crossblend (a different mechanism, already smoothed) and its first
+            # rows onward are B's untouched tail - either way, feathering the actual
+            # boundary in place changes no array's length and so cannot move
+            # anything, which is the whole point: changing blend % must never
+            # re-shift the join the way raising or lowering "overlap" used to when
+            # one field was made to do both jobs at once.
+            bl = int(s.get("blend", 0))
+            if bl > 0:
+                a_side, b_side = strip_parts[-2], strip_parts[-1]
+                bl = min(bl, a_side.shape[0], b_side.shape[0])
+                half = bl // 2
+                if half > 0:
+                    # crossblend(tail, head, n) mixes tail's last n rows with head's
+                    # first n rows into one n-row run, ramping smoothly from tail's
+                    # colour to head's. Feed it the FULL bl-row window (bl rows from
+                    # each side, not half - an earlier version of this fed it only
+                    # `half` rows per side, which produced just 2 mix values and a
+                    # hard jump right at the seam instead of a ramp), then split the
+                    # resulting bl-row ramp across the seam: its first half overwrites
+                    # A's own last `half` rows (still close to A's colour there), its
+                    # second half overwrites B's own first `half` rows (close to B's
+                    # colour). Verified numerically to be continuous with no jump.
+                    # Every array keeps its original length, so position is untouched.
+                    mix = crossblend(a_side[-bl:], b_side[:bl], bl)
+                    a_side[-half:] = mix[:half]
+                    b_side[:bl - half] = mix[half:]   # bl-half, not half: covers an odd bl too
         prev = (a, c)
 
     # neighbouring copies of one segment produce touching zones; merge them so the
@@ -370,7 +551,22 @@ def main():
     # a long ease either side of a join, so the camera drifts rather than steps
     bias = smooth(np.concatenate(bias_parts, 0), 601)
     H = strip.shape[0]
-    print(f"stitched ribbon {OUT_W}x{H}px")
+    print(f"stitched ribbon {CANVAS_W}x{H}px")
+
+    if args.mark_seams:
+        # opaque magenta, a few rows either side of each join - unmistakable against
+        # any painted terrain, and printed here so the row number matches exactly what
+        # ships. Debug-only: never leave --mark-seams on for a real build.
+        wanted = None if args.mark_seams == "all" else \
+            {int(x) for x in args.mark_seams.split(",")}
+        MARK = 6
+        for i, (row, src) in enumerate(joins, start=1):
+            if wanted is not None and i not in wanted:
+                continue
+            y0, y1 = max(0, row - MARK), min(H, row + MARK)
+            strip[y0:y1, :, :3] = [255, 0, 220]
+            strip[y0:y1, :, 3] = 255
+            print(f"  seam marker at ribbon row {row} (start of {os.path.basename(src)})")
 
     # slice — a cut, not a blend: adjacent chunks align exactly
     chunks, total, water_kb = [], 0, 0
@@ -400,7 +596,14 @@ def main():
 
     STEP = 8
     ribbon = {
-        "width": OUT_W,
+        "width": CANVAS_W,
+        # the width the fit-to-viewport zoom is computed against. Left at the
+        # normal frame width even when the canvas itself is wider for a "wide"
+        # segment's sake, or that one segment would shrink the whole journey to
+        # fit its own extra margin on every device. The wide segment instead
+        # simply runs past the viewport at the same scale as everything else,
+        # same as any painting wider than the screen already does.
+        "zoomWidth": OUT_W,
         "height": H,
         "roadWidth": ROAD_W,
         "chunkHeight": CH,
