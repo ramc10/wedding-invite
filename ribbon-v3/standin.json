@@ -20,6 +20,12 @@
         1400
       ],
       "_": "garden opens out into a beach and turquoise water in the bottom right"
+    },
+    {
+      "src": "plates/beach-village.png",
+      "kind": "once",
+      "bias": 0.0,
+      "_": "jungle with a beach corner starting, opening into a beach village with huts and boats. Source is only 1024x571 vs ~2752 for its neighbors - gets upscaled ~1.94x by the road_width normalisation and reads visibly softer/blurrier. Flagged, not blocked."
     }
   ]
 }

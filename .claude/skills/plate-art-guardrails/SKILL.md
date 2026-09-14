@@ -18,8 +18,8 @@ at a segment seam, or a car painted into the art that had to be manually
 cloned out.
 
 Do not skip straight to cropping/scaling/wiring a new plate into the manifest.
-Run this checklist first, in order. All four gates are mandatory — geometry
-and style checks are not optional extras.
+Run this checklist first, in order. All six gates are mandatory — geometry,
+style, and seam-continuity checks are not optional extras.
 
 ## Gate 1 — Orientation
 
@@ -113,7 +113,38 @@ After running strip-car.py (or any manual clone-patch):
   the pipeline's rescale, and one that looks fine full-size can still show up
   after scaling.
 
-## After all five gates pass
+## Gate 6 — Terrain continuity at the join to its neighbor(s)
+
+Gate 2 checks rendering *style* (painted vs. photoreal, color temperature).
+That is not the same as checking whether the *terrain itself* actually
+continues sensibly across the seam. `build-ribbon.py`'s cross-blend
+(`overlap`) only feathers pixels across the join — it cannot fix two plates
+whose edges depict unrelated terrain, and a smooth pixel blend between
+"beach" and "dense jungle interior" still reads as a discontinuity, just a
+soft-edged one.
+
+Before wiring a new plate in as the next (or previous) segment to an existing
+one:
+
+- Crop the **bottom N rows of the plate before it** and the **top N rows of
+  the new plate** (N ≈ the manifest's `overlap`, e.g. 200px, at the same
+  road-normalized scale) and view them stacked directly on top of each other.
+- Check specifically: does the terrain type match (both show the same
+  ground — sand into sand, jungle into jungle, not sand directly into dense
+  tree canopy)? Does the verge width and density look continuous rather than
+  jumping? Does the water's presence/absence and its edge position line up?
+- If the join is a hard cut between unrelated terrain, that is a content
+  problem no amount of color-matching or blending fixes — either regenerate
+  one of the two plates with an explicit prompt describing what the other
+  plate's edge looks like, or reorder/insert a transition plate between them
+  (this repo's `garden-coast-transition.png` is exactly that kind of plate:
+  built specifically to bridge two terrains that don't join directly).
+- Do this check in both directions when a plate sits between two existing
+  neighbors (its top must match the previous plate's bottom, and its bottom
+  must match the next plate's top) — passing one side does not imply the
+  other passes.
+
+## After all six gates pass
 
 Only then: crop/scale rows and stops in the manifest to the plate's actual
 pixel dimensions, run `build-ribbon.py`, and check the build log for:
