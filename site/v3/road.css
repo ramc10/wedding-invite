@@ -48,19 +48,8 @@ body {
   height: 300vh; opacity: 0;
   pointer-events: none; mix-blend-mode: overlay;
   will-change: transform, opacity;
-  /* feTurbulence's stitchTiles="stitch" does not always tile seamlessly in every
-   * browser at this baseFrequency - a visible horizontal line can appear at every
-   * repeat of the 420px tile as the ribbon scrolls. Fade the mask toward
-   * transparent at each tile edge so that boundary is never shown at full
-   * strength, tiled at the same 420px pitch as the background image itself. */
-  -webkit-mask-image: linear-gradient(to bottom,
-    transparent 0, #000 8%, #000 92%, transparent 100%);
-  mask-image: linear-gradient(to bottom,
-    transparent 0, #000 8%, #000 92%, transparent 100%);
-  -webkit-mask-size: 100% 420px;
-  mask-size: 100% 420px;
-  -webkit-mask-repeat: repeat-y;
-  mask-repeat: repeat-y;
+  /* mask-image/-size/-repeat are set from road.js, alongside the background
+     that they need to line up with */
 }
 
 .vignette {

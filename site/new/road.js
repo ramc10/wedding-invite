@@ -97,8 +97,16 @@
     el.streaks.style.backgroundImage = 'url("' + SMEAR + '")';
     el.streaks.style.backgroundRepeat = 'repeat-y';
     el.streaks.style.backgroundSize = '100% ' + STREAK_TILE + 'px';
-    el.streaks.style.webkitMaskImage = el.streaks.style.maskImage =
-      'linear-gradient(90deg, rgba(0,0,0,0) 0%, #000 18%, #000 82%, rgba(0,0,0,0) 100%)';
+    /* Two masks layered: the horizontal one keeps the smear off the verges: the
+     * vertical one — tiled at the same pitch as the noise texture itself — fades
+     * each tile toward transparent top and bottom. feTurbulence's stitchTiles
+     * does not always tile seamlessly in every browser, and without this a
+     * visible line can appear at every repeat as the ribbon scrolls. */
+    var edgeFade = 'linear-gradient(90deg, rgba(0,0,0,0) 0%, #000 18%, #000 82%, rgba(0,0,0,0) 100%)';
+    var tileFade = 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000 8%, #000 92%, rgba(0,0,0,0) 100%)';
+    el.streaks.style.webkitMaskImage = el.streaks.style.maskImage = edgeFade + ', ' + tileFade;
+    el.streaks.style.webkitMaskSize = el.streaks.style.maskSize = '100% 100%, 100% ' + STREAK_TILE + 'px';
+    el.streaks.style.webkitMaskRepeat = el.streaks.style.maskRepeat = 'no-repeat, repeat-y';
 
     buildRibbon();
     buildLegs();
