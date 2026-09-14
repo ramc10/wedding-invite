@@ -1,8 +1,25 @@
 {
-  "_comment": "v3 starting point. Empty on purpose — no plates yet. Before adding any segment, generate the art then run it through the checks in .claude/skills/plate-art-guardrails/SKILL.md. Do not reuse or copy-patch plates from ribbon/ or ribbon-v2/.",
+  "_comment": "v3. First two segments passed all 4 guardrail gates cleanly (clean single-band asphalt mask, detect_road agrees with manual measurement, no competing gray structures). garden.png had a painted-in car removed via tools/strip-car.py before being added here.",
   "out_width": 0,
   "road_width": 94,
   "overlap": 200,
   "chunk_height": 640,
-  "segments": []
+  "segments": [
+    {
+      "src": "plates/garden.png",
+      "kind": "once",
+      "bias": 0.0,
+      "_": "opening leg - dense flowering forest, car removed cleanly via strip-car.py"
+    },
+    {
+      "src": "plates/garden-beach.png",
+      "kind": "once",
+      "bias": 0.0,
+      "stops": [
+        1100,
+        1400
+      ],
+      "_": "garden opens out into a beach and turquoise water in the bottom right"
+    }
+  ]
 }
