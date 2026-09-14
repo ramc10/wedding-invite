@@ -118,11 +118,10 @@
     C = R.chunks.map(function (c, i) {
       var img = new Image();
       img.alt = ''; img.decoding = 'async';
-      img.setAttribute('data-src', c.src);
-      if (i === 0) img.src = c.src;                 // above the fold, load it now
+      img.src = c.src;                              // whole ribbon is small; load it all now
       frag.appendChild(img);
 
-      return { img: img, y: c.y, h: c.h, on: i === 0, top: 0, hpx: 0 };
+      return { img: img, y: c.y, h: c.h, top: 0, hpx: 0 };
     });
     el.ribbon.appendChild(frag);
   }
@@ -394,18 +393,6 @@
     var to = S.rests[i];
     var d = RM ? 0 : from + (to - from) * p;
     var prog = S.travel ? d / S.travel : 0;      // 0..1 across the whole journey
-
-    /* attach chunk art only as the drive brings it near */
-    for (var k = 0; k < C.length; k++) {
-      var c = C[k];
-      var top = c.top - d;
-      /* just over one viewport of lookahead — enough that art is always decoded
-       * before it arrives, without paying for the whole journey at first paint */
-      if (top < S.vh * 1.05 && top + c.hpx > -S.vh * 0.6 && !c.on) {
-        c.img.src = c.img.getAttribute('data-src');
-        c.on = true;
-      }
-    }
 
     /* measured speed — everything reactive keys off this, so it all settles to
      * zero during every arrival hold rather than merely looking slow */
