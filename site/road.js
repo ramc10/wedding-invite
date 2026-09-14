@@ -212,10 +212,14 @@
 
     /* On a screen wider than the painting, the ribbon renders as a centred panel
      * with empty ground on both sides. The rail is fixed to the viewport edge, so
-     * without this it drifts into that empty margin instead of sitting over the
-     * scene. Push it in by however wide that margin actually is. */
+     * without this it drifts into that empty margin instead of hugging the art.
+     * The padding itself must stay small and fixed here — 3vw of the *viewport*
+     * pushes the dots deep into the empty margin instead of just inside the
+     * panel's true edge, which is exactly the bug this is fixing. */
     var panelMargin = Math.max(0, (S.vw - S.rw) / 2);
-    el.rail.style.right = 'calc(' + panelMargin + 'px + max(14px, 3vw))';
+    el.rail.style.right = panelMargin > 0
+      ? (panelMargin + 14) + 'px'
+      : 'max(14px, 3vw)';
 
     /* On a screen wider than the painting we show it as a centred panel rather
      * than upscaling it to blur. Feather the crop so it settles into the ground
