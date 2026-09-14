@@ -38,11 +38,17 @@
   var SPEED     = 0.75;  // world px per scroll px — the one pace of the whole journey
   var HOLD_VH   = 0.26;  // arrival hold, in viewports, at stops that carry copy
   var MIN_LEG_VH = 0.55; // no leg is shorter than this, however close its stop
-  /* Never upscale the painting. Past 1:1 it is both blurry and zoomed so far in that
-   * a desktop screen holds only a few hundred ribbon rows — which, now that the page
-   * is exactly as long as the drive needs, turned the desktop journey into twenty
-   * screens of scrolling. A wide window gets a centred panel instead, feathered at
-   * the edges in measure(). */
+  /* Never upscale the painting past what a tall/narrow screen genuinely needs.
+   * On a desktop-wide window, fit-to-width alone already exceeds 1:1 headroom
+   * comfortably, so the 1.0 ceiling holds — past it the painting is both blurry
+   * and zoomed so far in that a desktop screen holds only a few hundred ribbon
+   * rows, turning the journey into twenty screens of scrolling. A wide window
+   * gets a centred panel instead, feathered at the edges in measure(). On a
+   * phone-shaped screen, though, fit-to-width alone renders the (roughly
+   * square) ribbon shorter than the viewport itself — section 1 would show
+   * with empty ground beneath it and almost no room left to scroll through the
+   * rest of the journey. measure() raises the ceiling there just enough to
+   * cover the viewport height, at some cost to sharpness. */
   var MAX_SCALE = 1.0;
   var ZOOM      = 1.0;   /* fit to width — no runtime crop */
   var CAR_ROAD  = 0.78;  // car width as a share of the painted road
@@ -221,10 +227,20 @@
      * fit that one segment's extra margin; instead every segment renders at the
      * same scale, and only the wide one runs past the viewport at the edges,
      * same as any painting wider than the screen already does below. */
-    S.scale = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
+    var fitWidth = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
+    S.n = legCount();
+    /* Fitting to width alone can render the (roughly square) ribbon shorter than
+     * the viewport on a portrait screen: section 1 would show with empty ground
+     * beneath it, and almost no room left to scroll through the rest of the
+     * journey. Floor the scale there so the ribbon covers one viewport height
+     * per leg — real scroll room for every section, not just enough to fill the
+     * first screen. Gated to portrait (taller than wide) only: a landscape
+     * desktop window is exactly the "never upscale past 1:1" case above, and
+     * this must stay a no-op there. */
+    var fitFloor = S.vh > S.vw ? (S.vh * S.n) / R.height : 0;
+    S.scale = Math.max(fitWidth, fitFloor);
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
-    S.n = legCount();
     S.carY = S.vh * 0.56;
 
     el.ribbon.style.width = S.rw + 'px';
