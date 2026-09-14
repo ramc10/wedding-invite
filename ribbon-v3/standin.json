@@ -29,7 +29,7 @@
       "kind": "once",
       "overlap": 200,
       "impose": true,
-      "blend": 14,
+      "blend": 6,
       "bias": 0.0,
       "wide": 1758,
       "rows": [
@@ -40,7 +40,7 @@
         650,
         950
       ],
-      "_": "the offshore islet and second boat this segment is for. Top 450px cropped off. Stops shifted -450 to match. overlap:200 with impose:true - section 2's last 200px are dropped/covered, section 3's own full (post-crop) head is what shows there, genuinely imposed on top. blend:14 feathers 7px on each side of that seam, in place, without moving position. wide:1758 (5% narrower than the 1850 that first reached the islet; avail caps at ~1855) so the frame reaches the islet, which sits ~930px right of the road centre. Mobile MIN_SCALE crop + bias:1.0 pan-toward-islet fix reverted (both were part of the mobile optimisation pass, undone on request). The extra width on garden.png/garden-beach.png's rows is transparent padding, not stretched pixels. Native 2752x1536."
+      "_": "the offshore islet and second boat this segment is for. Top 450px cropped off. Stops shifted -450 to match. overlap:200 with impose:true - section 2's last 200px are dropped/covered, section 3's own full (post-crop) head is what shows there, genuinely imposed on top. blend:6 (3px/side) - 0 (hard cut) and 14 (soft/flat band) were both tried; 6 softens the seam without the flat-haze look 14 had. wide:1758 (5% narrower than the 1850 that first reached the islet; avail caps at ~1855) so the frame reaches the islet, which sits ~930px right of the road centre. The extra width on garden.png/garden-beach.png's rows is transparent padding, not stretched pixels. Native 2752x1536."
     }
   ]
 }
