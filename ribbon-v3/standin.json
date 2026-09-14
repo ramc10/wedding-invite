@@ -1,0 +1,8 @@
+{
+  "_comment": "v3 starting point. Empty on purpose — no plates yet. Before adding any segment, generate the art then run it through the checks in .claude/skills/plate-art-guardrails/SKILL.md. Do not reuse or copy-patch plates from ribbon/ or ribbon-v2/.",
+  "out_width": 0,
+  "road_width": 94,
+  "overlap": 200,
+  "chunk_height": 640,
+  "segments": []
+}

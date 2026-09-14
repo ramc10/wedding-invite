@@ -1,0 +1,203 @@
+/* Wedding Road — a drive down a painted ribbon.
+   The ribbon carries the road and both verges as one image, so there is no
+   layer boundary anywhere in the scene and nothing to blend at runtime. */
+
+:root {
+  --leg-h: 150vh;
+  --asphalt: #2B2C2E;
+  --leaf-deep: #25401F;
+  --ground: #1b2416;
+  --gold: #E8C66A;
+  --blossom: #F6DDE3;
+  --text: #FFFFFF;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--ground); }
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+  font-family: "EB Garamond", Georgia, serif;
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- the world */
+
+.world {
+  position: fixed; inset: 0; overflow: hidden; z-index: 0;
+  background: var(--ground);
+  /* the references are bright and saturated; a light hand here, no more */
+  filter: contrast(1.06) saturate(1.08);
+}
+
+.ribbon {
+  position: absolute; top: 0; left: 50%;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+/* chunks are cuts from one strip — integer tops and heights keep them hairline-free */
+.ribbon img {
+  position: absolute; left: 0; width: 100%;
+  display: block; pointer-events: none;
+}
+
+/* tarmac motion smear, gated on measured speed */
+.streaks {
+  position: absolute; top: 0; left: 50%;
+  height: 300vh; opacity: 0;
+  pointer-events: none; mix-blend-mode: overlay;
+  will-change: transform, opacity;
+}
+
+.vignette {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 62% at 50% 8%,  rgba(255,248,226,.16), rgba(255,248,226,0) 58%),
+    radial-gradient(155% 96% at 50% 104%, rgba(10,18,8,.42),   rgba(10,18,8,0)   56%);
+}
+
+/* ----------------------------------------------------------- atmosphere */
+
+.clouds {
+  position: fixed; left: -6%; right: -6%; top: 0; height: 100%;
+  z-index: 6; pointer-events: none; opacity: .12;
+  background-repeat: repeat-y; will-change: transform;
+  background-image:
+    radial-gradient(58% 24% at 22% 11%, rgba(255,252,244,.62), rgba(255,252,244,0) 70%),
+    radial-gradient(43% 19% at 79% 37%, rgba(255,250,238,.48), rgba(255,250,238,0) 72%),
+    radial-gradient(64% 21% at 44% 62%, rgba(255,247,234,.42), rgba(255,247,234,0) 74%),
+    radial-gradient(36% 15% at 11% 85%, rgba(255,252,246,.34), rgba(255,252,246,0) 76%);
+}
+
+.tint  { position: fixed; inset: 0; z-index: 18; pointer-events: none; mix-blend-mode: soft-light; background-color: rgba(255,217,160,.14); }
+.dusk  { position: fixed; inset: 0; z-index: 19; pointer-events: none; background-color: rgba(20,26,40,0); }
+.grain { position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: .10; mix-blend-mode: overlay; background-size: 140px 140px; }
+
+/* ------------------------------------------------------------------ car */
+
+.car-anchor {
+  position: fixed; top: 56%; left: 0; right: 0;
+  z-index: 12; display: flex; justify-content: center;
+  transform: translateY(-50%); pointer-events: none;
+}
+.car-drop  { animation: carIn 2.5s cubic-bezier(.28,1.12,.6,1) both; }
+.car-track { will-change: transform; }
+.car-idle  { filter: drop-shadow(0 8px 12px rgba(10,16,8,.45)); }
+.car-idle img { display: block; width: 100%; height: auto; transform: rotate(180deg); }
+
+@keyframes carIn { from { transform: translate3d(0,-125vh,0); } to { transform: translate3d(0,0,0); } }
+
+/* --------------------------------------------------------------- content */
+
+.legs { position: relative; z-index: 10; pointer-events: none; }
+.leg  { position: relative; height: var(--leg-h); }
+
+/* The copy sits in its own fixed layer rather than inside the scroll spine, so a
+   block can stay on screen after its own section has gone by. */
+/* Above the car (12), not below it — the car sits at 56% viewport height, so on a
+   short screen it drove straight through the ceremony list. Still under the tint,
+   dusk and grain, which are meant to cover everything. */
+.copy-layer { position: fixed; inset: 0; z-index: 14; pointer-events: none; }
+
+.copy {
+  position: absolute; top: 0; left: 0; right: 0; height: 100vh;
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 17vh 8vw 0; text-align: left;
+  opacity: 0; will-change: opacity, transform;
+}
+.copy.centred { align-items: center; text-align: center; }
+.copy.centred::before { background: radial-gradient(66% 36% at 50% 27%, rgba(10,17,8,.62), rgba(10,17,8,0) 74%); }
+/* the ribbon is busy — copy needs its own ground to sit on */
+.copy::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: radial-gradient(72% 42% at 34% 30%, rgba(10,17,8,.62), rgba(10,17,8,0) 76%);
+}
+/* the art runs from deep shade to bright sand under the same line of type, so the
+   copy carries its own shadow rather than relying on whatever is behind it */
+.copy .hero,
+.copy .ev-name,
+.copy .ev-when,
+.copy .city { text-shadow: 0 1px 10px rgba(8,14,6,.72), 0 1px 2px rgba(8,14,6,.5); }
+
+/* Where the ceremony happens, set apart from the list at the foot of the screen.
+   Its own scrim: the block's radial sits up under the headings, and nothing else
+   reaches this corner. */
+.copy .city {
+  position: absolute; left: 8vw; bottom: 9vh;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: clamp(12px, 3.2vw, 16px); line-height: 1;
+  letter-spacing: .3em; text-transform: uppercase;
+  color: var(--text);
+}
+.copy .city::before {
+  content: ""; position: absolute; z-index: -1;
+  left: -8vw; right: -30%; top: -180%; bottom: -240%;
+  background: radial-gradient(60% 50% at 26% 60%, rgba(10,17,8,.55), rgba(10,17,8,0) 74%);
+}
+
+/* The script carries the names. It closes up at small sizes, so the dates and times
+   sit in EB Garamond instead, where a numeral is unambiguous. */
+.hero, .events, .ev-name {
+  font-family: "Mrs Saint Delafield", cursive; font-weight: 400;
+}
+.hero { font-size: clamp(52px, 17vw, 104px); line-height: .95; }
+
+.events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4.2vh; }
+.events li { display: flex; flex-direction: column; }
+.ev-name { font-size: clamp(38px, 11vw, 62px); line-height: 1; }
+.ev-when {
+  font-family: "EB Garamond", Georgia, serif; font-weight: 400;
+  font-size: clamp(16px, 4.4vw, 23px); line-height: 1.3;
+  letter-spacing: .04em; color: var(--text); margin-top: .35em;
+}
+
+/* The car is pinned at 56% of the viewport, so on a short screen the three-event
+   list grows down into it. Copy draws above the car now, but type sitting on the
+   bonnet still reads badly — so on a short screen the list tightens to clear it. */
+@media (max-height: 800px) {
+  .copy { padding-top: 11vh; }
+  .events { gap: 3vh; }
+  .ev-name { font-size: clamp(30px, 8.4vw, 44px); }
+  .ev-when { font-size: clamp(14px, 3.7vw, 19px); }
+  .copy .city { bottom: 7vh; }
+}
+
+/* ------------------------------------------------------------------ rail */
+
+.rail {
+  position: fixed; right: max(14px, 3vw); top: 50%; transform: translateY(-50%);
+  z-index: 22; display: flex; flex-direction: column; gap: 11px;
+}
+.rail i {
+  display: block; width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,.5);
+  /* the ribbon runs bright turquoise and pale sand under this rail, so the dots
+     need their own contrast rather than borrowing the scene's */
+  box-shadow: 0 0 0 1px rgba(10,18,8,.42), 0 1px 3px rgba(10,18,8,.55);
+  transition: background .35s ease, transform .35s ease, box-shadow .35s ease;
+}
+.rail i.on {
+  background: var(--gold); transform: scale(1.5);
+  box-shadow: 0 0 0 1px rgba(10,18,8,.5), 0 0 9px rgba(232,198,106,.7);
+}
+
+.cue {
+  position: fixed; bottom: 5vh; left: 0; right: 0; z-index: 22;
+  display: flex; justify-content: center; pointer-events: none;
+  transition: opacity .5s ease;
+}
+.cue span {
+  width: 1px; height: 44px;
+  background: linear-gradient(rgba(255,255,255,0), rgba(255,255,255,.8));
+  animation: cue 2.4s ease-in-out infinite;
+}
+@keyframes cue { 0%,100% { opacity: .25; transform: translateY(0); } 50% { opacity: .9; transform: translateY(8px); } }
+
+/* ------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .car-drop, .cue span { animation: none !important; }
+  .copy { opacity: 1 !important; transform: none !important; }
+  .streaks { display: none !important; }
+}
