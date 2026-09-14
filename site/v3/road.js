@@ -284,13 +284,23 @@
      * when the world stops. Without stops this is an even division, which lands
      * arrivals wherever they fall — usually on filler.
      *
+     * R.stops only ever names rows painted for the segments that define them — not
+     * one per leg. Today that is beach-cove alone, so its 2 stops belong to the
+     * *last* 2 legs, not the first: leg 0 opens in the garden, which has no
+     * ribbon-native stop of its own. Indexing R.stops from 0 regardless of which
+     * legs it was actually painted for pointed leg 0 at a row deep in beach-cove,
+     * ballooning its drive to nearly half the whole journey. Aligning stops to the
+     * tail of the leg list is what makes them line up with the segments that
+     * actually carry them, however many legs come before with none of their own.
+     *
      * A stop can still be unreachable: fitting the ribbon to width means a narrow
      * screen scales it down and shows far more rows per screen than a wide one, so
      * a row that sits beside the car on a desktop is already behind it on a phone.
      * Every leg therefore has to advance regardless, or its drive is dead. */
+    var stopOffset = S.n - (R.stops ? R.stops.length : 0);
     S.rests = [];
     for (var li = 0, prevD = 0; li < S.n; li++) {
-      var row = R.stops && R.stops[li];
+      var row = R.stops && R.stops[li - stopOffset];
       var want = row != null ? row * S.scale - S.carY : (li + 1) / S.n * S.travel;
       var least = prevD + S.vh * 0.30;
       prevD = clamp(Math.max(want, least), 0, S.travel);
