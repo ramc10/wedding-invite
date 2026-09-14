@@ -1,25 +1,29 @@
-# CODING AGENTS: READ THIS FIRST
+# Wedding Road
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+A wedding invitation site: a scrolling, top-down drive down a painted road,
+with terrain changing as you travel and ceremony details revealed stop by
+stop.
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+## Layout
 
-## What you should do — IMPORTANT
+- `site/` — the production site (deployed via Vercel, see `vercel.json`).
+  Static HTML/CSS/JS, no build step. See [`README-BUILD.md`](README-BUILD.md)
+  for how the painted-ribbon engine works, how to generate segment art, and
+  how to add ceremony copy.
+- `tools/` — the art build pipeline (`build-ribbon.py`, `strip-car.py`, …).
+- `ribbon/` — manifest describing the road segments consumed by the build
+  pipeline.
+- `project/` — original Claude Design prototype files.
+- `chats/` — chat transcripts from the original design handoff.
 
-**Read the chat transcripts first.** There are 4 chat transcript(s) in `chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+## Running locally
 
-**Read `project/Wedding Road v2.dc.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+```
+cd site && python3 -m http.server 8000
+```
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+## Origin
 
-## About the design files
-
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
-
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
-
-## Bundle contents
-
-- `README.md` — this file
-- `chats/` — conversation transcripts (read these!)
-- `project/` — the `Wedding Road Journey` project files (HTML prototypes, assets, components)
+This project started as a Claude Design handoff (see `chats/` and
+`project/` for the original prototype and design conversation) and was then
+implemented and iterated on as a real site.
