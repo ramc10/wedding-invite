@@ -336,7 +336,11 @@
     for (var ri = 0; ri < S.n; ri++) restY.push(S.legTop[ri] + S.legDrive[ri]);
     S.showA = []; S.showB = []; S.hideA = []; S.hideB = [];
     for (var ci = 0; ci < S.n; ci++) {
-      var sA = restY[ci] - S.vh * 0.58, sB = restY[ci] - S.vh * 0.12;
+      /* The opening hero card names the couple before the car has gone anywhere —
+       * it is the page's title, not an arrival, so it fades in on the first small
+       * nudge of scroll rather than waiting for leg 0's drive to nearly finish. */
+      var sA = ci === 0 ? 0 : restY[ci] - S.vh * 0.58;
+      var sB = ci === 0 ? S.vh * 0.10 : restY[ci] - S.vh * 0.12;
       /* the next block that actually has something to say — an empty leg in between
        * is not a reason to clear the screen */
       var nxt = Infinity;
