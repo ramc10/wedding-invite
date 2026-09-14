@@ -7,8 +7,8 @@
  *
  * Scroll model: each stop is one leg. A leg is exactly as long as it needs to cover
  * its own stretch of ribbon at the journey's one constant speed, then holds still
- * while the copy is read — but only if it has copy. The rendered position trails the
- * real scroll position, so a wheel notch or a flicked thumb glides rather than jumps.
+ * while the copy is read — but only if it has copy. The rendered position is a
+ * direct function of scroll position: no lag, no easing, no catching up.
  */
 (function () {
   'use strict';
@@ -38,7 +38,6 @@
   var SPEED     = 0.75;  // world px per scroll px — the one pace of the whole journey
   var HOLD_VH   = 0.26;  // arrival hold, in viewports, at stops that carry copy
   var MIN_LEG_VH = 0.55; // no leg is shorter than this, however close its stop
-  var GLIDE     = 0.115; // per-16ms share of the gap to the true scroll position
   /* Never upscale the painting. Past 1:1 it is both blurry and zoomed so far in that
    * a desktop screen holds only a few hundred ribbon rows — which, now that the page
    * is exactly as long as the drive needs, turned the desktop journey into twenty
@@ -78,9 +77,9 @@
   var RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var R = null, C = [], S = {}, el = {};
   var raf = 0, lastLeg = -1, pd, vsm = 0;
-  /* ys trails window.scrollY. Everything downstream reads ys, so a wheel notch or a
-   * flicked thumb — both of which arrive as a jump, not a sweep — still glides. */
-  var ys = 0, prevT = 0;
+  /* ys mirrors window.scrollY exactly — everything downstream reads ys so effect
+   * layers have one source of truth, but there is no lag between the two. */
+  var ys = 0;
 
   /* A small read-only surface for optional effect layers, so they never have to
    * parse values back out of the ribbon's transform. */
@@ -117,7 +116,7 @@
     buildRibbon();
     buildLegs();
     measure();
-    ys = window.scrollY;                        // a reload mid-page must not glide in
+    ys = window.scrollY;
     tick(ys);
 
     window.addEventListener('scroll', ping, { passive: true });
@@ -322,6 +321,10 @@
     /* .pin is zero-height, so the closing screen needs real page under it */
     el.sections[S.n - 1].style.height = Math.round(S.legLen[S.n - 1] + S.vh) + 'px';
 
+    /* Scroll 0 opens with the car already halfway down leg 0's own drive, not at
+     * the road's literal first inch — see tick(). */
+    S.leg0HeadStart = S.legDrive[0] / 2;
+
     /* When each block of copy shows and hides, in scroll px.
      *
      * Keyed to scroll rather than to a share of its leg, because legs are no longer
@@ -369,38 +372,30 @@
     S.cloudTile = Math.max(900, S.vh * 1.7);
   }
 
-  /* A resize changes every derived length, so there is nothing to glide from —
-   * snap to the true position and redraw. */
+  /* A resize changes every derived length — remeasure and redraw against it. */
   var onResize = function () { measure(); ys = window.scrollY; ping(); };
 
   /* -------------------------------------------------------------- loop */
 
   function ping() {
-    if (!raf) { prevT = 0; raf = requestAnimationFrame(frame); }
+    if (!raf) raf = requestAnimationFrame(frame);
   }
 
-  function frame(now) {
+  function frame() {
     raf = 0;
     var y = window.scrollY;
 
-    if (RM) { ys = y; tick(ys); return; }
-
-    /* Frame-rate independent easing: GLIDE is defined per 60fps frame, so a 120Hz
-     * screen must take smaller bites and a stuttering one larger, or the world
-     * drifts at a different speed on every device. */
-    var dt = prevT ? Math.min(64, now - prevT) : 16.67;
-    prevT = now;
-    var k = 1 - Math.pow(1 - GLIDE, dt / 16.67);
-
-    var gap = y - ys;
-    ys += gap * k;
-    if (Math.abs(y - ys) < 0.35) ys = y;        // land exactly, don't creep forever
-
+    /* The car's position is a direct function of scroll position, not an
+     * animation racing to catch up to it — no glide, no trailing. Scroll stops,
+     * the car stops on that same frame; scroll moves, the car moves that same
+     * distance, in sync. */
+    ys = y;
     tick(ys);
 
-    /* Keep running while the world is still catching up, and for a moment after,
-     * so the velocity-driven layers have time to settle back to zero. */
-    if (ys !== y || vsm > 0.004) raf = requestAnimationFrame(frame);
+    /* Keep running only while the velocity-driven layers (bob, tilt, streaks)
+     * are still settling back to zero after motion stops — the car itself is
+     * already at rest by then. */
+    if (vsm > 0.004) raf = requestAnimationFrame(frame);
   }
 
   /* sample one of the ribbon's per-row tracks at a given native row */
@@ -434,6 +429,12 @@
     var i = 0;
     while (i < n - 1 && y >= S.legTop[i + 1]) i++;
     var into = y - S.legTop[i];
+    /* The journey opens with the car already at the midpoint of leg 0's drive,
+     * not at the road's true first inch — so scroll 0 reads as "already under
+     * way in the garden" rather than a dead stop nobody asked to arrive at.
+     * Only leg 0 gets this head start; every later leg still measures its own
+     * scroll from its own top. */
+    if (i === 0) into += S.leg0HeadStart;
     var u = clamp(into / S.legDrive[i], 0, 1);
 
     var p = curve(u, S.ein[i], S.eout[i], S.vpeak[i]);
