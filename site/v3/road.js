@@ -50,6 +50,15 @@
    * rest of the journey. measure() raises the ceiling there just enough to
    * cover the viewport height, at some cost to sharpness. */
   var MAX_SCALE = 1.0;
+  /* On a portrait screen, fit-to-width alone renders the ribbon shorter than the
+   * viewport, leaving almost no room to scroll through the journey at all — but
+   * zooming enough to fill the full viewport height (or a full screen per leg)
+   * crops the sides so hard the scene reads as a tube of road with barely any
+   * garden either side of it. Scroll room has to win — a site nobody can
+   * scroll through is a worse failure than a tighter crop — but this still
+   * caps how far past fit-to-width a portrait screen zooms: enough for about
+   * one viewport-height of real travel, not a full screen per leg. */
+  var MOBILE_MIN_TRAVEL_VH = 2.0;
   var ZOOM      = 1.0;   /* fit to width — no runtime crop */
   var CAR_ROAD  = 0.78;  // car width as a share of the painted road
   var STREAK_LEAD = 1.12;
@@ -230,15 +239,14 @@
     var fitWidth = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
     S.n = legCount();
     /* Fitting to width alone can render the (roughly square) ribbon shorter than
-     * the viewport on a portrait screen: section 1 would show with empty ground
-     * beneath it, and almost no room left to scroll through the rest of the
-     * journey. Floor the scale there so the ribbon covers one viewport height
-     * per leg — real scroll room for every section, not just enough to fill the
-     * first screen. Gated to portrait (taller than wide) only: a landscape
-     * desktop window is exactly the "never upscale past 1:1" case above, and
-     * this must stay a no-op there. */
-    var fitFloor = S.vh > S.vw ? (S.vh * S.n) / R.height : 0;
-    S.scale = Math.max(fitWidth, fitFloor);
+     * the viewport on a portrait screen, leaving empty ground below it and too
+     * little travel to scroll through the rest of the journey. Floor the scale
+     * there at whatever it takes to guarantee MOBILE_MIN_TRAVEL_VH of real
+     * travel — never less than fit-to-width itself. Gated to portrait (taller
+     * than wide) only: a landscape desktop window is exactly the "never
+     * upscale past 1:1" case above, and this must stay a no-op there. */
+    var mobileFloor = S.vh > S.vw ? (S.vh * (1 + MOBILE_MIN_TRAVEL_VH)) / R.height : 0;
+    S.scale = Math.max(fitWidth, mobileFloor);
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
     S.carY = S.vh * 0.56;
