@@ -87,7 +87,33 @@ Before accepting a plate:
   confirmed via Gate 3 that this is actually the cause of a detection
   mismatch — never apply it speculatively.
 
-## After all four gates pass
+## Gate 5 — Car removal, checked by eye at full zoom
+
+If the plate has a painted-in car, `tools/strip-car.py` will report success
+("car removed") whenever its own road-tracking succeeds — that message means
+detection worked, not that the visual result is clean. It has produced a
+visibly flat, texture-less rectangle where the car was, because the road's
+painted texture has natural mottling/grain along its length and a naive
+clone-source can be flatter than its surroundings.
+
+After running strip-car.py (or any manual clone-patch):
+
+- Crop and zoom into the patched region directly, at 2x or more, and look for
+  a rectangle that reads noticeably flatter or smoother than the road outside
+  it — this is the actual failure mode, not a color mismatch you can catch by
+  sampling a few pixel values.
+- If the patch is visible, fix it by widening the feather zone so it sits
+  **outside** the car's actual bounds (feather inside the car's silhouette
+  causes ghosting — a semi-transparent car — not a clean removal), and prefer
+  a clone source as close to the car as possible to minimize any lighting
+  drift along the road's length.
+- Re-check at the ribbon's actual scaled-down output size too (rebuild and
+  crop the stitched result), not just on the full-resolution source plate —
+  a patch that reads as visible full-size may or may not be visible after
+  the pipeline's rescale, and one that looks fine full-size can still show up
+  after scaling.
+
+## After all five gates pass
 
 Only then: crop/scale rows and stops in the manifest to the plate's actual
 pixel dimensions, run `build-ribbon.py`, and check the build log for:
