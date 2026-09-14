@@ -25,7 +25,7 @@
         1100,
         1400
       ],
-      "_": "the small beach corner from garden-beach.png widens gradually into a fuller cove with an offshore islet and boats - the drive's ending beach reveal, for now. Top edge matched to garden-beach.png's bottom by explicit prompt before generating. Source was 1024x572; pre-upscaled to 2752x1537 with LANCZOS + unsharp mask (same fix as coast-open.png) since Gemini ignored the resolution request again."
+      "_": "the small beach corner from garden-beach.png widens gradually into a fuller cove with an offshore islet and boats - the drive's ending beach reveal, for now. Top edge matches garden-beach.png's bottom. Native 2752x1536 - no upscaling needed, replaced an earlier 1024x572 version of this same scene that needed a LANCZOS+unsharp pre-upscale fix."
     }
   ]
 }
