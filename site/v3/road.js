@@ -66,6 +66,15 @@
   /* wide, very tall cells — reads as smear along the direction of travel, not grain */
   var SMEAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='420'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.03 0.006' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='420' filter='url(%23s)' opacity='.7'/%3E%3C/svg%3E";
 
+  /* The browser's own scroll restoration (reload, back/forward, bfcache) drops a
+   * fresh visit into the middle of this drive-then-hold spine instead of at the
+   * garden opening — reads as the car starting the journey already at the beach,
+   * zoomed out to wherever that scroll position's leg happens to sit. This is a
+   * single continuous scene keyed entirely off scrollY, not a document the
+   * browser should be remembering a reading position in. */
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
+
   var RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var R = null, C = [], S = {}, el = {};
   var raf = 0, lastLeg = -1, pd, vsm = 0;
