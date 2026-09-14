@@ -24,12 +24,9 @@
         { name: 'Haldi',     when: '18th November at 9 AM' },
         { name: 'Wedding',   when: '18th November at 8:30 PM' }
       ] },
-    {},                                          // the lake — a quiet stretch
-    { city: 'Karimnagar',                        // the dam
-      events: [
-        { name: 'Reception', when: '21st November at 7:30 PM' }
-      ] },
     { hero: 'The Beginning' }                    // the closing garden
+    /* Karimnagar (dam) dropped for now — that segment isn't painted into the v3
+     * ribbon yet, so its stop had no art to arrive at. Re-add once it exists. */
   ];
 
   /* Scroll model. Legs used to get an equal slice of the page each, but the stops
