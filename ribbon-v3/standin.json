@@ -26,6 +26,12 @@
       "kind": "once",
       "bias": 0.0,
       "_": "jungle with a beach corner starting, opening into a beach village with huts and boats. Source is only 1024x571 vs ~2752 for its neighbors - gets upscaled ~1.94x by the road_width normalisation and reads visibly softer/blurrier. Flagged, not blocked."
+    },
+    {
+      "src": "plates/coast-open.png",
+      "kind": "once",
+      "bias": 0.0,
+      "_": "open coast, turquoise water, small offshore islands with palms and boats - continues from beach-village's shoreline. Source was 1024x572; pre-upscaled to 2752x1537 with LANCZOS + unsharp mask before adding here (Gemini would not honor a resolution request) to reduce the blur band the raw upscale caused at the seam."
     }
   ]
 }

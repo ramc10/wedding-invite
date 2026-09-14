@@ -18,8 +18,8 @@ at a segment seam, or a car painted into the art that had to be manually
 cloned out.
 
 Do not skip straight to cropping/scaling/wiring a new plate into the manifest.
-Run this checklist first, in order. All six gates are mandatory — geometry,
-style, and seam-continuity checks are not optional extras.
+Run this checklist first, in order. All seven gates are mandatory — geometry,
+style, seam-continuity, and resolution checks are not optional extras.
 
 ## Gate 1 — Orientation
 
@@ -144,7 +144,39 @@ one:
   must match the next plate's top) — passing one side does not imply the
   other passes.
 
-## After all six gates pass
+## Gate 7 — Source resolution vs. neighbors
+
+The generator (Gemini) has repeatedly ignored explicit resolution requests in
+the prompt and returned ~1024px-wide images while neighboring plates in this
+manifest are ~2750px wide. `plate_scale()` normalises every plate to the same
+road width, so a plate with a much narrower road (in raw pixels) than its
+neighbors gets scaled *up* — and a ~1.9-2.6x upscale of a 1024px source is
+visibly softer than its native-resolution neighbors, producing an actual
+out-of-focus band at the cross-blend seam (confirmed, not theoretical — this
+happened with `beach-village.png`).
+
+Before wiring in any new plate:
+
+1. Compare its raw pixel width against the neighbors it will sit next to in
+   the manifest. If it is proportionally much smaller (its road, in raw
+   pixels, would need to scale up by roughly 1.5x or more to hit the
+   manifest's `road_width` target), treat this as a real problem, not a
+   footnote.
+2. If the source cannot be regenerated at higher resolution, pre-upscale it
+   yourself with Pillow's `Image.resize(..., Image.LANCZOS)` to match the
+   *neighbors'* native pixel width (not the manifest's frame width) followed
+   by `ImageFilter.UnsharpMask(radius=2, percent=150, threshold=2)` — this
+   brings the visible detail density back in line with painterly neighbor
+   plates well enough that the seam blur becomes indistinguishable at normal
+   viewing size. Do this before, not after, wiring it into the manifest, so
+   `build-ribbon.py`'s own scale factor for the plate comes out close to 1.0
+   instead of compounding a second upscale on top of the pre-upscale.
+3. Verify by rebuilding and zooming into the actual seam in the stitched
+   ribbon output (same method as Gate 6) — a pre-upscale that still leaves a
+   visible blur band means try a larger UnsharpMask radius/percent, not just
+   accepting it.
+
+## After all seven gates pass
 
 Only then: crop/scale rows and stops in the manifest to the plate's actual
 pixel dimensions, run `build-ribbon.py`, and check the build log for:
