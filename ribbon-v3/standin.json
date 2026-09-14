@@ -9,7 +9,11 @@
       "src": "plates/garden.png",
       "kind": "once",
       "bias": 0.0,
-      "_": "opening leg - dense flowering forest, car removed cleanly via strip-car.py"
+      "rows": [
+        0,
+        1000
+      ],
+      "_": "opening leg - dense flowering forest, car removed cleanly via strip-car.py. Trimmed shorter so the beach reveal in garden-beach.png comes up sooner."
     },
     {
       "src": "plates/garden-beach.png",
