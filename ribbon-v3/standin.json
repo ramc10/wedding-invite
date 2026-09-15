@@ -54,6 +54,14 @@
       "overlap": 200,
       "bias": 0.0,
       "_": "Section 3 - the route continues past the cove into rolling green hills (pines, boulders, wildflowers, matching project/art/hills-l.jpg and hills-r.jpg). All 7 guardrail gates passed: vertical road in a wide canvas, painted style confirmed side by side against beach-cove-v3.png's bottom edge (jungle continues into jungle, sand into sand, the same boat visible at both edges), detect_road agrees with manual measurement (mean centre ~1393 vs ~1391-1393 on clean rows, mean width ~131 vs ~135-138), no car painted in (0 pink-on-road hits, nothing to strip), native 2752x1536 matching every other plate's resolution. The turquoise ocean/boat wake in the top-right corner does form a second low-saturation blob in the asphalt mask, but it sits entirely in the top ~15% of the frame - outside detect_road's own 15%-85% voting window - and never rivals the road's length or width; it did not affect detection. overlap:200 (the manifest default) since this is genuine continuing terrain across the seam, not a hard cut like garden-beach.png needed."
+    },
+    {
+      "src": "plates/dam-reservoir.png",
+      "kind": "once",
+      "overlap": 200,
+      "bias": 0.0,
+      "road": [1395, 170],
+      "_": "Section 4 - hills open onto a reservoir (left) and an Indian-style gravity dam with 4 gates (right), road flush against both with no buffer, ending back into plain grassy bank. Style/colour and terrain continuity confirmed side by side against beach-hills.png's bottom edge - a strong match after several regeneration rounds spent correcting hue (too golden-yellow at first) and brightness (overcorrected too dark next) against this exact reference. Source was 2048x2080 (neighbours are 2752px) - pre-upscaled with Lanczos + UnsharpMask(radius=2, percent=150, threshold=2) per Gate 7, saved over the original at 2752x2795. Gate 3/4 FAILED for this plate: detect_road tracked only 25-32% of rows even after the upscale, because the dam's concrete face, inspection walkway and stone retaining wall read as the same tone and value as the actual asphalt in this generated image - not just hard for the mask threshold, confirmed by eye at the pixel level too (sampled row 1200: no clean value jump anywhere across the road/dam boundary). The two unambiguous stretches (hillside before and after the dam, y=0-400 and y=2500-2795) were measured by hand instead: centre ~1395px, width ~170px, constant, matching a straight road. Passed as the 'road' override to plate_scale() rather than trusting detect_road's output, which locks onto the dam/wall as one wide competing band for the whole middle section - see build-ribbon.py's manual_road parameter, added for this plate."
     }
   ]
 }

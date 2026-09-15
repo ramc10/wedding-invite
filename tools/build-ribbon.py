@@ -108,10 +108,25 @@ def smooth(v, k):
 
 # ------------------------------------------------------------- normalisation
 
-def plate_scale(im, name, road_w_target):
-    """Measure the road and work out the rescale that puts every plate at one altitude."""
+def plate_scale(im, name, road_w_target, manual_road=None):
+    """Measure the road and work out the rescale that puts every plate at one altitude.
+
+    manual_road, when given, is (centre_x, width_px) and skips detect_road entirely —
+    for a plate where the road blends into an adjacent structure (a dam's concrete,
+    a stone retaining wall) closely enough in tone that no threshold reliably tells
+    them apart, not just for this pipeline's simple mask but by eye at the pixel
+    level too. detect_road's own column-vote locks onto the wider competing
+    structure instead of the true road for long stretches in that case (this
+    pipeline's Gate 4 failure mode) - a manual straight centre/width, read off the
+    plate's few unambiguous rows, is the only reliable answer for the rest.
+    """
     arr = np.asarray(im.convert("RGB"), dtype=np.float32)
-    centres, widths = detect_road(arr, name)
+    if manual_road is not None:
+        cx, w = manual_road
+        centres = np.full(im.height, float(cx), dtype=np.float32)
+        widths = np.full(im.height, float(w), dtype=np.float32)
+    else:
+        centres, widths = detect_road(arr, name)
     med_w = float(np.median(widths))
     scale = road_w_target / med_w
     # Usable half-width either side of the road once rescaled — the frame can be no
@@ -325,7 +340,8 @@ def main():
         if s.get("rows"):
             r0, r1 = s["rows"]
             im = im.crop((0, max(0, r0), im.width, min(im.height, r1)))
-        centres, med, scale, avail = plate_scale(im, s["src"], ROAD_W)
+        manual_road = tuple(s["road"]) if s.get("road") else None
+        centres, med, scale, avail = plate_scale(im, s["src"], ROAD_W, manual_road)
         meas[k] = (im, centres, med, scale, avail)
         rows = f" rows {s['rows'][0]}-{s['rows'][1]}" if s.get("rows") else ""
         print(f"  {os.path.basename(s['src'])[:26]:26s}{rows:16s} {im.size[0]}x{im.size[1]}"
