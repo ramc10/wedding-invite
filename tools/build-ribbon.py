@@ -403,7 +403,7 @@ def main():
     # Where each leg should come to rest. Arrivals divided evenly across the journey
     # land wherever they land — usually on filler, because a painting's subjects are
     # not evenly spaced. A segment names the row worth stopping at instead.
-    stops, petals, joins, cursor, prev = [], [], [], 0, None
+    stops, petals, joins, links, cursor, prev = [], [], [], [], 0, None
     for i, s in enumerate(seq):
         im, centres = graded[key(s)]
         a = np.asarray(im, dtype=np.uint8)
@@ -445,6 +445,29 @@ def main():
         if s.get("petals"):
             pa, pb = s["petals"]          # not a, b — those hold this segment's pixels
             petals.append((seg_start + pa * sc, seg_start + pb * sc))
+        if s.get("link"):
+            # A tappable box painted into the art (e.g. a "take me here" callout),
+            # given in the plate's own native (pre-render) pixel coordinates. x is
+            # road-relative, not frame-relative: render() straightens the road onto
+            # the frame midline row by row, shifting each row left/right by that
+            # row's own detected native road centre before scaling (see render()'s
+            # `want + c2[y]` — c here is `meas`'s PRE-render centres, matching that
+            # same coordinate space). By the stitch loop, c/c2 is already the
+            # POST-render centres — always ~0, the road having already been
+            # straightened — so it can't be used here; native_centres (meas) is the
+            # one still in the box's own coordinate system. y is a straight
+            # native-row -> ribbon-row map, same as stops/petals.
+            native_centres = meas[key(s)][1]
+            lx0, ly0, lx1, ly1 = s["link"]["box"]
+            row_idx = max(0, min(len(native_centres) - 1, int((ly0 + ly1) / 2)))
+            lcx = float(native_centres[row_idx])
+            links.append({
+                "url": s["link"]["url"],
+                "top": seg_start + ly0 * sc,
+                "bottom": seg_start + ly1 * sc,
+                "left": (lx0 - lcx) * sc,
+                "right": (lx1 - lcx) * sc,
+            })
         v = min(seg_over, len(a) // 2, len(prev[0]) // 2) if prev is not None else 0
         # "trim": at v>0, overlap's default is to CROSSBLEND those v rows - which
         # is itself a second, separate blend, on top of (and easy to mistake for)
@@ -646,6 +669,21 @@ def main():
         "stops": [round(float(v), 1) for v in sorted(stops)],
         # ribbon row ranges where drifting petals belong
         "petalZones": [[round(float(a), 1), round(float(b), 1)] for a, b in petals],
+        # tappable boxes painted into the art (e.g. a "take me here" callout) —
+        # top/bottom are ribbon rows, left/right are px offsets from that box's
+        # own road centre, both already road.js's own coordinate system for a
+        # scaled row (see roadCentre above and trackAt() in road.js), so the
+        # engine only has to add its own pan/scale, never re-derive geometry.
+        "links": [
+            {
+                "url": l["url"],
+                "top": round(float(l["top"]), 1),
+                "bottom": round(float(l["bottom"]), 1),
+                "left": round(float(l["left"]), 1),
+                "right": round(float(l["right"]), 1),
+            }
+            for l in links
+        ],
         # -1..+1 per row: which way to slide the window when zoom crops the sides
         "bias": {
             "step": STEP,

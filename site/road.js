@@ -390,6 +390,23 @@
     });
     el.ribbon.appendChild(frag);
     Promise.all(loads).then(function () { el.ribbon.style.visibility = ''; });
+
+    /* Tappable boxes painted into the art (e.g. a "take me here" callout) —
+     * a plain child of #ribbon, like the chunk images, so it pans and scales
+     * with the art via the ribbon's own translate3d at zero runtime cost. Its
+     * own position/size is set in measure() once native rows are scaled, the
+     * same way chunk tops/heights are. left/right in R.links are already
+     * road-relative (see build-ribbon.py) — offset from THIS element's own
+     * centre, not the ribbon's, so it needs its own centred positioning
+     * rather than reusing el.ribbon's left:50%. */
+    el.links = (R.links || []).map(function (l) {
+      var a = document.createElement('a');
+      a.className = 'map-link';
+      a.href = l.url; a.target = '_blank'; a.rel = 'noopener';
+      a.setAttribute('aria-label', 'Open in Google Maps');
+      el.ribbon.appendChild(a);
+      return { a: a, top: l.top, bottom: l.bottom, left: l.left, right: l.right };
+    });
   }
 
   function legCount() {
@@ -493,6 +510,19 @@
       c.top = t; c.hpx = b - t;
       c.img.style.top = t + 'px';
       c.img.style.height = c.hpx + 'px';
+    });
+
+    /* R.links' top/bottom are already ribbon rows (like a chunk's c.y) and
+     * left/right are already offsets from that link's own road centre (see
+     * build-ribbon.py) — both need the same *S.scale as everything else
+     * here, and the road-centre offset needs S.rw/2 added since el.ribbon's
+     * own left edge, not its centre, is (0,0) for an absolutely-positioned
+     * child of it. */
+    (el.links || []).forEach(function (l) {
+      l.a.style.top = Math.round(l.top * S.scale) + 'px';
+      l.a.style.height = Math.round((l.bottom - l.top) * S.scale) + 'px';
+      l.a.style.left = Math.round(S.rw / 2 + l.left * S.scale) + 'px';
+      l.a.style.width = Math.round((l.right - l.left) * S.scale) + 'px';
     });
 
     /* Where each leg ends, in travelled px — the ribbon's own segment joins,

@@ -57,6 +57,19 @@ body {
   display: block; pointer-events: none;
 }
 
+/* A tappable box painted into the art (e.g. a "take me here" callout) — the
+ * one interactive island inside an otherwise look-don't-touch scrolling
+ * scene, so pointer-events is explicitly re-enabled here rather than
+ * inherited (nothing else in .ribbon should ever intercept the scroll drag).
+ * Invisible: the affordance is already painted into the image itself: this
+ * is only the tap target sized and positioned to match it (see measure() in
+ * road.js and build-ribbon.py's link export). */
+.map-link {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 /* tarmac motion smear, gated on measured speed */
 .streaks {
   position: absolute; top: 0; left: 50%;
