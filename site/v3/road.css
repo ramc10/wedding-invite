@@ -160,6 +160,50 @@ body {
 }
 @keyframes cue { 0%,100% { opacity: .25; transform: translateY(0); } 50% { opacity: .9; transform: translateY(8px); } }
 
+/* Music toggle — a small floating control, top-right, in the same gold-on-
+   dark language as the rest of the fixed UI. Shipped with no styling at
+   all originally (a bare <button>♪</button> in normal document flow), which
+   read as broken rather than as a control. safe-area-aware since it sits at
+   a screen edge on a phone. */
+.music-toggle {
+  position: fixed; z-index: 23;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(232, 198, 106, .45);
+  background: rgba(27, 36, 22, .55);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  color: var(--gold);
+  font-family: "EB Garamond", Georgia, serif; font-size: 1.1rem; line-height: 1;
+  cursor: pointer;
+  transition: background .25s ease, border-color .25s ease, transform .15s ease;
+}
+.music-toggle:hover { border-color: rgba(232, 198, 106, .8); }
+.music-toggle:active { transform: scale(.92); }
+.music-toggle[aria-pressed="true"] {
+  background: rgba(232, 198, 106, .18);
+  border-color: var(--gold);
+}
+
+.music-hint {
+  position: fixed; z-index: 23;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  font-family: "EB Garamond", Georgia, serif; font-style: italic;
+  font-size: .8rem; color: var(--text);
+  background: rgba(27, 36, 22, .6);
+  padding: 4px 10px; border-radius: 10px;
+  pointer-events: none;
+  opacity: 1; transition: opacity .5s ease;
+}
+.music-hint.is-hidden { opacity: 0; }
+
+@media (max-width: 640px) {
+  .music-toggle { width: 40px; height: 40px; font-size: 1rem; }
+  .music-hint { font-size: .72rem; }
+}
+
 /* Opening title — hidden at scroll 0, revealed by tick() once the very first
    small scroll happens (see the .03 * vh threshold there). Starts at opacity
    0 here so there's nothing to see before the first tick() runs; JS then owns
@@ -294,5 +338,5 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .car-drop, .cue span { animation: none !important; }
   .streaks { display: none !important; }
-  .title, .details, .dam-caption, .venue { transition: none; }
+  .title, .details, .dam-caption, .venue, .music-toggle, .music-hint { transition: none; }
 }
