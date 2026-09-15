@@ -426,6 +426,15 @@
      * cropped off each side of a vw-wide viewport; dividing by R.width turns that
      * into a scale. */
     var cropFloor = isPortrait ? (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width : 0;
+    /* MOBILE_CROP_PCT is a fixed, non-negotiable target — do not add a second
+     * floor here (e.g. "guarantee scroll reaches the last join") to fix a
+     * mobile scroll problem. That was tried twice: it works, but it means
+     * the actual crop on a real phone drifts wherever a taller route
+     * happens to need (~40% at one point), silently breaking the crop this
+     * is meant to hold. The dam-unreachable problem that motivated it is
+     * fixed at the rest-point allocation below instead — every leg's share
+     * of S.travel compresses together if it has to, rather than needing
+     * S.scale itself to grow past what 23% actually means. */
     S.scale = Math.max(fitWidth, cropFloor);
     S.n = legCount();
     S.rw = R.width * S.scale;
@@ -471,12 +480,39 @@
     /* Where each leg ends, in travelled px — the ribbon's own segment joins,
      * scaled and offset by the car's line the same way a copy arrival used
      * to be. No text anywhere means no reason to pause at any of them: every
-     * leg simply drives into the next at the shared speed. */
+     * leg simply drives into the next at the shared speed.
+     *
+     * At a fixed crop percentage the scale can be small enough that the last
+     * few joins, scaled, land past S.travel entirely — the mobile crop floor
+     * is tuned to a look, not to this ribbon's current length, and the route
+     * has grown since. Greedily flooring each rest at prevD + 0.30*vh (as
+     * this used to) claims that whole floor for every early leg regardless
+     * of what is left for the ones after it, so by the last leg or two there
+     * is nothing left at all — a leg pinned to the exact same point as the
+     * one before it, collapsed to zero drive. That's a real regression, not
+     * a stylistic tradeoff: the last leg is the dam, and a collapsed leg
+     * reads as "the dam never fully appears" or "the page ends before
+     * showing it" — worse than a tighter crop ever would.
+     *
+     * Compute every leg's wanted position first, uncompressed, then rescale
+     * the whole sequence down to fit S.travel if the last one overruns it.
+     * Every leg keeps a fair, non-zero share of whatever room actually
+     * exists — compressed and faster-paced near the end rather than
+     * hollowed out to nothing. */
+    var wants = [];
+    for (var wi = 0; wi < S.n; wi++) {
+      var wrow = R.joins && R.joins[wi];
+      wants.push(wrow != null ? wrow * S.scale - S.carY : (wi + 1) / S.n * S.travel);
+    }
+    var overrun = wants[S.n - 1] > S.travel ? wants[S.n - 1] / S.travel : 1;
     S.rests = [];
     for (var li = 0, prevD = 0; li < S.n; li++) {
-      var row = R.joins && R.joins[li];              // joins[i] = start of leg i+1
-      var want = row != null ? row * S.scale - S.carY : (li + 1) / S.n * S.travel;
-      var least = prevD + S.vh * 0.30;
+      var want = wants[li] / overrun;
+      /* Still a floor against two legs landing on the exact same point, but
+       * sized to what is actually left to share rather than a fixed 0.30vh —
+       * a fixed floor is exactly what caused the greedy collapse above. */
+      var roomLeft = (S.n - li) > 0 ? (S.travel - prevD) / (S.n - li) : 0;
+      var least = prevD + Math.min(S.vh * 0.30, Math.max(1, roomLeft * 0.5));
       prevD = clamp(Math.max(want, least), 0, S.travel);
       S.rests.push(prevD);
     }
