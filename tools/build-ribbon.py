@@ -625,6 +625,11 @@ def main():
         # one stop per painted segment — the engine derives leg count from this
         "segments": len(seq),
         "legs": int(mf.get("legs", 0)),
+        # ribbon row where each segment after the first begins — one entry per
+        # join, in order. Not the same thing as "stops": a join is a fact about
+        # the art (where one plate's content starts), unrelated to whichever
+        # rows a segment names as worth pausing at.
+        "joins": [round(float(row), 1) for row, _ in joins],
     }
     with open(os.path.join(args.out, "ribbon.json"), "w") as f:
         json.dump(ribbon, f, separators=(",", ":"))

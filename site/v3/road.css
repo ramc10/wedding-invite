@@ -95,74 +95,16 @@ body {
 .legs { position: relative; z-index: 10; pointer-events: none; }
 .leg  { position: relative; height: var(--leg-h); }
 
-/* The copy sits in its own fixed layer rather than inside the scroll spine, so a
-   block can stay on screen after its own section has gone by. */
-/* Above the car (12), not below it — the car sits at 56% viewport height, so on a
-   short screen it drove straight through the ceremony list. Still under the tint,
-   dusk and grain, which are meant to cover everything. */
-.copy-layer { position: fixed; inset: 0; z-index: 14; pointer-events: none; }
-
-.copy {
-  position: absolute; top: 0; left: 0; right: 0; height: 100vh;
-  display: flex; flex-direction: column; align-items: flex-start;
-  padding: 17vh 8vw 0; text-align: left;
-  opacity: 0; will-change: opacity, transform;
-}
-.copy.centred { align-items: center; text-align: center; }
-.copy.centred::before { background: radial-gradient(66% 36% at 50% 27%, rgba(10,17,8,.62), rgba(10,17,8,0) 74%); }
-/* the ribbon is busy — copy needs its own ground to sit on */
-.copy::before {
-  content: ""; position: absolute; inset: 0; z-index: -1;
-  background: radial-gradient(72% 42% at 34% 30%, rgba(10,17,8,.62), rgba(10,17,8,0) 76%);
-}
-/* the art runs from deep shade to bright sand under the same line of type, so the
-   copy carries its own shadow rather than relying on whatever is behind it */
-.copy .hero,
-.copy .ev-name,
-.copy .ev-when,
-.copy .city { text-shadow: 0 1px 10px rgba(8,14,6,.72), 0 1px 2px rgba(8,14,6,.5); }
-
-/* Where the ceremony happens, set apart from the list at the foot of the screen.
-   Its own scrim: the block's radial sits up under the headings, and nothing else
-   reaches this corner. */
-.copy .city {
-  position: absolute; left: 8vw; bottom: 9vh;
-  font-family: "EB Garamond", Georgia, serif;
-  font-size: clamp(12px, 3.2vw, 16px); line-height: 1;
-  letter-spacing: .3em; text-transform: uppercase;
-  color: var(--text);
-}
-.copy .city::before {
-  content: ""; position: absolute; z-index: -1;
-  left: -8vw; right: -30%; top: -180%; bottom: -240%;
-  background: radial-gradient(60% 50% at 26% 60%, rgba(10,17,8,.55), rgba(10,17,8,0) 74%);
-}
-
-/* The script carries the names. It closes up at small sizes, so the dates and times
-   sit in EB Garamond instead, where a numeral is unambiguous. */
-.hero, .events, .ev-name {
-  font-family: "Mrs Saint Delafield", cursive; font-weight: 400;
-}
-.hero { font-size: clamp(52px, 17vw, 104px); line-height: .95; }
-
-.events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4.2vh; }
-.events li { display: flex; flex-direction: column; }
-.ev-name { font-size: clamp(38px, 11vw, 62px); line-height: 1; }
-.ev-when {
-  font-family: "EB Garamond", Georgia, serif; font-weight: 400;
-  font-size: clamp(16px, 4.4vw, 23px); line-height: 1.3;
-  letter-spacing: .04em; color: var(--text); margin-top: .35em;
-}
-
-/* The car is pinned at 56% of the viewport, so on a short screen the three-event
-   list grows down into it. Copy draws above the car now, but type sitting on the
-   bonnet still reads badly — so on a short screen the list tightens to clear it. */
-@media (max-height: 800px) {
-  .copy { padding-top: 11vh; }
-  .events { gap: 3vh; }
-  .ev-name { font-size: clamp(30px, 8.4vw, 44px); }
-  .ev-when { font-size: clamp(14px, 3.7vw, 19px); }
-  .copy .city { bottom: 7vh; }
+/* Section partitions — a plain marker where one leg ends and the next begins,
+   in place of the copy this route used to carry. Lives inside the ribbon
+   itself (a child of #ribbon, positioned at the leg's own row like the chunk
+   images are), so it scrolls with the art at no cost — no separate tick()
+   bookkeeping, no fixed-position layer to keep in sync. */
+.divider {
+  position: absolute; left: 0; right: 0; height: 0;
+  border-top: 1px solid rgba(232,198,106,.55);
+  box-shadow: 0 0 16px 1px rgba(232,198,106,.35);
+  pointer-events: none;
 }
 
 /* ------------------------------------------------------------------ rail */
@@ -201,6 +143,5 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .car-drop, .cue span { animation: none !important; }
-  .copy { opacity: 1 !important; transform: none !important; }
   .streaks { display: none !important; }
 }

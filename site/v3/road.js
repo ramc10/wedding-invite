@@ -5,39 +5,25 @@
  * mask, no cross-fade and no layer handoff anywhere in this file — the class of
  * artefact that produces simply cannot occur.
  *
- * Scroll model: each stop is one leg. A leg is exactly as long as it needs to cover
- * its own stretch of ribbon at the journey's one constant speed, then holds still
- * while the copy is read — but only if it has copy. The rendered position is a
- * direct function of scroll position: no lag, no easing, no catching up.
+ * Scroll model: each ribbon segment is one leg, driven at the journey's one
+ * constant speed with no hold anywhere — a continuous drive from end to end.
+ * A plain divider line marks each leg boundary as it scrolls past. The
+ * rendered position is a direct function of scroll position: no lag, no
+ * easing, no catching up.
  */
 (function () {
   'use strict';
 
-  /* Ceremony copy. Empty until the stops are confirmed — the leg count then comes
-   * from the ribbon's segment count instead. To add copy, push one object per
-   * stop: { place, ceremony, when } or { hero } for the opening card. */
-  var STOPS = [
-    { hero: 'Bhavya & Ramcharan', city: 'Bengaluru' },
-    { city: 'Visakhapatnam',                     // the beach
-      events: [
-        { name: 'Reception', when: '17th November at 7 PM' },
-        { name: 'Haldi',     when: '18th November at 9 AM' },
-        { name: 'Wedding',   when: '18th November at 8:30 PM' }
-      ] },
-    { hero: 'The Beginning' }                    // the closing garden
-    /* Karimnagar (dam) dropped for now — that segment isn't painted into the v3
-     * ribbon yet, so its stop had no art to arrive at. Re-add once it exists. */
-  ];
+  /* No ceremony copy in this pass — the route is a pure visual drive, with a
+   * plain divider line marking each section boundary instead of text. Leg
+   * count now comes straight from the ribbon's own segment count (below). */
 
-  /* Scroll model. Legs used to get an equal slice of the page each, but the stops
+  /* Scroll model. Legs used to get an equal slice of the page each, but the joins
    * they drive between are not equally spaced along the ribbon — so one leg crawled
-   * 280px of world while the next covered 1200px, and three of the five spent their
-   * back half completely frozen. Instead: one constant world speed everywhere, and
-   * a leg is exactly as long as its drive needs, plus a hold only where there is
-   * something to read. */
+   * 280px of world while the next covered 1200px. Instead: one constant world speed
+   * everywhere, and a leg is exactly as long as its own drive needs. */
   var SPEED     = 0.75;  // world px per scroll px — the one pace of the whole journey
-  var HOLD_VH   = 0.26;  // arrival hold, in viewports, at stops that carry copy
-  var MIN_LEG_VH = 0.55; // no leg is shorter than this, however close its stop
+  var MIN_LEG_VH = 0.55; // no leg is shorter than this, however close its join
   /* Never upscale the painting. Past 1:1 it is both blurry and zoomed so far in that
    * a desktop screen holds only a few hundred ribbon rows — which, now that the page
    * is exactly as long as the drive needs, turned the desktop journey into twenty
@@ -84,7 +70,7 @@
 
   var RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var R = null, C = [], S = {}, el = {};
-  var raf = 0, lastLeg = -1, pd, vsm = 0;
+  var raf = 0, pd, vsm = 0;
   /* ys mirrors window.scrollY exactly — everything downstream reads ys so effect
    * layers have one source of truth, but there is no lag between the two. */
   var ys = 0;
@@ -156,65 +142,32 @@
   }
 
   function legCount() {
-    /* STOPS wins when it carries copy — each block needs its own leg to show in,
-     * however many arrival rows the ribbon itself has defined so far. Only fall
-     * back to the ribbon's own rest rows, then its segment count, when there is
-     * no copy driving the layout at all. */
-    return STOPS.length || (R.stops && R.stops.length) || R.legs || R.segments || 3;
+    /* One leg per painted segment — with no copy to drive the layout, this is
+     * the only meaningful boundary left to divide the journey by. */
+    return R.segments || R.legs || 3;
   }
 
-
-
   function buildLegs() {
-    var n = legCount(), frag = document.createDocumentFragment(), rail = document.createDocumentFragment();
-    el.copies = []; el.sections = []; el.hasCopy = [];
-    var cframe = document.createElement('div');
-    cframe.className = 'copy-layer';
+    var n = legCount(), frag = document.createDocumentFragment();
+    el.sections = []; el.dividers = [];
     for (var i = 0; i < n; i++) {
       var sec = document.createElement('section');
       sec.className = 'leg';
-      var copy = document.createElement('div'); copy.className = 'copy';
-      var s = STOPS[i] || {};
-      if (s.hero) {
-        copy.classList.add('centred');           // only the opening line is centred
-        var hp = document.createElement('p');
-        hp.className = 'hero';
-        hp.textContent = s.hero;
-        copy.appendChild(hp);
-      } else if (s.events) {
-        var list = document.createElement('ul');
-        list.className = 'events';
-        s.events.forEach(function (e) {
-          var li = document.createElement('li');
-          var nm = document.createElement('span'); nm.className = 'ev-name'; nm.textContent = e.name;
-          var wh = document.createElement('span'); wh.className = 'ev-when'; wh.textContent = e.when;
-          li.appendChild(nm); li.appendChild(wh);
-          list.appendChild(li);
-        });
-        copy.appendChild(list);
-      }
-      if (s.city) {
-        var ct = document.createElement('span');
-        ct.className = 'city';
-        ct.textContent = s.city;
-        copy.appendChild(ct);
-      }
-      /* The copy lives in a fixed layer, not inside its section. A block now stays up
-       * until the next one is ready to take over, which is well past the end of its
-       * own section — and a sticky element cannot outlive its parent's scroll range,
-       * so the text used to slide away up the screen instead of holding still. */
-      cframe.appendChild(copy);
       frag.appendChild(sec);
-      el.copies.push(copy);
       el.sections.push(sec);
-      /* a leg holds only if it has something to hold for */
-      el.hasCopy.push(!!(s.hero || s.events));
-      rail.appendChild(document.createElement('i'));
     }
     el.legs.appendChild(frag);
-    document.body.appendChild(cframe);
-    el.rail.appendChild(rail);
-    el.dots = Array.prototype.slice.call(el.rail.children);
+
+    /* One divider per boundary between legs — n-1 of them, none before the
+     * first leg or after the last. Lives inside #ribbon itself (positioned in
+     * measure(), once native rows are known) rather than the fixed copy layer
+     * this route used to have, so it scrolls with the art at no runtime cost. */
+    for (var j = 0; j < n - 1; j++) {
+      var div = document.createElement('div');
+      div.className = 'divider';
+      el.ribbon.appendChild(div);
+      el.dividers.push(div);
+    }
   }
 
   /* ----------------------------------------------------------- measure */
@@ -281,116 +234,61 @@
       c.img.style.height = c.hpx + 'px';
     });
 
-    /* Where each leg comes to rest, in travelled px. The ribbon names the rows worth
-     * stopping at; anchoring one to the car's line puts the subject beside the car
-     * when the world stops. Without stops this is an even division, which lands
-     * arrivals wherever they fall — usually on filler.
-     *
-     * R.stops only ever names rows painted for the segments that define them — not
-     * one per leg. Today that is beach-cove alone, so its 2 stops belong to the
-     * *last* 2 legs, not the first: leg 0 opens in the garden, which has no
-     * ribbon-native stop of its own. Indexing R.stops from 0 regardless of which
-     * legs it was actually painted for pointed leg 0 at a row deep in beach-cove,
-     * ballooning its drive to nearly half the whole journey. Aligning stops to the
-     * tail of the leg list is what makes them line up with the segments that
-     * actually carry them, however many legs come before with none of their own.
-     *
-     * A stop can still be unreachable: fitting the ribbon to width means a narrow
-     * screen scales it down and shows far more rows per screen than a wide one, so
-     * a row that sits beside the car on a desktop is already behind it on a phone.
-     * Every leg therefore has to advance regardless, or its drive is dead. */
-    var stopOffset = S.n - (R.stops ? R.stops.length : 0);
+    /* Where each leg ends, in travelled px — the ribbon's own segment joins,
+     * scaled and offset by the car's line the same way a copy arrival used
+     * to be. No text anywhere means no reason to pause at any of them: every
+     * leg simply drives into the next at the shared speed. */
     S.rests = [];
     for (var li = 0, prevD = 0; li < S.n; li++) {
-      var row = R.stops && R.stops[li - stopOffset];
+      var row = R.joins && R.joins[li];              // joins[i] = start of leg i+1
       var want = row != null ? row * S.scale - S.carY : (li + 1) / S.n * S.travel;
       var least = prevD + S.vh * 0.30;
       prevD = clamp(Math.max(want, least), 0, S.travel);
       S.rests.push(prevD);
     }
-    /* The last stop has to be the end of the ribbon, or whatever is left over is
-     * unreachable and the final leg is a dead scroll. */
+    /* The last leg has to end at the end of the ribbon, or whatever is left
+     * over is unreachable and the final leg is a dead scroll. */
     S.rests[S.n - 1] = S.travel;
 
-    /* Now hand each leg exactly the scroll it needs to drive its own span at the
-     * one shared speed, plus its hold. Legs are no longer the same height.
-     *
-     * A leg pulls away from a standstill only where the leg before it stopped, and
-     * comes to one only where it has something to arrive at; elsewhere the speed is
-     * carried straight across the join. The ease bands are a fixed length in px, not
-     * a share of the leg — as a share, a long leg spent its first thousand pixels
-     * still accelerating, which reads as sluggish rather than as pulling away. */
-    S.legTop = []; S.legLen = []; S.legDrive = []; S.ein = []; S.eout = []; S.vpeak = [];
+    /* Hand each leg exactly the scroll it needs to drive its own span at the
+     * one shared speed. Only the very first leg eases in from a standstill —
+     * every other boundary carries speed straight across, since there is
+     * nothing to arrive at or hold for anywhere in between. */
+    S.legTop = []; S.legDrive = []; S.ein = []; S.eout = []; S.vpeak = [];
     var top = 0;
     for (var lj = 0; lj < S.n; lj++) {
       var span = S.rests[lj] - (lj ? S.rests[lj - 1] : 0);
-      var inN = (lj === 0 || el.hasCopy[lj - 1]) ? 1 : 0;
-      var outN = (el.hasCopy[lj] || lj === S.n - 1) ? 1 : 0;
+      var inN = lj === 0 ? 1 : 0;
       /* An ease band gives up half its length of travel, so the drive has to be
        * longer to still cover the span at the shared speed. Solved by iterating
        * twice — band depends on drive, drive on band. */
-      var drive = Math.max(S.vh * MIN_LEG_VH, span / SPEED), a = 0, c = 0, V = 1;
+      var drive = Math.max(S.vh * MIN_LEG_VH, span / SPEED), a = 0, V = 1;
       for (var it = 0; it < 2; it++) {
         var band = Math.min(0.45, S.vh * 0.62 / drive);
-        a = inN * band; c = outN * band;
-        V = 1 / (1 - a / 2 - c / 2);
+        a = inN * band;
+        V = 1 / (1 - a / 2);
         drive = Math.max(S.vh * MIN_LEG_VH, span * V / SPEED);
       }
-      /* No hold at a leg with nothing to read — it drives straight into the next,
-       * so any pause here would be a stall with no reason behind it. */
-      var hold = el.hasCopy[lj] ? S.vh * HOLD_VH : 0;
       S.legTop.push(top);
       S.legDrive.push(drive);
-      S.ein.push(a); S.eout.push(c); S.vpeak.push(V);
-      S.legLen.push(drive + hold);
-      top += drive + hold;
-      el.sections[lj].style.height = Math.round(drive + hold) + 'px';
+      S.ein.push(a); S.eout.push(0); S.vpeak.push(V);
+      top += drive;
+      el.sections[lj].style.height = Math.round(drive) + 'px';
     }
     /* .pin is zero-height, so the closing screen needs real page under it */
-    el.sections[S.n - 1].style.height = Math.round(S.legLen[S.n - 1] + S.vh) + 'px';
+    el.sections[S.n - 1].style.height = Math.round(S.legDrive[S.n - 1] + S.vh) + 'px';
 
     /* Scroll 0 opens with the car already halfway down leg 0's own drive, not at
      * the road's literal first inch — see tick(). */
     S.leg0HeadStart = S.legDrive[0] / 2;
-
-    /* When each block of copy shows and hides, in scroll px.
-     *
-     * Keyed to scroll rather than to a share of its leg, because legs are no longer
-     * the same length — and keyed to scroll rather than to distance travelled,
-     * because two stops can sit close together on the ribbon yet far apart on the
-     * page. A block used to disappear at its own leg's boundary, long before the
-     * next block's leg had driven far enough to show anything, which left a wide
-     * stretch of the journey with nothing to read. Now a block holds until the next
-     * one is about to arrive, and only then hands over.
-     */
-    var restY = [];
-    for (var ri = 0; ri < S.n; ri++) restY.push(S.legTop[ri] + S.legDrive[ri]);
-    S.showA = []; S.showB = []; S.hideA = []; S.hideB = [];
-    for (var ci = 0; ci < S.n; ci++) {
-      /* The opening hero card names the couple before the car has gone anywhere —
-       * it is the page's title, not an arrival, so it fades in on the first small
-       * nudge of scroll rather than waiting for leg 0's drive to nearly finish. */
-      var sA = ci === 0 ? 0 : restY[ci] - S.vh * 0.58;
-      var sB = ci === 0 ? S.vh * 0.10 : restY[ci] - S.vh * 0.12;
-      /* the next block that actually has something to say — an empty leg in between
-       * is not a reason to clear the screen */
-      var nxt = Infinity;
-      for (var cj = ci + 1; cj < S.n; cj++) {
-        if (el.hasCopy[cj]) { nxt = restY[cj] - S.vh * 0.58; break; }
-      }
-      /* Clear exactly as the next block starts to arrive — any later and two
-       * different texts ghost over each other in the same corner of the screen.
-       *
-       * A block with no successor also clears in time to leave the closing stretch
-       * of art to itself — unless it belongs to the final leg, where the page ends
-       * on the hold it arrives at and there is nothing left to leave clear. */
-      var endCap = ci === S.n - 1 ? Infinity : top - S.vh * 0.35;
-      var hB = Math.min(restY[ci] + S.vh * 2.4, nxt, endCap);
-      var hA = Math.max(sB + S.vh * 0.05, hB - S.vh * 0.42);
-      S.showA.push(sA); S.showB.push(sB);
-      S.hideA.push(hA); S.hideB.push(Math.max(hA + 1, hB));
-    }
     S.docLen = top;
+
+    /* Dividers sit at each join's own native row, scaled and panned exactly
+     * like a chunk image — a plain child of #ribbon, not a tick()-driven
+     * overlay, so they scroll with the art at no runtime cost. */
+    el.dividers.forEach(function (div, k) {
+      div.style.top = Math.round((R.joins[k] || 0) * S.scale) + 'px';
+    });
 
     var rw = R.roadWidth * S.scale;
     el.streaks.style.width = rw + 'px';
@@ -506,21 +404,6 @@
 
     daylight(prog * DAY_SPAN);
 
-    /* Copy + rail. Every block is driven from the same scroll position rather than
-     * only the current leg's, so one can still be on screen while its leg is behind
-     * us — which is the whole point: it holds until the next one takes over. */
-    for (var ci = 0; ci < n; ci++) {
-      if (!el.hasCopy[ci]) continue;
-      var a = ramp(y, S.showA[ci], S.showB[ci]) * (1 - ramp(y, S.hideA[ci], S.hideB[ci]));
-      var st = el.copies[ci].style;
-      if (a === 0 && st.opacity === '0') continue;      // already parked
-      st.opacity = a.toFixed(3);
-      st.transform = 'translate3d(0,' + ((1 - a) * 16).toFixed(1) + 'px,0)';
-    }
-    if (lastLeg !== i) {
-      el.dots.forEach(function (dot, k) { dot.classList.toggle('on', k === i); });
-      lastLeg = i;
-    }
     el.cue.style.opacity = y > S.vh * .35 ? '0' : '1';
   }
 
