@@ -202,28 +202,7 @@
      * cropped off each side of a vw-wide viewport; dividing by R.width turns that
      * into a scale. */
     var cropFloor = isPortrait ? (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width : 0;
-    /* The crop floor above was tuned against the ribbon's size at the time and
-     * doesn't grow as more segments are added later — every plate added since
-     * shrinks how much of the ribbon's own height that same scale actually
-     * reaches. Once the ribbon grew to 6 segments, the crop-floor scale left
-     * less total scroll travel (R.height*scale - vh) than where the LAST join
-     * itself lands at that same scale: the final leg had nowhere left to
-     * drive, and the one before it absorbed the shortfall, collapsing two
-     * legs onto the same rest point — a dead stretch of scroll doing nothing.
-     * Floor scale again here, at whatever it takes for travel to clear the
-     * last join with a full viewport-height of real driving room left over,
-     * so this doesn't quietly break again the next time a segment is added. */
-    var lastJoin = R.joins && R.joins.length ? R.joins[R.joins.length - 1] : 0;
-    /* Solving R.height*scale - vh >= lastJoin*scale + vh for scale: the total
-     * travel must clear the last join's own scaled position by at least one
-     * more full viewport of real driving room. Gated to portrait only, same
-     * as cropFloor — applying this on desktop too would mean upscaling past
-     * 1:1 there, which breaks the "never upscale on desktop" rule this file
-     * has protected through several rounds already. A short/wide desktop
-     * window could in principle hit this same collapse, but that's a rarer,
-     * separate case to solve later, not a reason to blur every desktop view. */
-    var reachFloor = (isPortrait && lastJoin && R.height > lastJoin) ? (2 * S.vh) / (R.height - lastJoin) : 0;
-    S.scale = Math.max(fitWidth, cropFloor, reachFloor);
+    S.scale = Math.max(fitWidth, cropFloor);
     S.n = legCount();
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
