@@ -1,0 +1,11 @@
+Model Information:
+* title:	2012 Ford EcoSport
+* source:	https://sketchfab.com/3d-models/2012-ford-ecosport-4e491913d5f74b60a838555cb7ab610b
+* author:	tonielpro520 (https://sketchfab.com/tonielpro520)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "2012 Ford EcoSport" (https://sketchfab.com/3d-models/2012-ford-ecosport-4e491913d5f74b60a838555cb7ab610b) by tonielpro520 (https://sketchfab.com/tonielpro520) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

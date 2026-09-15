@@ -87,6 +87,11 @@ body {
 .car-track { will-change: transform; }
 .car-idle  { filter: drop-shadow(0 8px 12px rgba(10,16,8,.45)); }
 .car-idle img { display: block; width: 100%; height: auto; transform: rotate(180deg); }
+/* the 3D car's canvas is sized in JS (measure()) to match the painted
+   image's old width/height contract - width comes from CAR_ROAD same as
+   before, height from the model's own aspect ratio once it loads, since a
+   canvas has no natural aspect ratio to derive from the way an <img> does */
+.car-idle canvas { display: block; }
 
 @keyframes carIn { from { transform: translate3d(0,-125vh,0); } to { transform: translate3d(0,0,0); } }
 

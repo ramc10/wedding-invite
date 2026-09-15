@@ -26,7 +26,7 @@
 <div class="car-anchor" aria-hidden="true">
   <div class="car-drop">
     <div class="car-track" id="car">
-      <div class="car-idle"><img src="art/car.webp" alt=""></div>
+      <div class="car-idle"><canvas id="car3d"></canvas></div>
     </div>
   </div>
 </div>
@@ -41,6 +41,14 @@
 <nav class="rail" id="rail" aria-label="Route"></nav>
 <div class="cue" id="cue" aria-hidden="true"><span></span></div>
 
-<script src="road.js"></script>
+<!-- defer, not blocking: ~700KB of Three.js + loaders would otherwise hold the
+     whole ribbon/scroll experience hostage until they finish downloading, for
+     what is visually a small car icon. defer keeps document order (these three
+     still finish before road.js runs) while letting the browser parse and
+     paint the rest of the page immediately instead of waiting on this fetch. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js" defer></script>
+<script src="road.js" defer></script>
 </body>
 </html>

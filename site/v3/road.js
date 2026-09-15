@@ -82,6 +82,226 @@
   function $(id) { return document.getElementById(id); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
+  /* ---------------------------------------------------------------- car3D
+   * Replaces the flat painted car.webp with a real glTF model (2012 Ford
+   * EcoSport, CC-BY-4.0 by tonielpro520 - credit required, see
+   * models/ecosport/license.txt), rendered top-down to sit in the same
+   * .car-idle slot the painted image used. Position/rotation-on-scroll is
+   * still driven entirely by tick()'s transform on #car (.car-track) - this
+   * module only owns what's INSIDE that slot: the canvas's own size and
+   * what's drawn on it. aspect starts at the painted image's old ratio
+   * (95:173) so sizing is sane before the model finishes loading; it's
+   * corrected to the model's real aspect once the glTF's bounding box is
+   * known. */
+  var Car3D = (function () {
+    var canvas, renderer, scene, camera, model;
+    var aspect = 95 / 173;   // width/height, painted car.webp's ratio as a placeholder
+    var ready = false;
+
+    function init(canvasEl) {
+      canvas = canvasEl;
+      /* A blocked or failed CDN request (ad-blocker, offline, a dropped
+       * request for one of the three <script> tags) leaves window.THREE
+       * undefined — calling into it would throw and, since this runs partway
+       * through start(), take the rest of that function's setup down with
+       * it. Fall back the same way a failed model fetch does, before ever
+       * touching THREE. */
+      if (typeof THREE === 'undefined' || !THREE.GLTFLoader || !THREE.DRACOLoader) {
+        console.error('car3d: THREE/GLTFLoader/DRACOLoader unavailable, falling back to painted car');
+        fallback();
+        return;
+      }
+      scene = new THREE.Scene();
+      camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+      camera.position.set(0, 10, 0.001); // tiny z offset avoids gimbal-lock look-down artifacts
+      camera.up.set(0, 0, -1);
+      camera.lookAt(0, 0, 0);
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.65;
+
+      /* flat, soft lighting - the painted scene has its own baked-in light
+       * source, so a strong key light here would fight it and, combined with
+       * glossy paint, read as an unreal "candy" highlight (tuned down once
+       * already in the standalone test - see car-3d-test2.html history).
+       * Exposure/intensities dropped further (0.85->0.65, and each light
+       * scaled down to match) for an overall darker car, same relative
+       * balance so it doesn't slide back toward glossy/candy. */
+      scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+      var key = new THREE.DirectionalLight(0xffffff, 0.55);
+      key.position.set(3, 8, 4);
+      scene.add(key);
+      var fill = new THREE.DirectionalLight(0xffffff, 0.22);
+      fill.position.set(-4, 3, -2);
+      scene.add(fill);
+
+      var dracoLoader = new THREE.DRACOLoader();
+      dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+      var loader = new THREE.GLTFLoader();
+      loader.setDRACOLoader(dracoLoader);
+      loader.load('models/ecosport/scene-compressed.glb', function (gltf) {
+        model = gltf.scene;
+        scene.add(model);
+
+        var box = new THREE.Box3().setFromObject(model);
+        var size = box.getSize(new THREE.Vector3());
+        var center = box.getCenter(new THREE.Vector3());
+        var topY = box.max.y;    // highest point anywhere on the car (roof), used only as a raycast start height
+        /* Flowers landed on the back/boot with -Z as "front" - the opposite
+         * of what the standalone car-3d-test2.html render suggested. That
+         * test used a different camera/scene setup than this live module,
+         * so its "front faced up" observation didn't carry over; +Z is the
+         * front here instead, confirmed against the live site after the
+         * -Z attempt put them on the wrong end. */
+        var frontZ = box.max.z;
+        model.position.sub(center);
+        model.updateMatrixWorld(true); // raycasting below needs the recentred transform applied, not last frame's stale matrix
+
+        buildFlowers(model, size, topY, frontZ);
+
+        var halfW = size.x / 2, halfD = size.z / 2;
+        aspect = size.x / size.z;
+        camera.left = -halfW; camera.right = halfW;
+        camera.top = halfD; camera.bottom = -halfD;
+        camera.far = size.y * 10 + 20;
+        camera.position.y = size.y * 6 + 10;
+        camera.updateProjectionMatrix();
+
+        ready = true;
+        resize(canvas.clientWidth || 1);
+        renderer.render(scene, camera);
+      }, undefined, function (err) {
+        /* A blank canvas is worse than the flat car this replaced — a slow
+         * connection, a blocked CDN, or a dropped request now shows no car at
+         * all, forever, instead of falling back to what always worked. Swap
+         * the canvas back out for the original painted image on failure. */
+        console.error('car3d: model failed to load, falling back to painted car', err);
+        fallback();
+      });
+    }
+
+    function fallback() {
+      if (!canvas || !canvas.parentNode) return;
+      var img = document.createElement('img');
+      img.src = 'art/car.webp'; img.alt = '';
+      img.style.cssText = 'display:block;width:100%;height:auto;transform:rotate(180deg)';
+      canvas.parentNode.replaceChild(img, canvas);
+      canvas = null;
+    }
+
+    /* Wedding-car flower decoration, built procedurally (small clustered
+     * spheres, no external asset) rather than the downloaded marigold
+     * garland - that's still pending, this is a placeholder in the same
+     * spirit as the painted van's single hood flower cluster. Placed by
+     * FRACTION of the model's own measured bbox, not fixed world units, so
+     * it holds its position/scale if the model is ever swapped for a
+     * differently-sized one. Screen-up (the car's front, confirmed against
+     * the live render) is -Z in this orthographic top-down setup - see the
+     * camera.up/lookAt in init() - so the bonnet cluster sits toward -Z.
+     *
+     * Height is NOT size.y/2 or box.max.y - that's the roof, and the first
+     * version of this placed flowers there by mistake (a flat "top of car"
+     * assumption, not the bonnet's actual, lower surface). Each bloom casts
+     * a ray straight down onto the car mesh at its own X/Z and sits at
+     * whatever height that ray actually hits, so it follows the bonnet's
+     * real contour instead of floating at roof height above it. */
+    function buildFlowers(carModel, size, topY, frontZ) {
+      var flowers = new THREE.Group();
+      var raycaster = new THREE.Raycaster();
+      var down = new THREE.Vector3(0, -1, 0);
+
+      /* x/z are in carModel's LOCAL space (flowers end up parented to it,
+       * placed with these same local coordinates), but intersectObject
+       * tests against carModel's WORLD-space geometry. The first version of
+       * this raycast fed local x/z straight in as if they were world
+       * coordinates - since carModel.position is offset by -center (set
+       * just before buildFlowers is called), that silently missed the mesh
+       * for most/all points, and blooms ended up positioned far outside the
+       * car in world space once carModel's transform was applied a SECOND
+       * time on render - which is what made them invisible, not just
+       * misplaced. Transform local->world for the ray, and the hit point
+       * world->local for the result, so both ends agree on which space
+       * they're in. */
+      var localToWorld = new THREE.Vector3();
+      var worldToLocal = new THREE.Vector3();
+      function surfaceY(x, z, fallback) {
+        localToWorld.set(x, topY + 1, z);
+        carModel.localToWorld(localToWorld);
+        var worldDown = down.clone().transformDirection(carModel.matrixWorld);
+        raycaster.set(localToWorld, worldDown.normalize());
+        var hits = raycaster.intersectObject(carModel, true);
+        if (!hits.length) return fallback;
+        worldToLocal.copy(hits[0].point);
+        carModel.worldToLocal(worldToLocal);
+        return worldToLocal.y;
+      }
+
+      var petalColors = [0xE07A2E, 0xF2A93C, 0xE8578A, 0xFFFFFF]; // marigold orange/gold, pink accent, white accent
+      function bloom(x, z, scale, colorIdx) {
+        var g = new THREE.Group();
+        var petalMat = new THREE.MeshToonMaterial({ color: petalColors[colorIdx % petalColors.length] });
+        var centerMat = new THREE.MeshToonMaterial({ color: 0x7A4A1E });
+        var petalGeo = new THREE.SphereGeometry(0.05 * scale, 6, 5);
+        var n = 6;
+        for (var i = 0; i < n; i++) {
+          var a = (i / n) * Math.PI * 2;
+          var p = new THREE.Mesh(petalGeo, petalMat);
+          p.position.set(Math.cos(a) * 0.055 * scale, 0, Math.sin(a) * 0.055 * scale);
+          g.add(p);
+        }
+        var c = new THREE.Mesh(new THREE.SphereGeometry(0.04 * scale, 8, 6), centerMat);
+        g.add(c);
+        var y = surfaceY(x, z, topY);
+        g.position.set(x, y + 0.03 * scale, z);
+        return g;
+      }
+
+      /* denser bonnet cluster, tighter spread than the first pass (which
+       * spread as wide as the whole car and sat on the roof) - closer
+       * together, closer to the front edge, more blooms filling the gaps.
+       * frontZ is now the car's +Z (front) edge, so every offset here
+       * SUBTRACTS from it to fan the cluster back toward the car's centre -
+       * the opposite sign from when frontZ was the -Z edge, or the whole
+       * cluster would sit just past the front bumper in empty space. */
+      var hoodZ = frontZ - size.z * 0.14;
+      var spread = size.x * 0.11;
+      var positions = [
+        [0, hoodZ], [0, hoodZ - spread * 0.9],
+        [-spread * 0.8, hoodZ - spread * 0.3], [spread * 0.8, hoodZ - spread * 0.3],
+        [-spread * 0.5, hoodZ - spread * 1.1], [spread * 0.5, hoodZ - spread * 1.1],
+        [-spread * 0.3, hoodZ + spread * 0.3], [spread * 0.3, hoodZ + spread * 0.3],
+        [0, hoodZ - spread * 1.7]
+      ];
+      positions.forEach(function (p, i) {
+        var scale = 0.75 + (i % 3) * 0.12;      // slight size variation, not uniform
+        var colorIdx = i % petalColors.length;
+        flowers.add(bloom(p[0], p[1], scale, colorIdx));
+      });
+
+      carModel.add(flowers);
+    }
+
+    /* mirrors what CSS `width:100%; height:auto` used to do for the <img> -
+     * a canvas has no intrinsic aspect ratio, so both the CSS box size and
+     * the renderer's internal pixel buffer are set here from the model's
+     * own measured aspect (or the placeholder, before it has loaded). */
+    function resize(widthPx) {
+      if (!canvas) return;
+      var heightPx = widthPx / aspect;
+      canvas.style.width = widthPx + 'px';
+      canvas.style.height = heightPx + 'px';
+      if (renderer) {
+        renderer.setSize(widthPx, heightPx, false);
+        if (ready) renderer.render(scene, camera);
+      }
+    }
+
+    return { init: init, resize: resize };
+  })();
+
   fetch('ribbon.json').then(function (r) { return r.json(); }).then(start);
 
   function start(data) {
@@ -91,6 +311,8 @@
     el.car = $('car'); el.carImg = document.querySelector('.car-idle');
     el.tint = $('tint'); el.dusk = $('dusk'); el.grain = $('grain');
     el.legs = $('legs'); el.rail = $('rail'); el.cue = $('cue');
+
+    Car3D.init($('car3d'));
 
     el.grain.style.backgroundImage = 'url("' + NOISE + '")';
     el.streaks.style.backgroundImage = 'url("' + SMEAR + '")';
@@ -147,6 +369,8 @@
     return R.segments || R.legs || 3;
   }
 
+
+
   function buildLegs() {
     var n = legCount(), frag = document.createDocumentFragment();
     el.sections = []; el.dividers = [];
@@ -202,30 +426,7 @@
      * cropped off each side of a vw-wide viewport; dividing by R.width turns that
      * into a scale. */
     var cropFloor = isPortrait ? (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width : 0;
-    /* The crop floor above was tuned against the ribbon's size at the time and
-     * doesn't grow as more segments are added later — every plate added since
-     * shrinks how much of the ribbon's own height that same scale actually
-     * reaches. Once the ribbon grew to 6 segments, the crop-floor scale left
-     * less total scroll travel (R.height*scale - vh) than where the LAST join
-     * itself lands at that same scale: the final leg had nowhere left to
-     * drive, so the dam segment (which starts past that unreachable point)
-     * could never be scrolled to at all — what rendered at the end of the
-     * page was an arbitrary earlier slice of the ribbon, reading as "the dam
-     * is rendering half". Floor scale again here, at whatever it takes for
-     * travel to clear the last join with a full viewport-height of real
-     * driving room left over, so this doesn't quietly break again the next
-     * time a segment is added. */
-    var lastJoin = R.joins && R.joins.length ? R.joins[R.joins.length - 1] : 0;
-    /* Solving R.height*scale - vh >= lastJoin*scale + vh for scale: the total
-     * travel must clear the last join's own scaled position by at least one
-     * more full viewport of real driving room. Gated to portrait only, same
-     * as cropFloor — applying this on desktop too would mean upscaling past
-     * 1:1 there, which breaks the "never upscale on desktop" rule this file
-     * has protected through several rounds already. A short/wide desktop
-     * window could in principle hit this same collapse, but that's a rarer,
-     * separate case to solve later, not a reason to blur every desktop view. */
-    var reachFloor = (isPortrait && lastJoin && R.height > lastJoin) ? (2 * S.vh) / (R.height - lastJoin) : 0;
-    S.scale = Math.max(fitWidth, cropFloor, reachFloor);
+    S.scale = Math.max(fitWidth, cropFloor);
     S.n = legCount();
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
@@ -326,7 +527,15 @@
     var rw = R.roadWidth * S.scale;
     el.streaks.style.width = rw + 'px';
     el.streaks.style.marginLeft = (-rw / 2) + 'px';
-    el.carImg.style.width = (rw * CAR_ROAD) + 'px';
+    /* el.carImg is .car-idle, the wrapper around the canvas (kept sized to
+     * match for layout/drop-shadow bounds, as it was for the old <img>).
+     * The canvas no longer inherits size from it, though - a canvas has no
+     * width:100%-from-parent auto-height behaviour the way an <img> does,
+     * so Car3D.resize sets the canvas's own CSS box AND its internal pixel
+     * buffer directly, from the model's real aspect ratio once loaded. */
+    var carW = rw * CAR_ROAD;
+    el.carImg.style.width = carW + 'px';
+    Car3D.resize(carW);
     el.clouds.style.backgroundSize = '100% ' + Math.max(900, S.vh * 1.7) + 'px';
     S.cloudTile = Math.max(900, S.vh * 1.7);
   }

@@ -7,3 +7,10 @@ site/bundle.html
 site-v2/bundle.html
 site-3d/bundle.html
 .vercel
+
+# Raw, uncompressed 3D car source (70MB) — only the Draco-compressed
+# site/v3/models/ecosport/scene-compressed.glb the site actually loads ships.
+ribbon-v3/car-source/
+# Standalone dev harness for testing the car model in isolation — not part
+# of the site, never linked from it.
+site/v3/car-3d-test2.html
