@@ -183,15 +183,25 @@
      * same scale, and only the wide one runs past the viewport at the edges,
      * same as any painting wider than the screen already does below. */
     var fitWidth = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
-    /* fitWidth alone already renders a ribbon taller than the viewport on any
-     * landscape window — this is the "never upscale past 1:1 on desktop" case,
-     * and the crop floor below must stay a no-op there. It only ever needs to
-     * bind on a portrait screen, where the ribbon comes up short at fitWidth. */
-    var fitsAtWidth = R.height * fitWidth >= S.vh;
+    /* The crop floor below only ever needs to bind on a portrait screen — a
+     * landscape window is the "never upscale past 1:1 on desktop" case, and
+     * must stay a no-op there.
+     *
+     * This used to be inferred from whether fitWidth alone already rendered
+     * the ribbon taller than the viewport, on the assumption that a short
+     * ribbon means portrait and a tall one means landscape. That broke the
+     * moment the ribbon grew past ~3 segments (adding garden-lead.png and
+     * beach-hills.png took it from 2171px to 3780px): fitWidth's ribbon
+     * height now clears every real phone's viewport too, so the proxy read
+     * "already tall enough" on portrait screens and silently zeroed the crop
+     * — the exact "shows the whole image, no crop" bug this replaced. Read
+     * the screen's own shape instead, which doesn't drift as the ribbon
+     * grows. */
+    var isPortrait = S.vh > S.vw;
     /* rw = vw / (1 - 2*crop) is the render width that leaves exactly MOBILE_CROP_PCT
      * cropped off each side of a vw-wide viewport; dividing by R.width turns that
      * into a scale. */
-    var cropFloor = fitsAtWidth ? 0 : (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width;
+    var cropFloor = isPortrait ? (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width : 0;
     S.scale = Math.max(fitWidth, cropFloor);
     S.n = legCount();
     S.rw = R.width * S.scale;
