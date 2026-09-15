@@ -90,6 +90,22 @@
 
   function $(id) { return document.getElementById(id); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  /* Writes opacity only when it actually changes. tick() runs every scroll
+   * frame and most overlay panels sit at a steady '1' or '0' for the whole
+   * time their leg is on screen — reassigning the same value every frame is
+   * normally a cheap no-op, but the events panel carries several text nodes
+   * each with a 3-layer text-shadow (large blur radii), and on some mobile
+   * WebKit builds a redundant opacity write can still trigger a repaint of
+   * that shadow rather than being fully no-op'd. Skipping the write when
+   * nothing changed removes that cost outright rather than relying on the
+   * browser to optimise it away. */
+  var _op = Object.create(null);
+  function setOpacity(el, id, v) {
+    v = v ? '1' : '0';
+    if (_op[id] === v) return;
+    _op[id] = v;
+    el.style.opacity = v;
+  }
 
   /* ---------------------------------------------------------------- car3D
    * Replaces the flat painted car.webp with a real glTF model (2012 Ford
@@ -692,14 +708,17 @@
      * (ENDING_REVEAL_AT) rather than cutting to it the instant the leg
      * starts — u is this leg's own 0..1 progress, already computed above. */
     var showEnding = onLast && u > ENDING_REVEAL_AT;
-    el.title.style.opacity = el.titleVenue.style.opacity =
-      revealed && i <= TITLE_LAST_LEG ? '1' : '0';
-    el.details.style.opacity = el.venue.style.opacity =
-      revealed && i > TITLE_LAST_LEG && !onDam && !onLast ? '1' : '0';
-    el.damCaption.style.opacity = el.damVenue.style.opacity =
-      revealed && onDam ? '1' : '0';
-    el.ending.style.opacity = el.endingVenue.style.opacity =
-      revealed && showEnding ? '1' : '0';
+    var showTitle = revealed && i <= TITLE_LAST_LEG;
+    var showDetails = revealed && i > TITLE_LAST_LEG && !onDam && !onLast;
+    var showDam = revealed && onDam;
+    setOpacity(el.title, 'title', showTitle);
+    setOpacity(el.titleVenue, 'titleVenue', showTitle);
+    setOpacity(el.details, 'details', showDetails);
+    setOpacity(el.venue, 'venue', showDetails);
+    setOpacity(el.damCaption, 'damCaption', showDam);
+    setOpacity(el.damVenue, 'damVenue', showDam);
+    setOpacity(el.ending, 'ending', revealed && showEnding);
+    setOpacity(el.endingVenue, 'endingVenue', revealed && showEnding);
   }
 
   function daylight(f) {
