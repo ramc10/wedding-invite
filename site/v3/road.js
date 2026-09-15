@@ -44,6 +44,14 @@
    * screens of scrolling. A wide window gets a centred panel instead, feathered at
    * the edges in measure(). */
   var MAX_SCALE = 1.0;
+  /* Fit-to-width alone renders the (roughly square) ribbon shorter than a portrait
+   * screen — chosen by eye against the real art (see the crop-slider comparison):
+   * 23% cropped off each side is the least zoom that still reads as "the garden",
+   * not empty ground under it or a tube of road. This is a floor on scale, not an
+   * override — see measure(). On a landscape window fitWidth already clears it
+   * naturally, so it's a no-op there, same as MAX_SCALE only ever binding on a
+   * wide one. */
+  var MOBILE_CROP_PCT = 0.23;
   var ZOOM      = 1.0;   /* fit to width — no runtime crop */
   var CAR_ROAD  = 0.78;  // car width as a share of the painted road
   var STREAK_LEAD = 1.12;
@@ -221,7 +229,17 @@
      * fit that one segment's extra margin; instead every segment renders at the
      * same scale, and only the wide one runs past the viewport at the edges,
      * same as any painting wider than the screen already does below. */
-    S.scale = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
+    var fitWidth = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
+    /* fitWidth alone already renders a ribbon taller than the viewport on any
+     * landscape window — this is the "never upscale past 1:1 on desktop" case,
+     * and the crop floor below must stay a no-op there. It only ever needs to
+     * bind on a portrait screen, where the ribbon comes up short at fitWidth. */
+    var fitsAtWidth = R.height * fitWidth >= S.vh;
+    /* rw = vw / (1 - 2*crop) is the render width that leaves exactly MOBILE_CROP_PCT
+     * cropped off each side of a vw-wide viewport; dividing by R.width turns that
+     * into a scale. */
+    var cropFloor = fitsAtWidth ? 0 : (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width;
+    S.scale = Math.max(fitWidth, cropFloor);
     S.n = legCount();
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
