@@ -63,7 +63,7 @@ def main():
         im.save(dst)
         print(f"{os.path.basename(src)}: no car on the road — copied unchanged")
         return
-    PAD = 26                                        # take the shadow too
+    PAD = 70                                        # take the shadow, and feather outside the car
     y0 = max(0, blk[0] - PAD)
     y1 = min(arr.shape[0], blk[1] + PAD + 1)
     n = y1 - y0
@@ -80,7 +80,12 @@ def main():
     half = int(np.median(widths) * 1.15)
     out = arr.copy()
     fy = np.minimum(np.arange(n), np.arange(n)[::-1])
-    fy = np.clip(fy / 14.0, 0, 1)[:, None, None]    # feather the top and bottom seams
+    # A narrow feather (14px) ramps entirely inside PAD's shadow margin, which
+    # is fine on a flat road but showed a visible band on garden-lead.png's
+    # more mottled texture. 40px still resolves within PAD=70's own margin
+    # around the car block, so the ramp works on clean cloned road throughout,
+    # never touching the car's own pixels (that reads as ghosting instead).
+    fy = np.clip(fy / 40.0, 0, 1)[:, None, None]    # feather the top and bottom seams
 
     for i in range(n):
         c = int(round(centres[y0 + i]))

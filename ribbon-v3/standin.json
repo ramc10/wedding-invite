@@ -7,6 +7,12 @@
   "_chunking": "Route is short enough (~2237px stitched) to fit in one chunk, so pick a chunk_height above the whole route height and avoid the boundary-placement problem entirely rather than aim it at a moving target: both segment joins are now hard cuts (0 overlap - garden/garden-beach/beach-cove are three distinct compositions, not continuous terrain), so their rows shift whenever a plate/rows/overlap value changes upstream. An internal chunk boundary that isn't pinned to a hard cut shows as a faint line even when the pixels either side are identical - a browser seam between two separately-rasterized <img> elements, the same class of artifact 25aa6c5 fixed once already by merging chunks. Revisit if the route grows past a few thousand px.",
   "segments": [
     {
+      "src": "plates/garden-lead.png",
+      "kind": "once",
+      "bias": 0.0,
+      "_": "Section 0 - new opening plate, added ahead of garden.png. Same forest/road as garden.png (all 7 guardrail gates passed: vertical road, painted style and color match confirmed side by side against garden.png's top edge, detect_road agrees with manual measurement (centre ~1377 vs ~1377-1381, width ~156 vs ~153-182), single clean asphalt band with no competing gray structure, native 2752x1536 matching neighbor resolution, terrain genuinely continues into garden.png's opening rather than a hard cut). Painted-in car removed via tools/strip-car.py; its default PAD/feather (26px/14) left a visible seam band on this plate's more mottled road texture, so PAD was widened to 70 and the feather to 40 (both now the script's default) to keep the blend ramp outside the car's own silhouette - narrower feather ghosted the car's pale nose/bumper back in."
+    },
+    {
       "src": "plates/garden.png",
       "kind": "once",
       "bias": 0.0,
