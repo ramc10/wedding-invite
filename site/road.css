@@ -186,22 +186,8 @@ body {
   border-color: var(--gold);
 }
 
-.music-hint {
-  position: fixed; z-index: 23;
-  top: calc(64px + env(safe-area-inset-top, 0px));
-  right: calc(16px + env(safe-area-inset-right, 0px));
-  font-family: "EB Garamond", Georgia, serif; font-style: italic;
-  font-size: .8rem; color: var(--text);
-  background: rgba(27, 36, 22, .6);
-  padding: 4px 10px; border-radius: 10px;
-  pointer-events: none;
-  opacity: 1; transition: opacity .5s ease;
-}
-.music-hint.is-hidden { opacity: 0; }
-
 @media (max-width: 640px) {
   .music-toggle { width: 40px; height: 40px; font-size: 1rem; }
-  .music-hint { font-size: .72rem; }
 }
 
 /* Opening title — hidden at scroll 0, revealed by tick() once the very first
@@ -338,5 +324,5 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .car-drop, .cue span { animation: none !important; }
   .streaks { display: none !important; }
-  .title, .details, .dam-caption, .venue, .music-toggle, .music-hint { transition: none; }
+  .title, .details, .dam-caption, .venue, .music-toggle { transition: none; }
 }
