@@ -29,6 +29,15 @@
 </head>
 <body>
 
+<audio id="bg-audio" loop preload="none" playsinline>
+  <source src="audio/loop.m4a" type="audio/mp4">
+  <source src="audio/loop.mp3" type="audio/mpeg">
+</audio>
+
+<button type="button" class="music-toggle" id="musicToggle"
+        aria-label="Play music" aria-pressed="false">&#9834;</button>
+<div class="music-hint" id="musicHint" aria-hidden="true">tap for music</div>
+
 <!-- the ground plane: one painted ribbon, moved by a single transform -->
 <div class="world" aria-hidden="true">
   <div class="ribbon" id="ribbon"></div>
@@ -101,5 +110,6 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js" defer></script>
 <script src="road.js" defer></script>
+<script src="audio.js" defer></script>
 </body>
 </html>

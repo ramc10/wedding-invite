@@ -14,3 +14,7 @@ ribbon-v3/car-source/
 # Standalone dev harness for testing the car model in isolation — not part
 # of the site, never linked from it.
 site/v3/car-3d-test2.html
+
+# Purchased/raw background-music source — only the trimmed public/audio/loop.*
+# derived from it ships.
+source/
