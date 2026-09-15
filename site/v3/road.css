@@ -38,9 +38,12 @@ body {
 .world {
   position: fixed; inset: 0; overflow: hidden; z-index: 0;
   background: var(--ground);
-  /* the references are bright and saturated; a light hand here, no more.
-     contrast raised 5% (1.06 -> 1.113) on request. */
-  filter: contrast(1.113) saturate(1.08);
+  /* contrast(1.113)/saturate(1.08) used to live here as a runtime filter.
+     Moved into tools/build-ribbon.py's own pixel pipeline instead (baked
+     into the shipped .webp) — filter on the element that also gets
+     transform-animated every scroll frame forces the browser to
+     re-rasterize the filtered output continuously, a real cause of scroll
+     jank on mobile. Same visual result, zero per-frame cost this way. */
 }
 
 .ribbon {

@@ -10,13 +10,14 @@ seam is resolved here, once, offline:
   3. normalise position   — translate so every segment's road sits on frame centre
   4. normalise exposure   — match on asphalt, the one material common to all art
   5. cross-blend overlaps — SAME-terrain blends only, never terrain-to-terrain
-  6. slice to chunks      — a lossless cut, so chunks butt-join pixel-perfectly
+  6. grade contrast/sat   — baked in here, not left as a runtime CSS filter (see below)
+  7. slice to chunks      — a lossless cut, so chunks butt-join pixel-perfectly
 
 Usage:  python3 tools/build-ribbon.py <manifest.json> [-o site]
 """
 import argparse, json, math, os, sys
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageEnhance
 
 # ---------------------------------------------------------------- road detect
 
@@ -583,6 +584,18 @@ def main():
             strip[y0:y1, :, :3] = [255, 0, 220]
             strip[y0:y1, :, 3] = 255
             print(f"  seam marker at ribbon row {row} (start of {os.path.basename(src)})")
+
+    # Contrast/saturation, baked into the pixels rather than left as a CSS
+    # filter on the scrolling container: filter() on an element that also
+    # gets transform-animated (the whole ribbon, every scroll frame) forces
+    # the compositor to re-rasterize the filtered output every frame instead
+    # of just moving an already-composited layer — a real, measured cause of
+    # mobile scroll jank (see the CSS-filter cost model any browser rendering
+    # doc covers for `filter` + `transform` on the same element). Same visual
+    # result, applied once here instead of continuously at scroll time.
+    strip_im = ImageEnhance.Contrast(Image.fromarray(strip)).enhance(1.113)
+    strip_im = ImageEnhance.Color(strip_im).enhance(1.08)
+    strip = np.asarray(strip_im)
 
     # slice — a cut, not a blend: adjacent chunks align exactly
     chunks, total, water_kb = [], 0, 0
