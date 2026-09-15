@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoSport 3D test — top-down realistic render</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #2a3a22; overflow: hidden; }
+  #wrap { position: relative; width: 100%; height: 100%; }
+  #label {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    font: 13px/1.4 -apple-system, sans-serif; color: #fff;
+    background: rgba(0,0,0,.55); padding: 8px 12px; border-radius: 8px;
+    max-width: 380px;
+  }
+  #status {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    font: 14px -apple-system, sans-serif; color: #fff; z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div id="wrap"></div>
+<div id="status">Loading model…</div>
+<div id="label">2012 Ford EcoSport, CC-BY-4.0 by tonielpro520 (sketchfab.com/tonielpro520).<br>Real lighting + orthographic top-down camera, auto-framed to the model.<br>Run this via a local server (e.g. <code>cd site/v3 && python3 -m http.server 8000</code>), not by double-clicking the file — glTF loads need http:// or https://, not file://.</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+<script>
+window.addEventListener('error', function (e) {
+  var statusEl = document.getElementById('status');
+  if (statusEl) statusEl.textContent = 'Script error: ' + e.message + ' (' + e.filename + ':' + e.lineno + ')';
+});
+(function () {
+  var wrap = document.getElementById('wrap');
+  var statusEl = document.getElementById('status');
+  var w = window.innerWidth, h = window.innerHeight;
+
+  var scene = new THREE.Scene();
+
+  var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.85;
+  wrap.appendChild(renderer.domElement);
+
+  /* Softer, flatter lighting than the first pass: a strong key light +
+     glossy (low-roughness) paint together produced a bright, saturated
+     specular hot spot that read as "candy" paint rather than a duller,
+     matte rust finish. More ambient fill, less directional intensity, and
+     the paint's own roughness raised to 0.75 (see source gltf) tone that
+     down without losing the sense of a real light source. */
+  scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+  var key = new THREE.DirectionalLight(0xffffff, 0.7);
+  key.position.set(3, 8, 4);
+  scene.add(key);
+  var fill = new THREE.DirectionalLight(0xffffff, 0.3);
+  fill.position.set(-4, 3, -2);
+  scene.add(fill);
+
+  var ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(50, 50),
+    new THREE.MeshStandardMaterial({ color: 0x2a3a22, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
+
+  var dracoLoader = new THREE.DRACOLoader();
+  dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+  var loader = new THREE.GLTFLoader();
+  loader.setDRACOLoader(dracoLoader);
+
+  loader.load('models/ecosport/scene-compressed.glb', function (gltf) {
+    var model = gltf.scene;
+    scene.add(model);
+
+    /* auto-fit: measure the real bounding box after load (more reliable
+       than reading accessor min/max by hand) and frame an orthographic
+       top-down camera around it with a small margin */
+    var box = new THREE.Box3().setFromObject(model);
+    var size = box.getSize(new THREE.Vector3());
+    var center = box.getCenter(new THREE.Vector3());
+
+    model.position.sub(center); // recenter model at origin
+    ground.position.y = box.min.y - center.y - 0.01;
+
+    var horizExtent = Math.max(size.x, size.z) / 2;
+    var margin = 1.15;
+    var aspect = w / h;
+    var viewHalf = horizExtent * margin;
+    if (aspect < 1) viewHalf = viewHalf / aspect; // keep car fully in view on narrow screens too
+
+    camera.left = -viewHalf * aspect;
+    camera.right = viewHalf * aspect;
+    camera.top = viewHalf;
+    camera.bottom = -viewHalf;
+    camera.near = 0.1;
+    camera.far = size.y * 10 + 20;
+    camera.position.set(0, size.y * 6 + 10, 0.001); // tiny z offset avoids gimbal-lock look-down artifacts
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+
+    statusEl.style.display = 'none';
+    animate();
+  }, function (xhr) {
+    if (xhr.lengthComputable) {
+      var pct = (xhr.loaded / xhr.total * 100).toFixed(0);
+      statusEl.textContent = 'Loading model… ' + pct + '%';
+    }
+  }, function (err) {
+    statusEl.textContent = 'Failed to load model — see browser console (F12).';
+    console.error(err);
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+
+  window.addEventListener('resize', function () {
+    w = window.innerWidth; h = window.innerHeight;
+    var aspect = w / h;
+    var viewHalf = (camera.top); // preserve vertical half-extent already fit
+    camera.left = -viewHalf * aspect;
+    camera.right = viewHalf * aspect;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+})();
+</script>
+</body>
+</html>

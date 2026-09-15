@@ -7,16 +7,13 @@
  *
  * Scroll model: each ribbon segment is one leg, driven at the journey's one
  * constant speed with no hold anywhere — a continuous drive from end to end.
- * A plain divider line marks each leg boundary as it scrolls past. The
- * rendered position is a direct function of scroll position: no lag, no
+ * The rendered position is a direct function of scroll position: no lag, no
  * easing, no catching up.
  */
 (function () {
   'use strict';
 
-  /* No ceremony copy in this pass — the route is a pure visual drive, with a
-   * plain divider line marking each section boundary instead of text. Leg
-   * count now comes straight from the ribbon's own segment count (below). */
+  /* Leg count comes straight from the ribbon's own segment count (below). */
 
   /* Scroll model. Legs used to get an equal slice of the page each, but the joins
    * they drive between are not equally spaced along the ribbon — so one leg crawled
@@ -43,6 +40,18 @@
   var STREAK_LEAD = 1.12;
   var STREAK_TILE = 420;
   var DAY_SPAN  = 0.55;  // how far along the daylight schedule the journey travels
+  /* leg index (0-based) of garden-beach.png in the manifest — the opening
+   * title covers the two opening legs (garden-lead, garden) and hands off to
+   * the event/venue details once this leg's own drive finishes, i.e. once
+   * the active leg index has moved past it. */
+  var TITLE_LAST_LEG = 2;
+  /* leg index (0-based) of dam-reservoir.png in the manifest — the per-
+   * section caption shows only while this specific leg is the active one. */
+  var DAM_LEG = 5;
+  /* how far into the final leg's own drive (0..1) before "The Beginning"
+   * appears — waits until the forest scene is well established rather than
+   * cutting to it the instant the leg starts. */
+  var ENDING_REVEAL_AT = 0.3;
 
   /* time of day — [at, tintRGB, tintA, duskRGB, duskA] */
   var DAY = [
@@ -311,6 +320,9 @@
     el.car = $('car'); el.carImg = document.querySelector('.car-idle');
     el.tint = $('tint'); el.dusk = $('dusk'); el.grain = $('grain');
     el.legs = $('legs'); el.rail = $('rail'); el.cue = $('cue');
+    el.title = $('title'); el.details = $('details'); el.venue = $('venue');
+    el.damCaption = $('damCaption'); el.damVenue = $('damVenue');
+    el.ending = $('ending'); el.endingVenue = $('endingVenue');
 
     Car3D.init($('car3d'));
 
@@ -373,7 +385,7 @@
 
   function buildLegs() {
     var n = legCount(), frag = document.createDocumentFragment();
-    el.sections = []; el.dividers = [];
+    el.sections = [];
     for (var i = 0; i < n; i++) {
       var sec = document.createElement('section');
       sec.className = 'leg';
@@ -381,17 +393,6 @@
       el.sections.push(sec);
     }
     el.legs.appendChild(frag);
-
-    /* One divider per boundary between legs — n-1 of them, none before the
-     * first leg or after the last. Lives inside #ribbon itself (positioned in
-     * measure(), once native rows are known) rather than the fixed copy layer
-     * this route used to have, so it scrolls with the art at no runtime cost. */
-    for (var j = 0; j < n - 1; j++) {
-      var div = document.createElement('div');
-      div.className = 'divider';
-      el.ribbon.appendChild(div);
-      el.dividers.push(div);
-    }
   }
 
   /* ----------------------------------------------------------- measure */
@@ -553,13 +554,6 @@
     S.leg0HeadStart = S.legDrive[0] / 2;
     S.docLen = top;
 
-    /* Dividers sit at each join's own native row, scaled and panned exactly
-     * like a chunk image — a plain child of #ribbon, not a tick()-driven
-     * overlay, so they scroll with the art at no runtime cost. */
-    el.dividers.forEach(function (div, k) {
-      div.style.top = Math.round((R.joins[k] || 0) * S.scale) + 'px';
-    });
-
     var rw = R.roadWidth * S.scale;
     el.streaks.style.width = rw + 'px';
     el.streaks.style.marginLeft = (-rw / 2) + 'px';
@@ -683,6 +677,27 @@
     daylight(prog * DAY_SPAN);
 
     el.cue.style.opacity = y > S.vh * .35 ? '0' : '1';
+    /* Overlay hand-off, front to back: hidden at the very top, then the
+     * title while the journey is still inside its own leg(s), then the
+     * event details once the beach leg (TITLE_LAST_LEG) is behind us —
+     * except the dam leg (DAM_LEG), which swaps in its own caption instead,
+     * and the very last leg, which closes on "The Beginning" in the title's
+     * own style rather than the events list. i is the leg index tick()
+     * already computed above — reused, not re-derived. */
+    var revealed = y > S.vh * .03;
+    var onDam = i === DAM_LEG;
+    var onLast = i === S.n - 1;
+    /* "The Beginning" waits until the last leg's own drive is well under way
+     * (ENDING_REVEAL_AT) rather than cutting to it the instant the leg
+     * starts — u is this leg's own 0..1 progress, already computed above. */
+    var showEnding = onLast && u > ENDING_REVEAL_AT;
+    el.title.style.opacity = revealed && i <= TITLE_LAST_LEG ? '1' : '0';
+    el.details.style.opacity = el.venue.style.opacity =
+      revealed && i > TITLE_LAST_LEG && !onDam && !onLast ? '1' : '0';
+    el.damCaption.style.opacity = el.damVenue.style.opacity =
+      revealed && onDam ? '1' : '0';
+    el.ending.style.opacity = el.endingVenue.style.opacity =
+      revealed && showEnding ? '1' : '0';
   }
 
   function daylight(f) {

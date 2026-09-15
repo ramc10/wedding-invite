@@ -26,7 +26,7 @@
 <div class="car-anchor" aria-hidden="true">
   <div class="car-drop">
     <div class="car-track" id="car">
-      <div class="car-idle"><img src="art/car.webp" alt=""></div>
+      <div class="car-idle"><canvas id="car3d"></canvas></div>
     </div>
   </div>
 </div>
@@ -41,6 +41,44 @@
 <nav class="rail" id="rail" aria-label="Route"></nav>
 <div class="cue" id="cue" aria-hidden="true"><span></span></div>
 
-<script src="road.js"></script>
+<div class="title" id="title"><h1><span class="first-name">Bhavya</span> <span class="amp" aria-hidden="true">&amp;</span><span class="amp-word">and</span> <span class="second-name">Ramcharan</span></h1></div>
+
+<div class="details" id="details">
+  <ul class="details-events">
+    <li><span class="details-ceremony">Reception</span><span class="details-when">November 17th, 7 PM</span></li>
+    <li><span class="details-ceremony">Haldi</span><span class="details-when">November 18th, 8 AM</span></li>
+    <li><span class="details-ceremony">Wedding</span><span class="details-when">November 18th, 8 PM</span></li>
+  </ul>
+</div>
+
+<div class="venue" id="venue">
+  <p class="details-place">Palm Beach Hotel<br>Vishakapatnam</p>
+</div>
+
+<div class="dam-caption" id="damCaption">
+  <ul class="details-events">
+    <li><span class="details-ceremony">Reception</span><span class="details-when">November 21st, 7 PM</span></li>
+  </ul>
+</div>
+
+<div class="venue" id="damVenue">
+  <p class="details-place">AMR Unnati Convention<br>Karimnagar</p>
+</div>
+
+<div class="title" id="ending"><h1>The Beginning</h1></div>
+
+<div class="venue" id="endingVenue">
+  <p class="details-place">of everything</p>
+</div>
+
+<!-- defer, not blocking: ~700KB of Three.js + loaders would otherwise hold the
+     whole ribbon/scroll experience hostage until they finish downloading, for
+     what is visually a small car icon. defer keeps document order (these three
+     still finish before road.js runs) while letting the browser parse and
+     paint the rest of the page immediately instead of waiting on this fetch. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js" defer></script>
+<script src="road.js" defer></script>
 </body>
 </html>

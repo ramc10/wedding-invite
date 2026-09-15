@@ -10,6 +10,17 @@
   --gold: #E8C66A;
   --blossom: #F6DDE3;
   --text: #FFFFFF;
+  /* Shared by every fixed text overlay (.title, .details) — a tight dark
+     layer for edge contrast against busy painted art, plus a soft wide one
+     so the whole glyph reads even over a light patch of the scene. A single
+     soft blur alone (the original spec) wasn't enough contrast once the
+     type got large and content varied — the fixed word "and" or a event
+     name can land over sky, water or a light hillside depending on scroll
+     position, not just the same day-lit road every time. */
+  --overlay-shadow:
+    0 1px 3px rgba(0, 0, 0, .75),
+    0 2px 10px rgba(0, 0, 0, .6),
+    0 4px 30px rgba(10, 18, 8, .55);
 }
 
 * { box-sizing: border-box; }
@@ -101,18 +112,6 @@ body {
 .legs { position: relative; z-index: 10; pointer-events: none; }
 .leg  { position: relative; height: var(--leg-h); }
 
-/* Section partitions — a plain marker where one leg ends and the next begins,
-   in place of the copy this route used to carry. Lives inside the ribbon
-   itself (a child of #ribbon, positioned at the leg's own row like the chunk
-   images are), so it scrolls with the art at no cost — no separate tick()
-   bookkeeping, no fixed-position layer to keep in sync. */
-.divider {
-  position: absolute; left: 0; right: 0; height: 0;
-  border-top: 1px solid rgba(232,198,106,.55);
-  box-shadow: 0 0 16px 1px rgba(232,198,106,.35);
-  pointer-events: none;
-}
-
 /* ------------------------------------------------------------------ rail */
 
 .rail {
@@ -145,9 +144,139 @@ body {
 }
 @keyframes cue { 0%,100% { opacity: .25; transform: translateY(0); } 50% { opacity: .9; transform: translateY(8px); } }
 
+/* Opening title — hidden at scroll 0, revealed by tick() once the very first
+   small scroll happens (see the .03 * vh threshold there). Starts at opacity
+   0 here so there's nothing to see before the first tick() runs; JS then owns
+   it from there. Not part of the ribbon: it names the two people, not a place
+   the road passes through, so it doesn't scroll away with the art the way
+   section captions would. */
+/* align-items: flex-start + this padding, not center, keeps the text clear
+   of the car — it sits fixed at 56% viewport height (.car-anchor), and a
+   true vertical center overlaps that line directly. 18% leaves a clear gap
+   of open road between the bottom of the text and the car. */
+.title {
+  position: fixed; inset: 0; z-index: 21;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 23vh;
+  text-align: center; pointer-events: none;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+.title h1 {
+  margin: 0; font-family: "Mrs Saint Delafield", "EB Garamond", cursive, serif;
+  font-weight: 400; font-size: clamp(4.6rem, 18vw, 10rem);
+  line-height: 1.15;
+  color: var(--text);
+  text-shadow: var(--overlay-shadow);
+}
+
+.title .amp-word { display: none; }
+
+/* Below this width, at the larger size above, "Bhavya & Ramcharan" no longer
+   fits one line without shrinking the type back down to fight for room — so
+   it breaks onto three lines instead: "Bhavya", "and", "Ramcharan" — the
+   ampersand swapped for the word, which reads better standing alone than a
+   lone "&" does. */
+@media (max-width: 640px) {
+  .title .first-name, .title .second-name, .title .amp-word { display: block; }
+  .title .amp { display: none; }
+  .title .amp-word {
+    font-size: 0.4em; letter-spacing: .04em; margin: 0.15em 0;
+  }
+}
+
+/* Event details — same fixed overlay slot as .title, one leg later: the
+   title covers the opening two legs (garden-lead + garden) plus the beach
+   leg, fades out once that beach leg (garden-beach.png, leg index 2)
+   finishes, and this fades in behind it in the same spot — except while the
+   dam leg (DAM_LEG in road.js) or the very last leg is active, where
+   .dam-caption or #ending take the slot instead and this hides too. See
+   tick() for the full onDam / onLast / TITLE_LAST_LEG split. Content is the
+   three real events (venue + per-event date/time). */
+/* Anchored from the top with padding rather than centered — .details has
+   more vertical content than .title (venue line + 3 event rows), and
+   centering it would let the bottom rows creep toward the car's fixed 56%
+   line on shorter viewports. 12vh clears it with room to spare even at
+   this block's tallest (three events, mobile line-wrap). */
+.details {
+  position: fixed; inset: 0; z-index: 21;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding-top: 16vh;
+  gap: 1.1em;
+  text-align: center; pointer-events: none;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+
+/* Venue — its own fixed layer, pinned to the bottom of the viewport rather
+   than stacked into .details, so it reads as anchored to the device's own
+   bottom edge (home indicator / gesture bar territory on a phone) instead of
+   scaling with how tall the events list happens to be. The safe-area inset
+   is what actually keeps it clear of that system UI — a bare vh value sits
+   partly behind it on notched/gesture-nav phones, which is why an earlier
+   version of this (bottom: 6vh, no inset) wasn't visible on a real device
+   despite working in a plain desktop browser check. Same visibility timing
+   as .details (tick() drives both together). */
+.venue {
+  position: fixed; left: 0; right: 0; z-index: 21;
+  bottom: calc(3vh + env(safe-area-inset-bottom, 0px));
+  text-align: center; pointer-events: none;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+.venue p { margin: 0; }
+.details p { margin: 0; }
+/* Typography follows the original brief: the venue is small uppercase white
+   letterspaced 0.36em, ceremony names EB Garamond 500, times EB Garamond
+   italic warm off-white (chats/chat1.md). */
+.details-place {
+  font-family: "EB Garamond", Georgia, serif;
+  font-weight: 600; font-size: clamp(0.975rem, 3.6vw, 1.125rem);
+  line-height: 1.7;
+  text-transform: uppercase; letter-spacing: 0.36em;
+  color: var(--text);
+  text-shadow: var(--overlay-shadow);
+}
+.details-events {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 0.55em;
+}
+.details-events li {
+  display: flex; flex-direction: column; align-items: center; gap: 0.1em;
+}
+.details-ceremony {
+  font-family: "EB Garamond", Georgia, serif;
+  font-weight: 500; font-size: clamp(1.8rem, 6.5vw, 2.2rem);
+  color: var(--text);
+  text-shadow: var(--overlay-shadow);
+}
+.details-when {
+  font-family: "EB Garamond", Georgia, serif;
+  font-style: italic; font-weight: 400; font-size: clamp(1.05rem, 3.6vw, 1.2rem);
+  color: #FFF6E8;
+  text-shadow: var(--overlay-shadow);
+}
+
+/* Per-section caption — shown only while the dam-reservoir.png leg (index 5,
+   see DAM_LEG in road.js) is on screen, independent of the title/.details
+   handoff which is already resolved by then. Same top-anchored, car-clearing
+   layout as .details, right down to reusing its .details-events/li markup
+   for the one event row — a bare pair of <p> tags here read visibly
+   cramped and inconsistent against the Vizag panel's proper row spacing. */
+.dam-caption {
+  position: fixed; inset: 0; z-index: 21;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding-top: 16vh;
+  text-align: center; pointer-events: none;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+.dam-caption p { margin: 0; }
+
 /* ------------------------------------------------------- reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
   .car-drop, .cue span { animation: none !important; }
   .streaks { display: none !important; }
+  .title, .details, .dam-caption, .venue { transition: none; }
 }

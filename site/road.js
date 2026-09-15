@@ -5,54 +5,53 @@
  * mask, no cross-fade and no layer handoff anywhere in this file — the class of
  * artefact that produces simply cannot occur.
  *
- * Scroll model: each stop is one leg. A leg is exactly as long as it needs to cover
- * its own stretch of ribbon at the journey's one constant speed, then holds still
- * while the copy is read — but only if it has copy. The rendered position trails the
- * real scroll position, so a wheel notch or a flicked thumb glides rather than jumps.
+ * Scroll model: each ribbon segment is one leg, driven at the journey's one
+ * constant speed with no hold anywhere — a continuous drive from end to end.
+ * The rendered position is a direct function of scroll position: no lag, no
+ * easing, no catching up.
  */
 (function () {
   'use strict';
 
-  /* Ceremony copy. Empty until the stops are confirmed — the leg count then comes
-   * from the ribbon's segment count instead. To add copy, push one object per
-   * stop: { place, ceremony, when } or { hero } for the opening card. */
-  var STOPS = [
-    { hero: 'Bhavya & Ramcharan', city: 'Bengaluru' },
-    { city: 'Visakhapatnam',                     // the beach
-      events: [
-        { name: 'Reception', when: '17th November at 7 PM' },
-        { name: 'Haldi',     when: '18th November at 9 AM' },
-        { name: 'Wedding',   when: '18th November at 8:30 PM' }
-      ] },
-    {},                                          // the lake — a quiet stretch
-    { city: 'Karimnagar',                        // the dam
-      events: [
-        { name: 'Reception', when: '21st November at 7:30 PM' }
-      ] },
-    { hero: 'The Beginning' }                    // the closing garden
-  ];
+  /* Leg count comes straight from the ribbon's own segment count (below). */
 
-  /* Scroll model. Legs used to get an equal slice of the page each, but the stops
+  /* Scroll model. Legs used to get an equal slice of the page each, but the joins
    * they drive between are not equally spaced along the ribbon — so one leg crawled
-   * 280px of world while the next covered 1200px, and three of the five spent their
-   * back half completely frozen. Instead: one constant world speed everywhere, and
-   * a leg is exactly as long as its drive needs, plus a hold only where there is
-   * something to read. */
+   * 280px of world while the next covered 1200px. Instead: one constant world speed
+   * everywhere, and a leg is exactly as long as its own drive needs. */
   var SPEED     = 0.75;  // world px per scroll px — the one pace of the whole journey
-  var HOLD_VH   = 0.26;  // arrival hold, in viewports, at stops that carry copy
-  var MIN_LEG_VH = 0.55; // no leg is shorter than this, however close its stop
-  var GLIDE     = 0.115; // per-16ms share of the gap to the true scroll position
+  var MIN_LEG_VH = 0.55; // no leg is shorter than this, however close its join
   /* Never upscale the painting. Past 1:1 it is both blurry and zoomed so far in that
    * a desktop screen holds only a few hundred ribbon rows — which, now that the page
    * is exactly as long as the drive needs, turned the desktop journey into twenty
    * screens of scrolling. A wide window gets a centred panel instead, feathered at
    * the edges in measure(). */
   var MAX_SCALE = 1.0;
+  /* Fit-to-width alone renders the (roughly square) ribbon shorter than a portrait
+   * screen — chosen by eye against the real art (see the crop-slider comparison):
+   * 23% cropped off each side is the least zoom that still reads as "the garden",
+   * not empty ground under it or a tube of road. This is a floor on scale, not an
+   * override — see measure(). On a landscape window fitWidth already clears it
+   * naturally, so it's a no-op there, same as MAX_SCALE only ever binding on a
+   * wide one. */
+  var MOBILE_CROP_PCT = 0.23;
   var ZOOM      = 1.0;   /* fit to width — no runtime crop */
   var CAR_ROAD  = 0.78;  // car width as a share of the painted road
   var STREAK_LEAD = 1.12;
   var STREAK_TILE = 420;
   var DAY_SPAN  = 0.55;  // how far along the daylight schedule the journey travels
+  /* leg index (0-based) of garden-beach.png in the manifest — the opening
+   * title covers the two opening legs (garden-lead, garden) and hands off to
+   * the event/venue details once this leg's own drive finishes, i.e. once
+   * the active leg index has moved past it. */
+  var TITLE_LAST_LEG = 2;
+  /* leg index (0-based) of dam-reservoir.png in the manifest — the per-
+   * section caption shows only while this specific leg is the active one. */
+  var DAM_LEG = 5;
+  /* how far into the final leg's own drive (0..1) before "The Beginning"
+   * appears — waits until the forest scene is well established rather than
+   * cutting to it the instant the leg starts. */
+  var ENDING_REVEAL_AT = 0.3;
 
   /* time of day — [at, tintRGB, tintA, duskRGB, duskA] */
   var DAY = [
@@ -69,12 +68,21 @@
   /* wide, very tall cells — reads as smear along the direction of travel, not grain */
   var SMEAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='420'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.03 0.006' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='420' filter='url(%23s)' opacity='.7'/%3E%3C/svg%3E";
 
+  /* The browser's own scroll restoration (reload, back/forward, bfcache) drops a
+   * fresh visit into the middle of this drive-then-hold spine instead of at the
+   * garden opening — reads as the car starting the journey already at the beach,
+   * zoomed out to wherever that scroll position's leg happens to sit. This is a
+   * single continuous scene keyed entirely off scrollY, not a document the
+   * browser should be remembering a reading position in. */
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
+
   var RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var R = null, C = [], S = {}, el = {};
-  var raf = 0, lastLeg = -1, pd, vsm = 0;
-  /* ys trails window.scrollY. Everything downstream reads ys, so a wheel notch or a
-   * flicked thumb — both of which arrive as a jump, not a sweep — still glides. */
-  var ys = 0, prevT = 0;
+  var raf = 0, pd, vsm = 0;
+  /* ys mirrors window.scrollY exactly — everything downstream reads ys so effect
+   * layers have one source of truth, but there is no lag between the two. */
+  var ys = 0;
 
   /* A small read-only surface for optional effect layers, so they never have to
    * parse values back out of the ribbon's transform. */
@@ -82,6 +90,226 @@
 
   function $(id) { return document.getElementById(id); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+
+  /* ---------------------------------------------------------------- car3D
+   * Replaces the flat painted car.webp with a real glTF model (2012 Ford
+   * EcoSport, CC-BY-4.0 by tonielpro520 - credit required, see
+   * models/ecosport/license.txt), rendered top-down to sit in the same
+   * .car-idle slot the painted image used. Position/rotation-on-scroll is
+   * still driven entirely by tick()'s transform on #car (.car-track) - this
+   * module only owns what's INSIDE that slot: the canvas's own size and
+   * what's drawn on it. aspect starts at the painted image's old ratio
+   * (95:173) so sizing is sane before the model finishes loading; it's
+   * corrected to the model's real aspect once the glTF's bounding box is
+   * known. */
+  var Car3D = (function () {
+    var canvas, renderer, scene, camera, model;
+    var aspect = 95 / 173;   // width/height, painted car.webp's ratio as a placeholder
+    var ready = false;
+
+    function init(canvasEl) {
+      canvas = canvasEl;
+      /* A blocked or failed CDN request (ad-blocker, offline, a dropped
+       * request for one of the three <script> tags) leaves window.THREE
+       * undefined — calling into it would throw and, since this runs partway
+       * through start(), take the rest of that function's setup down with
+       * it. Fall back the same way a failed model fetch does, before ever
+       * touching THREE. */
+      if (typeof THREE === 'undefined' || !THREE.GLTFLoader || !THREE.DRACOLoader) {
+        console.error('car3d: THREE/GLTFLoader/DRACOLoader unavailable, falling back to painted car');
+        fallback();
+        return;
+      }
+      scene = new THREE.Scene();
+      camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+      camera.position.set(0, 10, 0.001); // tiny z offset avoids gimbal-lock look-down artifacts
+      camera.up.set(0, 0, -1);
+      camera.lookAt(0, 0, 0);
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.65;
+
+      /* flat, soft lighting - the painted scene has its own baked-in light
+       * source, so a strong key light here would fight it and, combined with
+       * glossy paint, read as an unreal "candy" highlight (tuned down once
+       * already in the standalone test - see car-3d-test2.html history).
+       * Exposure/intensities dropped further (0.85->0.65, and each light
+       * scaled down to match) for an overall darker car, same relative
+       * balance so it doesn't slide back toward glossy/candy. */
+      scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+      var key = new THREE.DirectionalLight(0xffffff, 0.55);
+      key.position.set(3, 8, 4);
+      scene.add(key);
+      var fill = new THREE.DirectionalLight(0xffffff, 0.22);
+      fill.position.set(-4, 3, -2);
+      scene.add(fill);
+
+      var dracoLoader = new THREE.DRACOLoader();
+      dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+      var loader = new THREE.GLTFLoader();
+      loader.setDRACOLoader(dracoLoader);
+      loader.load('models/ecosport/scene-compressed.glb', function (gltf) {
+        model = gltf.scene;
+        scene.add(model);
+
+        var box = new THREE.Box3().setFromObject(model);
+        var size = box.getSize(new THREE.Vector3());
+        var center = box.getCenter(new THREE.Vector3());
+        var topY = box.max.y;    // highest point anywhere on the car (roof), used only as a raycast start height
+        /* Flowers landed on the back/boot with -Z as "front" - the opposite
+         * of what the standalone car-3d-test2.html render suggested. That
+         * test used a different camera/scene setup than this live module,
+         * so its "front faced up" observation didn't carry over; +Z is the
+         * front here instead, confirmed against the live site after the
+         * -Z attempt put them on the wrong end. */
+        var frontZ = box.max.z;
+        model.position.sub(center);
+        model.updateMatrixWorld(true); // raycasting below needs the recentred transform applied, not last frame's stale matrix
+
+        buildFlowers(model, size, topY, frontZ);
+
+        var halfW = size.x / 2, halfD = size.z / 2;
+        aspect = size.x / size.z;
+        camera.left = -halfW; camera.right = halfW;
+        camera.top = halfD; camera.bottom = -halfD;
+        camera.far = size.y * 10 + 20;
+        camera.position.y = size.y * 6 + 10;
+        camera.updateProjectionMatrix();
+
+        ready = true;
+        resize(canvas.clientWidth || 1);
+        renderer.render(scene, camera);
+      }, undefined, function (err) {
+        /* A blank canvas is worse than the flat car this replaced — a slow
+         * connection, a blocked CDN, or a dropped request now shows no car at
+         * all, forever, instead of falling back to what always worked. Swap
+         * the canvas back out for the original painted image on failure. */
+        console.error('car3d: model failed to load, falling back to painted car', err);
+        fallback();
+      });
+    }
+
+    function fallback() {
+      if (!canvas || !canvas.parentNode) return;
+      var img = document.createElement('img');
+      img.src = 'art/car.webp'; img.alt = '';
+      img.style.cssText = 'display:block;width:100%;height:auto;transform:rotate(180deg)';
+      canvas.parentNode.replaceChild(img, canvas);
+      canvas = null;
+    }
+
+    /* Wedding-car flower decoration, built procedurally (small clustered
+     * spheres, no external asset) rather than the downloaded marigold
+     * garland - that's still pending, this is a placeholder in the same
+     * spirit as the painted van's single hood flower cluster. Placed by
+     * FRACTION of the model's own measured bbox, not fixed world units, so
+     * it holds its position/scale if the model is ever swapped for a
+     * differently-sized one. Screen-up (the car's front, confirmed against
+     * the live render) is -Z in this orthographic top-down setup - see the
+     * camera.up/lookAt in init() - so the bonnet cluster sits toward -Z.
+     *
+     * Height is NOT size.y/2 or box.max.y - that's the roof, and the first
+     * version of this placed flowers there by mistake (a flat "top of car"
+     * assumption, not the bonnet's actual, lower surface). Each bloom casts
+     * a ray straight down onto the car mesh at its own X/Z and sits at
+     * whatever height that ray actually hits, so it follows the bonnet's
+     * real contour instead of floating at roof height above it. */
+    function buildFlowers(carModel, size, topY, frontZ) {
+      var flowers = new THREE.Group();
+      var raycaster = new THREE.Raycaster();
+      var down = new THREE.Vector3(0, -1, 0);
+
+      /* x/z are in carModel's LOCAL space (flowers end up parented to it,
+       * placed with these same local coordinates), but intersectObject
+       * tests against carModel's WORLD-space geometry. The first version of
+       * this raycast fed local x/z straight in as if they were world
+       * coordinates - since carModel.position is offset by -center (set
+       * just before buildFlowers is called), that silently missed the mesh
+       * for most/all points, and blooms ended up positioned far outside the
+       * car in world space once carModel's transform was applied a SECOND
+       * time on render - which is what made them invisible, not just
+       * misplaced. Transform local->world for the ray, and the hit point
+       * world->local for the result, so both ends agree on which space
+       * they're in. */
+      var localToWorld = new THREE.Vector3();
+      var worldToLocal = new THREE.Vector3();
+      function surfaceY(x, z, fallback) {
+        localToWorld.set(x, topY + 1, z);
+        carModel.localToWorld(localToWorld);
+        var worldDown = down.clone().transformDirection(carModel.matrixWorld);
+        raycaster.set(localToWorld, worldDown.normalize());
+        var hits = raycaster.intersectObject(carModel, true);
+        if (!hits.length) return fallback;
+        worldToLocal.copy(hits[0].point);
+        carModel.worldToLocal(worldToLocal);
+        return worldToLocal.y;
+      }
+
+      var petalColors = [0xE07A2E, 0xF2A93C, 0xE8578A, 0xFFFFFF]; // marigold orange/gold, pink accent, white accent
+      function bloom(x, z, scale, colorIdx) {
+        var g = new THREE.Group();
+        var petalMat = new THREE.MeshToonMaterial({ color: petalColors[colorIdx % petalColors.length] });
+        var centerMat = new THREE.MeshToonMaterial({ color: 0x7A4A1E });
+        var petalGeo = new THREE.SphereGeometry(0.05 * scale, 6, 5);
+        var n = 6;
+        for (var i = 0; i < n; i++) {
+          var a = (i / n) * Math.PI * 2;
+          var p = new THREE.Mesh(petalGeo, petalMat);
+          p.position.set(Math.cos(a) * 0.055 * scale, 0, Math.sin(a) * 0.055 * scale);
+          g.add(p);
+        }
+        var c = new THREE.Mesh(new THREE.SphereGeometry(0.04 * scale, 8, 6), centerMat);
+        g.add(c);
+        var y = surfaceY(x, z, topY);
+        g.position.set(x, y + 0.03 * scale, z);
+        return g;
+      }
+
+      /* denser bonnet cluster, tighter spread than the first pass (which
+       * spread as wide as the whole car and sat on the roof) - closer
+       * together, closer to the front edge, more blooms filling the gaps.
+       * frontZ is now the car's +Z (front) edge, so every offset here
+       * SUBTRACTS from it to fan the cluster back toward the car's centre -
+       * the opposite sign from when frontZ was the -Z edge, or the whole
+       * cluster would sit just past the front bumper in empty space. */
+      var hoodZ = frontZ - size.z * 0.14;
+      var spread = size.x * 0.11;
+      var positions = [
+        [0, hoodZ], [0, hoodZ - spread * 0.9],
+        [-spread * 0.8, hoodZ - spread * 0.3], [spread * 0.8, hoodZ - spread * 0.3],
+        [-spread * 0.5, hoodZ - spread * 1.1], [spread * 0.5, hoodZ - spread * 1.1],
+        [-spread * 0.3, hoodZ + spread * 0.3], [spread * 0.3, hoodZ + spread * 0.3],
+        [0, hoodZ - spread * 1.7]
+      ];
+      positions.forEach(function (p, i) {
+        var scale = 0.75 + (i % 3) * 0.12;      // slight size variation, not uniform
+        var colorIdx = i % petalColors.length;
+        flowers.add(bloom(p[0], p[1], scale, colorIdx));
+      });
+
+      carModel.add(flowers);
+    }
+
+    /* mirrors what CSS `width:100%; height:auto` used to do for the <img> -
+     * a canvas has no intrinsic aspect ratio, so both the CSS box size and
+     * the renderer's internal pixel buffer are set here from the model's
+     * own measured aspect (or the placeholder, before it has loaded). */
+    function resize(widthPx) {
+      if (!canvas) return;
+      var heightPx = widthPx / aspect;
+      canvas.style.width = widthPx + 'px';
+      canvas.style.height = heightPx + 'px';
+      if (renderer) {
+        renderer.setSize(widthPx, heightPx, false);
+        if (ready) renderer.render(scene, camera);
+      }
+    }
+
+    return { init: init, resize: resize };
+  })();
 
   fetch('ribbon.json').then(function (r) { return r.json(); }).then(start);
 
@@ -92,6 +320,11 @@
     el.car = $('car'); el.carImg = document.querySelector('.car-idle');
     el.tint = $('tint'); el.dusk = $('dusk'); el.grain = $('grain');
     el.legs = $('legs'); el.rail = $('rail'); el.cue = $('cue');
+    el.title = $('title'); el.details = $('details'); el.venue = $('venue');
+    el.damCaption = $('damCaption'); el.damVenue = $('damVenue');
+    el.ending = $('ending'); el.endingVenue = $('endingVenue');
+
+    Car3D.init($('car3d'));
 
     el.grain.style.backgroundImage = 'url("' + NOISE + '")';
     el.streaks.style.backgroundImage = 'url("' + SMEAR + '")';
@@ -111,7 +344,7 @@
     buildRibbon();
     buildLegs();
     measure();
-    ys = window.scrollY;                        // a reload mid-page must not glide in
+    ys = window.scrollY;
     tick(ys);
 
     window.addEventListener('scroll', ping, { passive: true });
@@ -143,61 +376,23 @@
   }
 
   function legCount() {
-    return (R.stops && R.stops.length) || STOPS.length || R.legs || R.segments || 3;
+    /* One leg per painted segment — with no copy to drive the layout, this is
+     * the only meaningful boundary left to divide the journey by. */
+    return R.segments || R.legs || 3;
   }
 
 
 
   function buildLegs() {
-    var n = legCount(), frag = document.createDocumentFragment(), rail = document.createDocumentFragment();
-    el.copies = []; el.sections = []; el.hasCopy = [];
-    var cframe = document.createElement('div');
-    cframe.className = 'copy-layer';
+    var n = legCount(), frag = document.createDocumentFragment();
+    el.sections = [];
     for (var i = 0; i < n; i++) {
       var sec = document.createElement('section');
       sec.className = 'leg';
-      var copy = document.createElement('div'); copy.className = 'copy';
-      var s = STOPS[i] || {};
-      if (s.hero) {
-        copy.classList.add('centred');           // only the opening line is centred
-        var hp = document.createElement('p');
-        hp.className = 'hero';
-        hp.textContent = s.hero;
-        copy.appendChild(hp);
-      } else if (s.events) {
-        var list = document.createElement('ul');
-        list.className = 'events';
-        s.events.forEach(function (e) {
-          var li = document.createElement('li');
-          var nm = document.createElement('span'); nm.className = 'ev-name'; nm.textContent = e.name;
-          var wh = document.createElement('span'); wh.className = 'ev-when'; wh.textContent = e.when;
-          li.appendChild(nm); li.appendChild(wh);
-          list.appendChild(li);
-        });
-        copy.appendChild(list);
-      }
-      if (s.city) {
-        var ct = document.createElement('span');
-        ct.className = 'city';
-        ct.textContent = s.city;
-        copy.appendChild(ct);
-      }
-      /* The copy lives in a fixed layer, not inside its section. A block now stays up
-       * until the next one is ready to take over, which is well past the end of its
-       * own section — and a sticky element cannot outlive its parent's scroll range,
-       * so the text used to slide away up the screen instead of holding still. */
-      cframe.appendChild(copy);
       frag.appendChild(sec);
-      el.copies.push(copy);
       el.sections.push(sec);
-      /* a leg holds only if it has something to hold for */
-      el.hasCopy.push(!!(s.hero || s.events));
-      rail.appendChild(document.createElement('i'));
     }
     el.legs.appendChild(frag);
-    document.body.appendChild(cframe);
-    el.rail.appendChild(rail);
-    el.dots = Array.prototype.slice.call(el.rail.children);
   }
 
   /* ----------------------------------------------------------- measure */
@@ -205,10 +400,46 @@
   function measure() {
     S.vw = window.innerWidth;
     S.vh = window.innerHeight;
-    S.scale = Math.min(S.vw / R.width * ZOOM, MAX_SCALE);
+    /* Fit-to-viewport zoom is computed against zoomWidth (the normal frame width),
+     * not R.width (the ribbon's actual pixel width) — the two differ when a
+     * "wide" segment made the canvas wider than the rest of the route for one
+     * subject's sake. Scaling to R.width there would shrink the whole journey to
+     * fit that one segment's extra margin; instead every segment renders at the
+     * same scale, and only the wide one runs past the viewport at the edges,
+     * same as any painting wider than the screen already does below. */
+    var fitWidth = Math.min(S.vw / (R.zoomWidth || R.width) * ZOOM, MAX_SCALE);
+    /* The crop floor below only ever needs to bind on a portrait screen — a
+     * landscape window is the "never upscale past 1:1 on desktop" case, and
+     * must stay a no-op there.
+     *
+     * This used to be inferred from whether fitWidth alone already rendered
+     * the ribbon taller than the viewport, on the assumption that a short
+     * ribbon means portrait and a tall one means landscape. That broke the
+     * moment the ribbon grew past ~3 segments (adding garden-lead.png and
+     * beach-hills.png took it from 2171px to 3780px): fitWidth's ribbon
+     * height now clears every real phone's viewport too, so the proxy read
+     * "already tall enough" on portrait screens and silently zeroed the crop
+     * — the exact "shows the whole image, no crop" bug this replaced. Read
+     * the screen's own shape instead, which doesn't drift as the ribbon
+     * grows. */
+    var isPortrait = S.vh > S.vw;
+    /* rw = vw / (1 - 2*crop) is the render width that leaves exactly MOBILE_CROP_PCT
+     * cropped off each side of a vw-wide viewport; dividing by R.width turns that
+     * into a scale. */
+    var cropFloor = isPortrait ? (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width : 0;
+    /* MOBILE_CROP_PCT is a fixed, non-negotiable target — do not add a second
+     * floor here (e.g. "guarantee scroll reaches the last join") to fix a
+     * mobile scroll problem. That was tried twice: it works, but it means
+     * the actual crop on a real phone drifts wherever a taller route
+     * happens to need (~40% at one point), silently breaking the crop this
+     * is meant to hold. The dam-unreachable problem that motivated it is
+     * fixed at the rest-point allocation below instead — every leg's share
+     * of S.travel compresses together if it has to, rather than needing
+     * S.scale itself to grow past what 23% actually means. */
+    S.scale = Math.max(fitWidth, cropFloor);
+    S.n = legCount();
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
-    S.n = legCount();
     S.carY = S.vh * 0.56;
 
     el.ribbon.style.width = S.rw + 'px';
@@ -247,139 +478,122 @@
       c.img.style.height = c.hpx + 'px';
     });
 
-    /* Where each leg comes to rest, in travelled px. The ribbon names the rows worth
-     * stopping at; anchoring one to the car's line puts the subject beside the car
-     * when the world stops. Without stops this is an even division, which lands
-     * arrivals wherever they fall — usually on filler.
+    /* Where each leg ends, in travelled px — the ribbon's own segment joins,
+     * scaled and offset by the car's line the same way a copy arrival used
+     * to be. No text anywhere means no reason to pause at any of them: every
+     * leg simply drives into the next at the shared speed.
      *
-     * A stop can still be unreachable: fitting the ribbon to width means a narrow
-     * screen scales it down and shows far more rows per screen than a wide one, so
-     * a row that sits beside the car on a desktop is already behind it on a phone.
-     * Every leg therefore has to advance regardless, or its drive is dead. */
+     * At a fixed crop percentage the scale can be small enough that the last
+     * few joins, scaled, land past S.travel entirely — the mobile crop floor
+     * is tuned to a look, not to this ribbon's current length, and the route
+     * has grown since. Greedily flooring each rest at prevD + 0.30*vh (as
+     * this used to) claims that whole floor for every early leg regardless
+     * of what is left for the ones after it, so by the last leg or two there
+     * is nothing left at all — a leg pinned to the exact same point as the
+     * one before it, collapsed to zero drive. That's a real regression, not
+     * a stylistic tradeoff: the last leg is the dam, and a collapsed leg
+     * reads as "the dam never fully appears" or "the page ends before
+     * showing it" — worse than a tighter crop ever would.
+     *
+     * Compute every leg's wanted position first, uncompressed, then rescale
+     * the whole sequence down to fit S.travel if the last one overruns it.
+     * Every leg keeps a fair, non-zero share of whatever room actually
+     * exists — compressed and faster-paced near the end rather than
+     * hollowed out to nothing. */
+    var wants = [];
+    for (var wi = 0; wi < S.n; wi++) {
+      var wrow = R.joins && R.joins[wi];
+      wants.push(wrow != null ? wrow * S.scale - S.carY : (wi + 1) / S.n * S.travel);
+    }
+    var overrun = wants[S.n - 1] > S.travel ? wants[S.n - 1] / S.travel : 1;
     S.rests = [];
     for (var li = 0, prevD = 0; li < S.n; li++) {
-      var row = R.stops && R.stops[li];
-      var want = row != null ? row * S.scale - S.carY : (li + 1) / S.n * S.travel;
-      var least = prevD + S.vh * 0.30;
+      var want = wants[li] / overrun;
+      /* Still a floor against two legs landing on the exact same point, but
+       * sized to what is actually left to share rather than a fixed 0.30vh —
+       * a fixed floor is exactly what caused the greedy collapse above. */
+      var roomLeft = (S.n - li) > 0 ? (S.travel - prevD) / (S.n - li) : 0;
+      var least = prevD + Math.min(S.vh * 0.30, Math.max(1, roomLeft * 0.5));
       prevD = clamp(Math.max(want, least), 0, S.travel);
       S.rests.push(prevD);
     }
-    /* The last stop has to be the end of the ribbon, or whatever is left over is
-     * unreachable and the final leg is a dead scroll. */
+    /* The last leg has to end at the end of the ribbon, or whatever is left
+     * over is unreachable and the final leg is a dead scroll. */
     S.rests[S.n - 1] = S.travel;
 
-    /* Now hand each leg exactly the scroll it needs to drive its own span at the
-     * one shared speed, plus its hold. Legs are no longer the same height.
-     *
-     * A leg pulls away from a standstill only where the leg before it stopped, and
-     * comes to one only where it has something to arrive at; elsewhere the speed is
-     * carried straight across the join. The ease bands are a fixed length in px, not
-     * a share of the leg — as a share, a long leg spent its first thousand pixels
-     * still accelerating, which reads as sluggish rather than as pulling away. */
-    S.legTop = []; S.legLen = []; S.legDrive = []; S.ein = []; S.eout = []; S.vpeak = [];
+    /* Hand each leg exactly the scroll it needs to drive its own span at the
+     * one shared speed. Only the very first leg eases in from a standstill —
+     * every other boundary carries speed straight across, since there is
+     * nothing to arrive at or hold for anywhere in between. */
+    S.legTop = []; S.legDrive = []; S.ein = []; S.eout = []; S.vpeak = [];
     var top = 0;
     for (var lj = 0; lj < S.n; lj++) {
       var span = S.rests[lj] - (lj ? S.rests[lj - 1] : 0);
-      var inN = (lj === 0 || el.hasCopy[lj - 1]) ? 1 : 0;
-      var outN = (el.hasCopy[lj] || lj === S.n - 1) ? 1 : 0;
+      var inN = lj === 0 ? 1 : 0;
       /* An ease band gives up half its length of travel, so the drive has to be
        * longer to still cover the span at the shared speed. Solved by iterating
        * twice — band depends on drive, drive on band. */
-      var drive = Math.max(S.vh * MIN_LEG_VH, span / SPEED), a = 0, c = 0, V = 1;
+      var drive = Math.max(S.vh * MIN_LEG_VH, span / SPEED), a = 0, V = 1;
       for (var it = 0; it < 2; it++) {
         var band = Math.min(0.45, S.vh * 0.62 / drive);
-        a = inN * band; c = outN * band;
-        V = 1 / (1 - a / 2 - c / 2);
+        a = inN * band;
+        V = 1 / (1 - a / 2);
         drive = Math.max(S.vh * MIN_LEG_VH, span * V / SPEED);
       }
-      /* No hold at a leg with nothing to read — it drives straight into the next,
-       * so any pause here would be a stall with no reason behind it. */
-      var hold = el.hasCopy[lj] ? S.vh * HOLD_VH : 0;
       S.legTop.push(top);
       S.legDrive.push(drive);
-      S.ein.push(a); S.eout.push(c); S.vpeak.push(V);
-      S.legLen.push(drive + hold);
-      top += drive + hold;
-      el.sections[lj].style.height = Math.round(drive + hold) + 'px';
+      S.ein.push(a); S.eout.push(0); S.vpeak.push(V);
+      top += drive;
+      el.sections[lj].style.height = Math.round(drive) + 'px';
     }
     /* .pin is zero-height, so the closing screen needs real page under it */
-    el.sections[S.n - 1].style.height = Math.round(S.legLen[S.n - 1] + S.vh) + 'px';
+    el.sections[S.n - 1].style.height = Math.round(S.legDrive[S.n - 1] + S.vh) + 'px';
 
-    /* When each block of copy shows and hides, in scroll px.
-     *
-     * Keyed to scroll rather than to a share of its leg, because legs are no longer
-     * the same length — and keyed to scroll rather than to distance travelled,
-     * because two stops can sit close together on the ribbon yet far apart on the
-     * page. A block used to disappear at its own leg's boundary, long before the
-     * next block's leg had driven far enough to show anything, which left a wide
-     * stretch of the journey with nothing to read. Now a block holds until the next
-     * one is about to arrive, and only then hands over.
-     */
-    var restY = [];
-    for (var ri = 0; ri < S.n; ri++) restY.push(S.legTop[ri] + S.legDrive[ri]);
-    S.showA = []; S.showB = []; S.hideA = []; S.hideB = [];
-    for (var ci = 0; ci < S.n; ci++) {
-      var sA = restY[ci] - S.vh * 0.58, sB = restY[ci] - S.vh * 0.12;
-      /* the next block that actually has something to say — an empty leg in between
-       * is not a reason to clear the screen */
-      var nxt = Infinity;
-      for (var cj = ci + 1; cj < S.n; cj++) {
-        if (el.hasCopy[cj]) { nxt = restY[cj] - S.vh * 0.58; break; }
-      }
-      /* Clear exactly as the next block starts to arrive — any later and two
-       * different texts ghost over each other in the same corner of the screen.
-       *
-       * A block with no successor also clears in time to leave the closing stretch
-       * of art to itself — unless it belongs to the final leg, where the page ends
-       * on the hold it arrives at and there is nothing left to leave clear. */
-      var endCap = ci === S.n - 1 ? Infinity : top - S.vh * 0.35;
-      var hB = Math.min(restY[ci] + S.vh * 2.4, nxt, endCap);
-      var hA = Math.max(sB + S.vh * 0.05, hB - S.vh * 0.42);
-      S.showA.push(sA); S.showB.push(sB);
-      S.hideA.push(hA); S.hideB.push(Math.max(hA + 1, hB));
-    }
+    /* Scroll 0 opens with the car already halfway down leg 0's own drive, not at
+     * the road's literal first inch — see tick(). */
+    S.leg0HeadStart = S.legDrive[0] / 2;
     S.docLen = top;
 
     var rw = R.roadWidth * S.scale;
     el.streaks.style.width = rw + 'px';
     el.streaks.style.marginLeft = (-rw / 2) + 'px';
-    el.carImg.style.width = (rw * CAR_ROAD) + 'px';
+    /* el.carImg is .car-idle, the wrapper around the canvas (kept sized to
+     * match for layout/drop-shadow bounds, as it was for the old <img>).
+     * The canvas no longer inherits size from it, though - a canvas has no
+     * width:100%-from-parent auto-height behaviour the way an <img> does,
+     * so Car3D.resize sets the canvas's own CSS box AND its internal pixel
+     * buffer directly, from the model's real aspect ratio once loaded. */
+    var carW = rw * CAR_ROAD;
+    el.carImg.style.width = carW + 'px';
+    Car3D.resize(carW);
     el.clouds.style.backgroundSize = '100% ' + Math.max(900, S.vh * 1.7) + 'px';
     S.cloudTile = Math.max(900, S.vh * 1.7);
   }
 
-  /* A resize changes every derived length, so there is nothing to glide from —
-   * snap to the true position and redraw. */
+  /* A resize changes every derived length — remeasure and redraw against it. */
   var onResize = function () { measure(); ys = window.scrollY; ping(); };
 
   /* -------------------------------------------------------------- loop */
 
   function ping() {
-    if (!raf) { prevT = 0; raf = requestAnimationFrame(frame); }
+    if (!raf) raf = requestAnimationFrame(frame);
   }
 
-  function frame(now) {
+  function frame() {
     raf = 0;
     var y = window.scrollY;
 
-    if (RM) { ys = y; tick(ys); return; }
-
-    /* Frame-rate independent easing: GLIDE is defined per 60fps frame, so a 120Hz
-     * screen must take smaller bites and a stuttering one larger, or the world
-     * drifts at a different speed on every device. */
-    var dt = prevT ? Math.min(64, now - prevT) : 16.67;
-    prevT = now;
-    var k = 1 - Math.pow(1 - GLIDE, dt / 16.67);
-
-    var gap = y - ys;
-    ys += gap * k;
-    if (Math.abs(y - ys) < 0.35) ys = y;        // land exactly, don't creep forever
-
+    /* The car's position is a direct function of scroll position, not an
+     * animation racing to catch up to it — no glide, no trailing. Scroll stops,
+     * the car stops on that same frame; scroll moves, the car moves that same
+     * distance, in sync. */
+    ys = y;
     tick(ys);
 
-    /* Keep running while the world is still catching up, and for a moment after,
-     * so the velocity-driven layers have time to settle back to zero. */
-    if (ys !== y || vsm > 0.004) raf = requestAnimationFrame(frame);
+    /* Keep running only while the velocity-driven layers (bob, tilt, streaks)
+     * are still settling back to zero after motion stops — the car itself is
+     * already at rest by then. */
+    if (vsm > 0.004) raf = requestAnimationFrame(frame);
   }
 
   /* sample one of the ribbon's per-row tracks at a given native row */
@@ -413,6 +627,12 @@
     var i = 0;
     while (i < n - 1 && y >= S.legTop[i + 1]) i++;
     var into = y - S.legTop[i];
+    /* The journey opens with the car already at the midpoint of leg 0's drive,
+     * not at the road's true first inch — so scroll 0 reads as "already under
+     * way in the garden" rather than a dead stop nobody asked to arrive at.
+     * Only leg 0 gets this head start; every later leg still measures its own
+     * scroll from its own top. */
+    if (i === 0) into += S.leg0HeadStart;
     var u = clamp(into / S.legDrive[i], 0, 1);
 
     var p = curve(u, S.ein[i], S.eout[i], S.vpeak[i]);
@@ -456,22 +676,28 @@
 
     daylight(prog * DAY_SPAN);
 
-    /* Copy + rail. Every block is driven from the same scroll position rather than
-     * only the current leg's, so one can still be on screen while its leg is behind
-     * us — which is the whole point: it holds until the next one takes over. */
-    for (var ci = 0; ci < n; ci++) {
-      if (!el.hasCopy[ci]) continue;
-      var a = ramp(y, S.showA[ci], S.showB[ci]) * (1 - ramp(y, S.hideA[ci], S.hideB[ci]));
-      var st = el.copies[ci].style;
-      if (a === 0 && st.opacity === '0') continue;      // already parked
-      st.opacity = a.toFixed(3);
-      st.transform = 'translate3d(0,' + ((1 - a) * 16).toFixed(1) + 'px,0)';
-    }
-    if (lastLeg !== i) {
-      el.dots.forEach(function (dot, k) { dot.classList.toggle('on', k === i); });
-      lastLeg = i;
-    }
     el.cue.style.opacity = y > S.vh * .35 ? '0' : '1';
+    /* Overlay hand-off, front to back: hidden at the very top, then the
+     * title while the journey is still inside its own leg(s), then the
+     * event details once the beach leg (TITLE_LAST_LEG) is behind us —
+     * except the dam leg (DAM_LEG), which swaps in its own caption instead,
+     * and the very last leg, which closes on "The Beginning" in the title's
+     * own style rather than the events list. i is the leg index tick()
+     * already computed above — reused, not re-derived. */
+    var revealed = y > S.vh * .03;
+    var onDam = i === DAM_LEG;
+    var onLast = i === S.n - 1;
+    /* "The Beginning" waits until the last leg's own drive is well under way
+     * (ENDING_REVEAL_AT) rather than cutting to it the instant the leg
+     * starts — u is this leg's own 0..1 progress, already computed above. */
+    var showEnding = onLast && u > ENDING_REVEAL_AT;
+    el.title.style.opacity = revealed && i <= TITLE_LAST_LEG ? '1' : '0';
+    el.details.style.opacity = el.venue.style.opacity =
+      revealed && i > TITLE_LAST_LEG && !onDam && !onLast ? '1' : '0';
+    el.damCaption.style.opacity = el.damVenue.style.opacity =
+      revealed && onDam ? '1' : '0';
+    el.ending.style.opacity = el.endingVenue.style.opacity =
+      revealed && showEnding ? '1' : '0';
   }
 
   function daylight(f) {
