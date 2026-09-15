@@ -320,7 +320,8 @@
     el.car = $('car'); el.carImg = document.querySelector('.car-idle');
     el.tint = $('tint'); el.dusk = $('dusk'); el.grain = $('grain');
     el.legs = $('legs'); el.rail = $('rail'); el.cue = $('cue');
-    el.title = $('title'); el.details = $('details'); el.venue = $('venue');
+    el.title = $('title'); el.titleVenue = $('titleVenue');
+    el.details = $('details'); el.venue = $('venue');
     el.damCaption = $('damCaption'); el.damVenue = $('damVenue');
     el.ending = $('ending'); el.endingVenue = $('endingVenue');
 
@@ -691,7 +692,8 @@
      * (ENDING_REVEAL_AT) rather than cutting to it the instant the leg
      * starts — u is this leg's own 0..1 progress, already computed above. */
     var showEnding = onLast && u > ENDING_REVEAL_AT;
-    el.title.style.opacity = revealed && i <= TITLE_LAST_LEG ? '1' : '0';
+    el.title.style.opacity = el.titleVenue.style.opacity =
+      revealed && i <= TITLE_LAST_LEG ? '1' : '0';
     el.details.style.opacity = el.venue.style.opacity =
       revealed && i > TITLE_LAST_LEG && !onDam && !onLast ? '1' : '0';
     el.damCaption.style.opacity = el.damVenue.style.opacity =
