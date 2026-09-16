@@ -8,8 +8,9 @@
 
   /* Flat volume for the whole track. The source is already normalized to
    * -18 LUFS, so 1.0 gain here would be too loud to sit under a page people
-   * are reading - 0.3 is the requested fixed level. */
-  var VOL = 0.3;
+   * are reading - 0.3 still read as too loud on a real device check, halved
+   * again to 0.15. */
+  var VOL = 0.15;
 
   var btn, audio;
   var ctx, gain, wasPlayingBeforeHide = false;
