@@ -53,20 +53,28 @@
    * cutting to it the instant the leg starts. */
   var ENDING_REVEAL_AT = 0.3;
 
-  /* time of day — [at, tintRGB, tintA, duskRGB, duskA] */
+  /* time of day — [at, tintRGB, tintA, duskRGB, duskA]
+   * The tint layer is a plain alpha overlay (normal blending), not soft-light:
+   * a blend mode over the moving ribbon makes the compositor re-read and
+   * re-blend the full-screen backdrop every frame. These tint values were
+   * least-squares fitted against screenshots of the old soft-light look
+   * (originals, soft-light: 255,217,160 .14 / 255,240,204 .09 /
+   * 255,248,232 .05 / 255,192,120 .17 / 255,154,90 .22 / 118,116,186 .26 /
+   * 74,92,150 .30), so a flat overlay only needs about a third of the old
+   * alpha to give the same warm lift. Normal blending can't reproduce soft-
+   * light's midtone contrast, so the match is close, not exact. The last
+   * three stops sit past DAY_SPAN and are never reached today; they were
+   * fitted the same way so the table stays coherent if DAY_SPAN grows. */
   var DAY = [
-    [0.00, 255, 217, 160, .14,  20, 26, 40, .00],
-    [0.18, 255, 240, 204, .09,  20, 26, 40, .00],
-    [0.40, 255, 248, 232, .05,  20, 26, 40, .00],
-    [0.62, 255, 192, 120, .17,  46, 30, 32, .05],
-    [0.80, 255, 154,  90, .22,  34, 26, 46, .14],
-    [0.92, 118, 116, 186, .26,  16, 18, 40, .30],
-    [1.00,  74,  92, 150, .30,  10, 12, 30, .42]
+    [0.00, 255, 226,  70, .046,  20, 26, 40, .00],
+    [0.18, 255, 255, 154, .029,  20, 26, 40, .00],
+    [0.40, 255, 255, 195, .016,  20, 26, 40, .00],
+    [0.62, 255, 185,  33, .051,  46, 30, 32, .05],
+    [0.80, 255, 141,  18, .068,  34, 26, 46, .14],
+    [0.92,  63,  53, 255, .025,  16, 18, 40, .30],
+    [1.00,   0,   0, 114, .041,  10, 12, 30, .42]
   ];
 
-  var NOISE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.62'/%3E%3C/svg%3E";
-  /* wide, very tall cells — reads as smear along the direction of travel, not grain */
-  var SMEAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='420'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.03 0.006' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='420' filter='url(%23s)' opacity='.7'/%3E%3C/svg%3E";
 
   /* The browser's own scroll restoration (reload, back/forward, bfcache) drops a
    * fresh visit into the middle of this drive-then-hold spine instead of at the
@@ -80,6 +88,9 @@
   var RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var R = null, C = [], S = {}, el = {};
   var raf = 0, pd, vsm = 0;
+  /* last values written to .streaks — see tick(). streakOn starts false to
+   * match road.css's own starting visibility:hidden. */
+  var streakOn = false, streakOp = '', streakTf = '';
   /* ys mirrors window.scrollY exactly — everything downstream reads ys so effect
    * layers have one source of truth, but there is no lag between the two. */
   var ys = 0;
@@ -117,21 +128,72 @@
    * what's drawn on it. aspect starts at the painted image's old ratio
    * (95:173) so sizing is sane before the model finishes loading; it's
    * corrected to the model's real aspect once the glTF's bounding box is
-   * known. */
+   * known.
+   *
+   * Three.js itself (~600KB with its loaders) is loaded from HERE, not from
+   * <script> tags in index.html. As deferred tags ahead of road.js they held
+   * this whole file — ribbon, legs, the page's scroll height — hostage until
+   * they'd downloaded, which on a slow phone connection meant several seconds
+   * of a page that couldn't scroll, for what is visually a small car. Now the
+   * scene builds straight away and the car slot stays empty until Three.js
+   * and the model arrive, as it always has. No stand-in image: art/car.webp
+   * is the old pink painted car, not the EcoSport, and flashing it for a
+   * moment on every reload read as a bug, not a loading state. It's only
+   * used if the 3D car fails outright (fallback()). */
   var Car3D = (function () {
     var canvas, renderer, scene, camera, model;
     var aspect = 95 / 173;   // width/height, painted car.webp's ratio as a placeholder
     var ready = false;
+    var lastW = 1;           // last width measure() asked for
+    var libs = 'loading';    // 'loading' | 'ok' | 'failed' — state of the three CDN scripts
+    var wantInit = false;    // start() has called init() but libs were still loading
 
+    var CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0/';
+    /* Started by buildRibbon() once every ribbon chunk has arrived, not when
+     * road.js runs: on a slow connection bandwidth is the bottleneck, and
+     * Three.js (then the 3.5MB .glb it fetches) downloading alongside the
+     * ribbon art only delays the road itself, which is the thing people came
+     * to see — the painted car covers the wait. On a normal connection the
+     * ribbon is in within a fraction of a second, so the 3D car is barely
+     * later than before. Dynamic scripts with async=false still download in parallel but
+     * EXECUTE in insertion order — the loaders assign onto window.THREE, so
+     * they must run after three.min.js — and, unlike a deferred tag, block
+     * nothing else on the page while they do. One failure (blocked CDN,
+     * ad-blocker, offline) is enough to fail the lot: the loaders are useless
+     * without the core. */
+    function loadLibs() {
+      var srcs = ['build/three.min.js', 'examples/js/loaders/GLTFLoader.js', 'examples/js/loaders/DRACOLoader.js'];
+      srcs.forEach(function (src, i) {
+        var s = document.createElement('script');
+        s.src = CDN + src;
+        s.async = false;
+        s.onerror = function () { libsDone('failed'); };
+        if (i === srcs.length - 1) s.onload = function () { libsDone('ok'); };
+        document.head.appendChild(s);
+      });
+    }
+    function libsDone(state) {
+      if (libs !== 'loading') return;  // several onerrors can fire; the first result wins
+      libs = state;
+      if (wantInit) build();
+    }
+
+    /* Called from start(). The canvas stays in place, transparent, until the
+     * model is drawn on it — build() runs whenever both this and loadLibs()
+     * have happened, in whichever order. */
     function init(canvasEl) {
       canvas = canvasEl;
+      wantInit = true;
+      if (libs !== 'loading') build();
+    }
+
+    function build() {
+      if (!canvas) return;
       /* A blocked or failed CDN request (ad-blocker, offline, a dropped
-       * request for one of the three <script> tags) leaves window.THREE
-       * undefined — calling into it would throw and, since this runs partway
-       * through start(), take the rest of that function's setup down with
-       * it. Fall back the same way a failed model fetch does, before ever
-       * touching THREE. */
-      if (typeof THREE === 'undefined' || !THREE.GLTFLoader || !THREE.DRACOLoader) {
+       * request for one of the three scripts) leaves window.THREE undefined —
+       * calling into it would throw. Fall back the same way a failed model
+       * fetch does, before ever touching THREE. */
+      if (libs !== 'ok' || typeof THREE === 'undefined' || !THREE.GLTFLoader || !THREE.DRACOLoader) {
         console.error('car3d: THREE/GLTFLoader/DRACOLoader unavailable, falling back to painted car');
         fallback();
         return;
@@ -164,7 +226,7 @@
       scene.add(fill);
 
       var dracoLoader = new THREE.DRACOLoader();
-      dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+      dracoLoader.setDecoderPath(CDN + 'examples/js/libs/draco/');
       var loader = new THREE.GLTFLoader();
       loader.setDRACOLoader(dracoLoader);
       loader.load('models/ecosport/scene-compressed.glb', function (gltf) {
@@ -196,8 +258,9 @@
         camera.updateProjectionMatrix();
 
         ready = true;
-        resize(canvas.clientWidth || 1);
-        renderer.render(scene, camera);
+        /* re-apply lastW with the model's real aspect, then render */
+        resize(lastW);
+        hasCar();
       }, undefined, function (err) {
         /* A blank canvas is worse than the flat car this replaced — a slow
          * connection, a blocked CDN, or a dropped request now shows no car at
@@ -208,13 +271,26 @@
       });
     }
 
-    function fallback() {
-      if (!canvas || !canvas.parentNode) return;
+    function paintedCar() {
       var img = document.createElement('img');
       img.src = 'art/car.webp'; img.alt = '';
       img.style.cssText = 'display:block;width:100%;height:auto;transform:rotate(180deg)';
-      canvas.parentNode.replaceChild(img, canvas);
+      return img;
+    }
+
+    function fallback() {
+      if (!canvas || !canvas.parentNode) return;
+      canvas.parentNode.replaceChild(paintedCar(), canvas);
       canvas = null;
+      hasCar();
+    }
+
+    /* .car-shadow is drawn from .car-idle's box, not from the car's pixels,
+     * so it would sit on the road under an empty slot while the model loads.
+     * It is shown only once there is a car above it (see road.css). */
+    function hasCar() {
+      var idle = document.querySelector('.car-idle');
+      if (idle) idle.classList.add('has-car');
     }
 
     /* Wedding-car flower decoration, built procedurally (small clustered
@@ -314,6 +390,7 @@
      * the renderer's internal pixel buffer are set here from the model's
      * own measured aspect (or the placeholder, before it has loaded). */
     function resize(widthPx) {
+      lastW = widthPx;
       if (!canvas) return;
       var heightPx = widthPx / aspect;
       canvas.style.width = widthPx + 'px';
@@ -324,9 +401,89 @@
       }
     }
 
-    return { init: init, resize: resize };
+    return { init: init, resize: resize, loadLibs: loadLibs };
   })();
 
+  /* ------------------------------------------------------------ sheets
+   * The glass event pop-ups (<dialog class="sheet"> in index.html). A native
+   * modal dialog gives focus trapping, Esc-to-close and the top layer for
+   * free. The page is scroll-locked while one is open: every scroll px
+   * drives the road, so a stray swipe over the backdrop would otherwise
+   * move the whole scene under the sheet. */
+  var Sheets = (function () {
+    var all = Array.prototype.slice.call(document.querySelectorAll('dialog.sheet'));
+
+    all.forEach(function (d) {
+      d.querySelector('.sheet-directions').href = d.dataset.map;
+      d.querySelector('.sheet-close').addEventListener('click', function () { close(d); });
+      /* a click whose target is the dialog itself landed on the backdrop */
+      d.addEventListener('click', function (e) { if (e.target === d) close(d); });
+      d.addEventListener('close', function () {
+        document.documentElement.classList.remove('sheet-open');
+      });
+      /* swipe the sheet down by its grab handle to dismiss (phones) */
+      var y0 = null;
+      d.addEventListener('touchstart', function (e) {
+        y0 = d.scrollTop <= 0 ? e.touches[0].clientY : null;
+      }, { passive: true });
+      d.addEventListener('touchend', function (e) {
+        if (y0 !== null && e.changedTouches[0].clientY - y0 > 90) close(d);
+        y0 = null;
+      });
+      tabs(d);
+    });
+
+    function tabs(d) {
+      var list = d.querySelector('[role="tablist"]');
+      if (!list) return;
+      var btns = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+      var pill = list.querySelector('.sheet-pill');
+      function select(i, focus) {
+        btns.forEach(function (b, j) {
+          var on = j === i;
+          b.setAttribute('aria-selected', on);
+          b.tabIndex = on ? 0 : -1;
+          document.getElementById(b.getAttribute('aria-controls')).hidden = !on;
+        });
+        pill.style.width = btns[i].offsetWidth + 'px';
+        pill.style.transform = 'translateX(' + btns[i].offsetLeft + 'px)';
+        if (focus) btns[i].focus();
+      }
+      btns.forEach(function (b, i) {
+        b.addEventListener('click', function () { select(i); });
+        b.addEventListener('keydown', function (e) {
+          var k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+          if (k) { e.preventDefault(); select((i + k + btns.length) % btns.length, true); }
+        });
+      });
+      /* the pill is sized from laid-out tabs, so it can only be placed
+       * once the dialog is actually showing */
+      d.addEventListener('sheetopen', function () {
+        select(Math.max(0, btns.findIndex(function (b) { return b.getAttribute('aria-selected') === 'true'; })));
+      });
+    }
+
+    function open(d) {
+      document.documentElement.classList.add('sheet-open');
+      d.showModal();
+      d.dispatchEvent(new Event('sheetopen'));
+    }
+    function close(d) {
+      d.classList.add('closing');
+      setTimeout(function () { d.classList.remove('closing'); d.close(); }, 220);
+    }
+    function find(url) {
+      return all.filter(function (d) { return d.dataset.map === url; })[0];
+    }
+    return { open: open, find: find };
+  })();
+
+  /* index.html preloads this (rel=preload as=fetch crossorigin) so the request
+   * is already in flight while the HTML is still parsing. That preload is only
+   * reused if this request's mode/credentials match it: fetch()'s defaults
+   * (cors, same-origin credentials) are exactly what crossorigin="anonymous"
+   * gives the preload — add options here and the preload must change too, or
+   * Chrome downloads it twice and warns the preload went unused. */
   fetch('ribbon.json').then(function (r) { return r.json(); }).then(start);
 
   function start(data) {
@@ -334,7 +491,8 @@
     window.RoadFX.ribbon = R;
     el.ribbon = $('ribbon'); el.streaks = $('streaks'); el.clouds = $('clouds');
     el.car = $('car'); el.carImg = document.querySelector('.car-idle');
-    el.tint = $('tint'); el.dusk = $('dusk'); el.grain = $('grain');
+    el.carAnchor = document.querySelector('.car-anchor');
+    el.tint = $('tint'); el.dusk = $('dusk');
     el.legs = $('legs'); el.rail = $('rail'); el.cue = $('cue');
     el.title = $('title'); el.titleVenue = $('titleVenue');
     el.details = $('details'); el.venue = $('venue');
@@ -343,30 +501,43 @@
 
     Car3D.init($('car3d'));
 
-    el.grain.style.backgroundImage = 'url("' + NOISE + '")';
-    el.streaks.style.backgroundImage = 'url("' + SMEAR + '")';
+    /* The smear used to be an feTurbulence SVG (wide, very tall cells, so it
+     * reads as smear along the direction of travel, not grain) blended with
+     * mix-blend-mode: overlay under two CSS masks. It is now that same noise
+     * pre-rendered to a plain tile, because each part cost something every
+     * moving frame: overlay needs the road behind it isolated and read back,
+     * two extra compositor render passes per frame (about 7 → 5 in a trace).
+     * The tile already holds what the rest did:
+     *  - its colour and alpha are worked out so a normal blend adds what
+     *    overlay added over average tarmac (overlay of a light grey g adds
+     *    b·(2g−1) to tarmac b; the tile's colour 2·b and alpha (2g−1) add the
+     *    same amount);
+     *  - the fade off the verges is baked into its alpha — the tile is
+     *    stretched to the element's width, so it lines up exactly;
+     *  - it tiles without a seam (crossfaded with itself half a tile down).
+     *    feTurbulence's stitchTiles never tiled seamlessly in Chromium, and
+     *    the per-tile fade mask meant to hide that never applied: layered
+     *    masks default to mask-composite: add, a union, so each mask filled
+     *    in the other's gaps and neither did anything.
+     * STREAK_TILE must stay 420, the tile's own height (the file is 2x,
+     * 400x840, for sharpness on high-DPR phones). */
+    el.streaks.style.backgroundImage = 'url("art/streak.webp")';
     el.streaks.style.backgroundRepeat = 'repeat-y';
     el.streaks.style.backgroundSize = '100% ' + STREAK_TILE + 'px';
-    /* Two masks layered: the horizontal one keeps the smear off the verges: the
-     * vertical one — tiled at the same pitch as the noise texture itself — fades
-     * each tile toward transparent top and bottom. feTurbulence's stitchTiles
-     * does not always tile seamlessly in every browser, and without this a
-     * visible line can appear at every repeat as the ribbon scrolls. */
-    var edgeFade = 'linear-gradient(90deg, rgba(0,0,0,0) 0%, #000 18%, #000 82%, rgba(0,0,0,0) 100%)';
-    var tileFade = 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000 8%, #000 92%, rgba(0,0,0,0) 100%)';
-    el.streaks.style.webkitMaskImage = el.streaks.style.maskImage = edgeFade + ', ' + tileFade;
-    el.streaks.style.webkitMaskSize = el.streaks.style.maskSize = '100% 100%, 100% ' + STREAK_TILE + 'px';
-    el.streaks.style.webkitMaskRepeat = el.streaks.style.maskRepeat = 'no-repeat, repeat-y';
 
     buildRibbon();
     buildLegs();
+    buildVhProbe();
     measure();
     ys = window.scrollY;
     tick(ys);
 
     window.addEventListener('scroll', ping, { passive: true });
+    /* window resize only. visualViewport's resize used to be wired here too, but
+     * it fires on every mobile address-bar show/hide and pinch-zoom — exactly the
+     * events that must NOT remeasure (see onResize) — and it never reports a
+     * layout change window resize would miss. */
     window.addEventListener('resize', onResize);
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
   }
 
   /* ------------------------------------------------------------- build */
@@ -386,10 +557,14 @@
       img.src = c.src;                              // whole ribbon is small; load it all now
       frag.appendChild(img);
 
-      return { img: img, y: c.y, h: c.h, top: 0, hpx: 0 };
+      /* shown: whether tick() currently lets this tile paint (see cullTiles) */
+      return { img: img, y: c.y, h: c.h, top: 0, hpx: 0, shown: true };
     });
     el.ribbon.appendChild(frag);
-    Promise.all(loads).then(function () { el.ribbon.style.visibility = ''; });
+    Promise.all(loads).then(function () {
+      el.ribbon.style.visibility = '';
+      Car3D.loadLibs();  // only now — see Car3D.loadLibs for why not sooner
+    });
 
     /* Tappable boxes painted into the art (e.g. a "take me here" callout) —
      * a plain child of #ribbon, like the chunk images, so it pans and scales
@@ -404,6 +579,13 @@
       a.className = 'map-link';
       a.href = l.url; a.target = '_blank'; a.rel = 'noopener';
       a.setAttribute('aria-label', 'Open in Google Maps');
+      /* A matching event sheet (index.html, matched by data-map) takes over
+       * the tap; without one, the href above still opens the map. */
+      var sheet = Sheets.find(l.url);
+      if (sheet) {
+        a.setAttribute('aria-label', 'Event details');
+        a.addEventListener('click', function (e) { e.preventDefault(); Sheets.open(sheet); });
+      }
       el.ribbon.appendChild(a);
       return { a: a, top: l.top, bottom: l.bottom, left: l.left, right: l.right };
     });
@@ -431,9 +613,40 @@
 
   /* ----------------------------------------------------------- measure */
 
+  /* A zero-width, invisible, fixed box that is 100lvh tall — read in measure() as
+   * the viewport height every length in the journey is derived from.
+   *
+   * innerHeight is the wrong number for that on a phone: it is the *visible*
+   * height, which shrinks and grows by ~80px every time the address bar shows or
+   * hides — i.e. constantly, mid-scroll, as a side effect of the scroll itself.
+   * Every leg height, S.travel and S.carY is derived from it, so remeasuring
+   * against it changed the page's own length under the reader's thumb (~180px)
+   * and snapped the road ~155px forward or back. lvh is the height *with the bar
+   * hidden* and does not move while it animates, so the maths is pinned to one
+   * stable screen. On a desktop lvh == innerHeight, so nothing changes there.
+   * The 100vh line is only a parser fallback for engines without lvh (they drop
+   * the second declaration); measure() does not trust the probe there anyway. */
+  function buildVhProbe() {
+    el.vhProbe = document.createElement('div');
+    el.vhProbe.setAttribute('aria-hidden', 'true');
+    el.vhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;height:100lvh;' +
+      'visibility:hidden;pointer-events:none';
+    document.body.appendChild(el.vhProbe);
+  }
+  var HAS_LVH = !!(window.CSS && CSS.supports && CSS.supports('height', '100lvh'));
+
   function measure() {
     S.vw = window.innerWidth;
-    S.vh = window.innerHeight;
+    /* The innerHeight this measure was taken at — onResize compares against it
+     * to tell a real window resize from address-bar churn. */
+    S.ih = window.innerHeight;
+    /* Stable height, not innerHeight — see buildVhProbe(). Without lvh (iOS <15.4,
+     * old Android) fall back to innerHeight as it is right now: onResize already
+     * refuses to remeasure on address-bar-sized changes, so whatever height this
+     * measure is taken at stays the one height the whole journey is built on
+     * until a real resize, which is the property that matters. A 0 from the probe
+     * (not laid out yet) falls back the same way. */
+    S.vh = (HAS_LVH && el.vhProbe.offsetHeight) || S.ih;
     /* Fit-to-viewport zoom is computed against zoomWidth (the normal frame width),
      * not R.width (the ribbon's actual pixel width) — the two differ when a
      * "wide" segment made the canvas wider than the rest of the route for one
@@ -475,6 +688,13 @@
     S.rw = R.width * S.scale;
     S.travel = Math.max(1, R.height * S.scale - S.vh);
     S.carY = S.vh * 0.56;
+    /* Pin the car's fixed anchor to the exact px the maths assumes. road.css's
+     * top:56lvh gets the same answer where lvh exists, but a % or vh top would
+     * track innerHeight live on a phone while S.carY does not (by design — see
+     * onResize), leaving the car off the painted road by half the address bar.
+     * Setting it here keeps the two locked in every engine and after every
+     * resize onResize chooses to ignore. */
+    el.carAnchor.style.top = S.carY + 'px';
 
     el.ribbon.style.width = S.rw + 'px';
     el.ribbon.style.marginLeft = (-S.rw / 2) + 'px';
@@ -502,13 +722,22 @@
       : 'none';
     el.ribbon.style.webkitMaskImage = el.ribbon.style.maskImage = fade;
 
-    /* round to whole pixels so adjacent chunks share an exact edge — a fractional
-     * height here is what would show up as a hairline seam across the scene */
+    /* Each chunk's h runs R.chunkOverlap rows past the next chunk's y (see
+     * build-ribbon.py's slice), and chunks are appended in order, so every
+     * later tile paints on top of the one before: the earlier tile's bottom
+     * edge is always covered, and the later tile's top edge lands on the
+     * same pixels it covers. That is what keeps the joins invisible — so
+     * tops/heights are NOT rounded to whole CSS px any more. Rounding was the
+     * old defence against hairlines between butt-joined chunks, but it moves
+     * each tile by up to half a CSS px (1.5 device px at DPR 3) against its
+     * neighbour — a visible jog in the painting once tiles overlap instead
+     * of butting. Unrounded, every row sits at exactly row * S.scale, as it
+     * would in one single image; the browser's own device-pixel snapping is
+     * all that is left, and the overlap hides it. */
     C.forEach(function (c) {
-      var t = Math.round(c.y * S.scale);
-      var b = Math.round((c.y + c.h) * S.scale);
-      c.top = t; c.hpx = b - t;
-      c.img.style.top = t + 'px';
+      c.top = c.y * S.scale;
+      c.hpx = c.h * S.scale;
+      c.img.style.top = c.top + 'px';
       c.img.style.height = c.hpx + 'px';
     });
 
@@ -599,13 +828,21 @@
     /* Scroll 0 opens with the car already halfway down leg 0's own drive, not at
      * the road's literal first inch — see tick(). */
     S.leg0HeadStart = S.legDrive[0] / 2;
-    S.docLen = top;
+    /* ...and so leg 0 only has the *remaining* half of its drive left to scroll.
+     * Without this its section kept the full drive's height: tick() reached
+     * u = 1 at y = drive/2, then the car sat parked at the first join for the
+     * other half-drive (~0.27 screens) until legTop[1] — scroll moving, road not,
+     * right at the start of the page. Pull every later leg up by the head start. */
+    for (var lk = 1; lk < S.n; lk++) S.legTop[lk] -= S.leg0HeadStart;
+    el.sections[0].style.height =
+      Math.round(S.legDrive[0] - S.leg0HeadStart + (S.n === 1 ? S.vh : 0)) + 'px';
+    S.docLen = top - S.leg0HeadStart;
 
     var rw = R.roadWidth * S.scale;
     el.streaks.style.width = rw + 'px';
     el.streaks.style.marginLeft = (-rw / 2) + 'px';
     /* el.carImg is .car-idle, the wrapper around the canvas (kept sized to
-     * match for layout/drop-shadow bounds, as it was for the old <img>).
+     * match for layout, and for .car-shadow, whose insets are % of it).
      * The canvas no longer inherits size from it, though - a canvas has no
      * width:100%-from-parent auto-height behaviour the way an <img> does,
      * so Car3D.resize sets the canvas's own CSS box AND its internal pixel
@@ -617,8 +854,29 @@
     S.cloudTile = Math.max(900, S.vh * 1.7);
   }
 
-  /* A resize changes every derived length — remeasure and redraw against it. */
-  var onResize = function () { measure(); ys = window.scrollY; ping(); };
+  /* A resize changes every derived length — remeasure and redraw against it —
+   * but only a *real* one.
+   *
+   * On a phone the window "resizes" every time the address bar slides in or out,
+   * which happens as a side effect of scrolling itself. Remeasuring then rebuilt
+   * every leg from the new height: the page got ~180px shorter under the reader's
+   * thumb and the road jumped ~155px at the same scrollY. So on a touch screen
+   * only two things count as a real resize: a width change (rotation, split
+   * view), or a height change bigger than any toolbar could explain (25% — the
+   * iOS bar is ~12% of a portrait phone, a rotation is ~50%). Everything else is
+   * left alone; S.vh already comes from lvh (see buildVhProbe), so the layout
+   * built at load is already the right one for the bar-hidden screen too.
+   *
+   * A desktop window (fine pointer + hover) has no collapsing toolbar, and every
+   * height change there is the user dragging the window — ignoring a 10% drag
+   * would leave the journey fitted to a screen that no longer exists — so it
+   * remeasures on everything, as before. */
+  var FINE_POINTER = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  var onResize = function () {
+    var w = window.innerWidth, h = window.innerHeight;
+    if (!FINE_POINTER && w === S.vw && Math.abs(h - S.ih) <= S.ih * 0.25) return;
+    measure(); ys = window.scrollY; ping();
+  };
 
   /* -------------------------------------------------------------- loop */
 
@@ -702,6 +960,8 @@
     el.ribbon.style.transform =
       'translate3d(' + (-pan).toFixed(2) + 'px,' + (-d).toFixed(2) + 'px,0)';
 
+    cullTiles(d);
+
     /* the car keeps to the painted road even where it wanders, and rides the pan */
     var cx = trackAt(R.roadCentre, (d + S.carY) / S.scale) * S.scale - pan;
     el.car.style.transform =
@@ -709,10 +969,24 @@
       'rotate(' + (Math.sin(d / (S.vh * .7)) * 1.6 * vs).toFixed(3) + 'deg)';
 
     if (!RM) {
-      el.streaks.style.opacity = (vs * .5).toFixed(3);
-      el.streaks.style.transform =
-        'translate3d(' + cx.toFixed(2) + 'px,' +
-        (-((d * STREAK_LEAD) % STREAK_TILE)).toFixed(2) + 'px,0)';
+      /* The smear only exists while moving. At vs 0 it is hidden outright,
+       * not just left at opacity 0 — an opacity-0 layer that will-change keeps
+       * promoted still holds its compositor layer and raster tiles for a
+       * 300vh strip nobody can see. visibility (not display) so hiding it
+       * never costs a layout. Style is only written when a value really
+       * changes, and while hidden opacity/transform aren't touched at all:
+       * during arrival holds and the settle frames after a stop the loop
+       * keeps ticking with nothing here moving. The frame it comes back sees
+       * fresh values that differ from the cache and writes them. */
+      var on = vs > 0;
+      if (on) {
+        var op = (vs * .5).toFixed(3);
+        var tf = 'translate3d(' + cx.toFixed(2) + 'px,' +
+          (-((d * STREAK_LEAD) % STREAK_TILE)).toFixed(2) + 'px,0)';
+        if (op !== streakOp) { el.streaks.style.opacity = op; streakOp = op; }
+        if (tf !== streakTf) { el.streaks.style.transform = tf; streakTf = tf; }
+      }
+      if (on !== streakOn) { el.streaks.style.visibility = on ? 'visible' : ''; streakOn = on; }
       el.clouds.style.transform =
         'translate3d(0,' + (-((d * .055) % S.cloudTile)).toFixed(2) + 'px,0)';
     }
@@ -751,14 +1025,73 @@
     setOpacity(el.endingVenue, 'endingVenue', revealed && showEnding);
   }
 
+  /* Time of day as a cross-fade, not a colour change. daylight() used to
+   * write a freshly interpolated backgroundColor to #tint and #dusk on every
+   * scroll frame — and a changed background colour is a repaint, of two
+   * full-viewport layers, every frame the car moves (in a trace, ~6x the
+   * paint and raster work of the same scroll with the colour held still).
+   * Caching the string didn't help: the interpolated colour really does
+   * change almost every frame.
+   *
+   * So each layer is now two stacked children, each holding one DAY stop's
+   * colour at that stop's own alpha, and only their opacity moves: (1 - t)
+   * on the stop behind, t on the stop ahead. Opacity on a composited layer
+   * is applied by the compositor with no repaint at all; the colours are
+   * repainted only when the journey crosses into the next pair of stops,
+   * which happens a handful of times over the whole drive. With normal
+   * blending (see .tint in road.css) this lands within a fraction of a
+   * level of the old interpolated colour — the alphas involved are small
+   * enough that stacking two faint layers and blending one in-between
+   * colour come out the same. */
+  function fadePair(host) {
+    host.style.backgroundColor = 'transparent';
+    var mk = function () {
+      var d = document.createElement('div');
+      d.style.cssText = 'position:absolute;inset:0;will-change:opacity;opacity:0';
+      host.appendChild(d);
+      return d;
+    };
+    return { a: mk(), b: mk(), seg: -1, oa: '', ob: '' };
+  }
+  function setPair(p, seg, ca, cb, t) {
+    if (p.seg !== seg) { p.seg = seg; p.a.style.backgroundColor = ca; p.b.style.backgroundColor = cb; }
+    var oa = (1 - t).toFixed(3), ob = t.toFixed(3);
+    if (oa !== p.oa) { p.oa = oa; p.a.style.opacity = oa; }
+    if (ob !== p.ob) { p.ob = ob; p.b.style.opacity = ob; }
+  }
+  var tintPair, duskPair;
+
+  /* Hide tiles more than CULL_VH viewports clear of the visible window, so
+   * the browser can drop their raster tiles and decoded pixels instead of
+   * holding the whole ~53MB ribbon resident — the reason for tiling in the
+   * first place (see build-ribbon.py's slice). A whole viewport of margin on
+   * each side means a tile is already visible, and so rasterised, well
+   * before it scrolls in: at SPEED the ground moves 0.75px per scroll px, so
+   * even a hard fling covers a viewport over several frames. A jump (a
+   * resize, a programmatic scrollTo) lands in the same tick() that flips the
+   * tiles, so the frame that shows the new position already has them.
+   * Written only on change: toggling visibility forces a style recalc and a
+   * repaint of the ribbon layer, which must not happen every scroll frame.
+   * '' (not 'visible') so the tiles still inherit the ribbon's own
+   * load-time hidden state from buildRibbon(). */
+  var CULL_VH = 1;
+  function cullTiles(d) {
+    var lo = d - S.vh * CULL_VH, hi = d + S.vh * (1 + CULL_VH);
+    for (var k = 0; k < C.length; k++) {
+      var c = C[k], on = c.top + c.hpx > lo && c.top < hi;
+      if (on !== c.shown) { c.shown = on; c.img.style.visibility = on ? '' : 'hidden'; }
+    }
+  }
+
   function daylight(f) {
     f = clamp(f, 0, 1);
     var i = 0;
     while (i < DAY.length - 2 && f > DAY[i + 1][0]) i++;
     var a = DAY[i], b = DAY[i + 1];
     var t = clamp((f - a[0]) / (b[0] - a[0]), 0, 1);
-    var L = function (j) { return a[j] + (b[j] - a[j]) * t; };
-    el.tint.style.backgroundColor = 'rgba(' + Math.round(L(1)) + ',' + Math.round(L(2)) + ',' + Math.round(L(3)) + ',' + L(4).toFixed(3) + ')';
-    el.dusk.style.backgroundColor = 'rgba(' + Math.round(L(5)) + ',' + Math.round(L(6)) + ',' + Math.round(L(7)) + ',' + L(8).toFixed(3) + ')';
+    var rgba = function (s, j) { return 'rgba(' + s[j] + ',' + s[j + 1] + ',' + s[j + 2] + ',' + s[j + 3] + ')'; };
+    if (!tintPair) { tintPair = fadePair(el.tint); duskPair = fadePair(el.dusk); }
+    setPair(tintPair, i, rgba(a, 1), rgba(b, 1), t);
+    setPair(duskPair, i, rgba(a, 5), rgba(b, 5), t);
   }
 })();

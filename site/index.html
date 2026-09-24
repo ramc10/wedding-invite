@@ -26,6 +26,12 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="fonts.css">
 <link rel="preload" as="image" href="art/ribbon-000.webp">
+<!-- road.js builds the whole scene off ribbon.json, but as a deferred script
+     it can't even ask for it until the HTML has finished parsing. Preloading
+     starts that fetch now. crossorigin (= anonymous) is required, not
+     decoration: it makes this request's credentials mode match road.js's
+     plain fetch(), and without the match Chrome fetches the file twice. -->
+<link rel="preload" as="fetch" href="ribbon.json" crossorigin>
 <link rel="stylesheet" href="road.css">
 </head>
 <body>
@@ -52,7 +58,7 @@
 <div class="car-anchor" aria-hidden="true">
   <div class="car-drop">
     <div class="car-track" id="car">
-      <div class="car-idle"><canvas id="car3d"></canvas></div>
+      <div class="car-idle"><div class="car-shadow"></div><canvas id="car3d"></canvas></div>
     </div>
   </div>
 </div>
@@ -101,14 +107,113 @@
   <p class="details-place">of everything</p>
 </div>
 
-<!-- defer, not blocking: ~700KB of Three.js + loaders would otherwise hold the
-     whole ribbon/scroll experience hostage until they finish downloading, for
-     what is visually a small car icon. defer keeps document order (these three
-     still finish before road.js runs) while letting the browser parse and
-     paint the rest of the page immediately instead of waiting on this fetch. -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js" defer></script>
+<!-- Event sheets — what the painted "take me here" callouts open (see
+     buildRibbon in road.js). Each is matched to its callout by data-map,
+     which must equal that link's url in ribbon.json; the same url backs the
+     sheet's Directions button. A callout with no matching sheet falls back
+     to opening the map directly.
+     DRAFT: dress codes, colours and notes below are placeholders — confirm
+     before sharing. -->
+<dialog class="sheet" id="sheetBeach" aria-labelledby="sheetBeachTitle"
+        data-map="https://www.google.com/maps/search/?api=1&amp;query=Palm+Beach+Hotel+Visakhapatnam">
+  <div class="sheet-grab" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <div>
+      <h2 class="sheet-title" id="sheetBeachTitle">Palm Beach Hotel</h2>
+      <p class="sheet-sub">Visakhapatnam</p>
+    </div>
+    <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  </header>
+  <div class="sheet-tabs" role="tablist" aria-label="Events">
+    <span class="sheet-pill" aria-hidden="true"></span>
+    <button type="button" role="tab" id="tab-reception" aria-controls="panel-reception" aria-selected="true">Reception</button>
+    <button type="button" role="tab" id="tab-haldi" aria-controls="panel-haldi" aria-selected="false" tabindex="-1">Haldi</button>
+    <button type="button" role="tab" id="tab-muhurtham" aria-controls="panel-muhurtham" aria-selected="false" tabindex="-1">Muhurtham</button>
+  </div>
+
+  <section class="sheet-panel" role="tabpanel" id="panel-reception" aria-labelledby="tab-reception">
+    <h3 class="sheet-event">Reception By the Shore</h3>
+    <dl class="sheet-facts">
+      <div><dt>When</dt><dd>Tuesday, November 17th · 7 PM onwards</dd></div>
+      <div><dt>Where</dt><dd>Beachside lawn, Palm Beach Hotel</dd></div>
+      <div><dt>Dress code</dt><dd>Evening formal · Indo-western welcome</dd></div>
+      <div><dt>Colours</dt><dd class="sheet-swatches">
+        <span style="--c:#1F4E79">Ocean blue</span>
+        <span style="--c:#F3EBDD">Ivory</span>
+        <span style="--c:#D8C08A">Champagne</span>
+      </dd></div>
+    </dl>
+    <p class="sheet-note">It&rsquo;s breezy by the water after sunset, so bring a light shawl. Dinner follows.</p>
+  </section>
+
+  <section class="sheet-panel" role="tabpanel" id="panel-haldi" aria-labelledby="tab-haldi" hidden>
+    <h3 class="sheet-event">Haldi</h3>
+    <dl class="sheet-facts">
+      <div><dt>When</dt><dd>Wednesday, November 18th · 8 AM</dd></div>
+      <div><dt>Where</dt><dd>Palm Beach Hotel</dd></div>
+      <div><dt>Dress code</dt><dd>Light cottons you don&rsquo;t mind getting turmeric on</dd></div>
+      <div><dt>Colours</dt><dd class="sheet-swatches">
+        <span style="--c:#F2B705">Marigold</span>
+        <span style="--c:#FFE27A">Sunshine</span>
+        <span style="--c:#FFFFFF">White</span>
+      </dd></div>
+    </dl>
+    <p class="sheet-note">Expect to get messy! Breakfast will be served.</p>
+  </section>
+
+  <section class="sheet-panel" role="tabpanel" id="panel-muhurtham" aria-labelledby="tab-muhurtham" hidden>
+    <h3 class="sheet-event">Muhurtham</h3>
+    <dl class="sheet-facts">
+      <div><dt>When</dt><dd>Wednesday, November 18th · 8 PM</dd></div>
+      <div><dt>Where</dt><dd>Palm Beach Hotel</dd></div>
+      <div><dt>Dress code</dt><dd>Traditional: silk sarees, lehengas, kurtas, sherwanis, veshtis</dd></div>
+      <div><dt>Colours</dt><dd class="sheet-swatches">
+        <span style="--c:#8B1E2D">Maroon</span>
+        <span style="--c:#C9A227">Gold</span>
+        <span style="--c:#1E5E4E">Emerald</span>
+      </dd></div>
+    </dl>
+    <p class="sheet-note">Please be seated 30 minutes early. The muhurtham is at a fixed time.</p>
+  </section>
+
+  <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+</dialog>
+
+<dialog class="sheet" id="sheetDam" aria-labelledby="sheetDamTitle"
+        data-map="https://www.google.com/maps/search/?api=1&amp;query=AMR+Unnati+Convention+Karimnagar">
+  <div class="sheet-grab" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <div>
+      <h2 class="sheet-title" id="sheetDamTitle">AMR Unnati Convention</h2>
+      <p class="sheet-sub">Karimnagar</p>
+    </div>
+    <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  </header>
+
+  <section class="sheet-panel">
+    <h3 class="sheet-event">Dawat by the Manair</h3>
+    <dl class="sheet-facts">
+      <div><dt>When</dt><dd>Saturday, November 21st · 7 PM onwards</dd></div>
+      <div><dt>Where</dt><dd>AMR Unnati Convention</dd></div>
+      <div><dt>Dress code</dt><dd>Festive Indian</dd></div>
+      <div><dt>Colours</dt><dd class="sheet-swatches">
+        <span style="--c:#0F5257">Teal</span>
+        <span style="--c:#E8C66A">Gold</span>
+        <span style="--c:#F6DDE3">Blush</span>
+      </dd></div>
+    </dl>
+    <p class="sheet-note">Dinner will be served. Parking is available at the venue.</p>
+  </section>
+
+  <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+</dialog>
+
+<!-- No Three.js tags here on purpose: road.js loads Three.js + its loaders
+     (~700KB, from cdn.jsdelivr.net) itself, after it has started building the
+     scene. As deferred tags ahead of road.js they had to finish downloading
+     before road.js could run at all — defer keeps document order — so a slow
+     connection left the page unscrollable for what is visually a small car.
+     See Car3D in road.js; the painted car stands in until the 3D one is ready. -->
 <script src="road.js" defer></script>
 <script src="audio.js" defer></script>
 </body>

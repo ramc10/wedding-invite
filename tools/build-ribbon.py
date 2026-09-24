@@ -11,11 +11,11 @@ seam is resolved here, once, offline:
   4. normalise exposure   — match on asphalt, the one material common to all art
   5. cross-blend overlaps — SAME-terrain blends only, never terrain-to-terrain
   6. grade contrast/sat   — baked in here, not left as a runtime CSS filter (see below)
-  7. slice to chunks      — a lossless cut, so chunks butt-join pixel-perfectly
+  7. slice to chunks      — a lossless cut, each tile overlapping the next by a few rows
 
 Usage:  python3 tools/build-ribbon.py <manifest.json> [-o site]
 """
-import argparse, json, math, os, sys
+import argparse, json, math, os, re, sys
 import numpy as np
 from PIL import Image, ImageFilter, ImageEnhance
 
@@ -620,14 +620,44 @@ def main():
     strip_im = ImageEnhance.Color(strip_im).enhance(1.08)
     strip = np.asarray(strip_im)
 
-    # slice — a cut, not a blend: adjacent chunks align exactly
+    # slice — a cut, not a blend: every tile is the strip's own pixels, so the
+    # overlap below is identical content on both sides, never a blend.
+    #
+    # Why tiles at all: one 1758x7528 webp decodes to ~53MB, past many mobile
+    # GPUs' max texture size (4096) — the browser then re-decodes or
+    # downsamples it on raster, which is scroll jank. ~2048-row tiles stay
+    # well inside every texture limit and let off-screen ones be dropped.
+    #
+    # Why each tile runs CHUNK_OVERLAP rows past its nominal end: butt-joined
+    # tiles drawn as separate <img>s at a fractional scale each antialias
+    # their own edge, which showed as a faint hairline across the scene (the
+    # reason chunk_height was once raised past the whole strip). With the
+    # overlap, each tile's bottom edge sits UNDER the next tile (later
+    # siblings paint on top — see road.js measure()), and the next tile's top
+    # edge lands on identical pixels, so there is no edge left to see.
+    # ribbon.json keeps y nominal; h includes the overlap.
+    OVER_T = int(mf.get("chunk_overlap", 4))
+    if max(CANVAS_W, min(H, CH + OVER_T)) > 4096:
+        print(f"  ! tiles are {CANVAS_W}x{min(H, CH + OVER_T)}px — past the 4096px "
+              "texture limit many mobile GPUs have; lower chunk_height")
     chunks, total, water_kb = [], 0, 0
     walpha = water_alpha(strip) if args.water else None
     n = math.ceil(H / CH)
     for i in range(n):
-        y0, y1 = i * CH, min(H, (i + 1) * CH)
+        y0, y1 = i * CH, min(H, (i + 1) * CH + OVER_T)
         name = f"ribbon-{i:03d}.webp"
-        Image.fromarray(strip[y0:y1]).save(
+        tile = strip[y0:y1].copy()
+        if y1 < H and OVER_T:
+            # The overlap is drawn twice — this tile, then the next on top.
+            # Opaque pixels composite to the same result; a partially
+            # transparent one (the EDGE_FEATHER fade of a padded segment)
+            # composites to a MORE opaque one, which showed as a 4-row band
+            # across the feathered edges at scale 1. Drop the overlap there:
+            # those columns butt-join as before, where the art is already
+            # fading into the ground, and every opaque column keeps it.
+            ov = tile[-OVER_T:]
+            ov[ov[..., 3] < 255] = 0
+        Image.fromarray(tile).save(
             os.path.join(art_dir, name), "WEBP", quality=args.quality, method=6)
         kb = os.path.getsize(os.path.join(art_dir, name)) // 1024
         total += kb
@@ -646,6 +676,17 @@ def main():
             water_kb += wkb
         chunks.append(c)
 
+    # A build with fewer tiles than the last one would otherwise leave the old
+    # ribbon-00N.webp / water-00N.webp files behind — dead weight in a deploy,
+    # and misleading to anyone reading art/. Only our own generated names are
+    # touched; car.webp etc. are left alone.
+    keep = {os.path.basename(c["src"]) for c in chunks} | \
+           {os.path.basename(c["water"]) for c in chunks if "water" in c}
+    for f in sorted(os.listdir(art_dir)):
+        if re.fullmatch(r"(ribbon|water)-\d{3}\.webp", f) and f not in keep:
+            os.remove(os.path.join(art_dir, f))
+            print(f"  removed stale {f}")
+
     STEP = 8
     ribbon = {
         "width": CANVAS_W,
@@ -655,10 +696,16 @@ def main():
         # fit its own extra margin on every device. The wide segment instead
         # simply runs past the viewport at the same scale as everything else,
         # same as any painting wider than the screen already does.
-        "zoomWidth": OUT_W,
+        # Narrower segments' edges are feathered to transparent over EDGE_FEATHER
+        # when the canvas is wider — fitting the full OUT_W showed that fade (the
+        # dark ground through it) down both sides, most visibly as dark corners
+        # where a full-width beach plate meets a padded one. Fit the opaque core.
+        "zoomWidth": OUT_W - 2 * EDGE_FEATHER - 4 if CANVAS_W > OUT_W else OUT_W,
         "height": H,
         "roadWidth": ROAD_W,
         "chunkHeight": CH,
+        # rows each chunk's h runs past the next chunk's y (see the slice above)
+        "chunkOverlap": OVER_T,
         "chunks": chunks,
         "roadCentre": {
             "step": STEP,
