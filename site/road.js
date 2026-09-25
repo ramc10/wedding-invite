@@ -177,7 +177,7 @@
 
     /* Started by buildRibbon() once every ribbon chunk has arrived, not when
      * road.js runs: on a slow connection bandwidth is the bottleneck, and
-     * Three.js (then the 3.5MB .glb it fetches) downloading alongside the
+     * Three.js (then the ~800KB .glb it fetches) downloading alongside the
      * ribbon art only delays the road itself, which is the thing people came
      * to see — the painted car covers the wait. On a normal connection the
      * ribbon is in within a fraction of a second, so the 3D car is barely
