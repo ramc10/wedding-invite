@@ -40,9 +40,10 @@ def main():
     js = open(os.path.join(SITE, "road.js")).read()
     ribbon = json.load(open(os.path.join(SITE, data_name)))
 
-    # fonts -> data URIs inside road.css's @font-face rules
-    for rel in sorted(set(re.findall(r'url\((fonts/[^)]+\.woff2)\)', css))):
-        css = css.replace("url(%s)" % rel, "url(%s)" % data_uri(os.path.join(SITE, rel)))
+    # fonts -> data URIs inside the @font-face rules
+    fonts = open(os.path.join(SITE, "fonts.css")).read()
+    for rel in sorted(set(re.findall(r'url\((fonts/[^)]+\.woff2)\)', fonts))):
+        fonts = fonts.replace("url(%s)" % rel, "url(%s)" % data_uri(os.path.join(SITE, rel)))
 
     # ribbon chunks -> data URIs, carried in the inlined manifest
     total = 0
@@ -84,7 +85,7 @@ def main():
 
     parts = [
         "<title>Wedding Road</title>",
-        "<style>\n%s\n</style>" % css,
+        "<style>\n%s\n%s\n</style>" % (fonts, css),
         body.strip(),
         "<script>\nvar %s = %s;\n%s\n</script>" % (var_name, json.dumps(ribbon, separators=(",", ":")), js),
     ]
