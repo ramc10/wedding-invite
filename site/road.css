@@ -450,6 +450,8 @@ html.sheet-open { overflow: hidden; }
   color: var(--text); font-size: 1.4rem; line-height: 1; cursor: pointer;
 }
 .sheet-close:hover { background: rgba(255, 255, 255, .22); }
+.sheet-close:focus { outline: none; }
+.sheet-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 /* segmented control, iOS style: a sliding pill behind the active tab */
 .sheet-tabs {
