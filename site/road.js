@@ -157,7 +157,7 @@
    * corrected to the model's real aspect once the glTF's bounding box is
    * known.
    *
-   * Three.js itself (~600KB with its loaders) is loaded from HERE, not from
+   * Three.js itself (~550KB with its loaders) is loaded from HERE, not from
    * <script> tags in index.html. As deferred tags ahead of road.js they held
    * this whole file — ribbon, legs, the page's scroll height — hostage until
    * they'd downloaded, which on a slow phone connection meant several seconds
@@ -172,35 +172,29 @@
     var aspect = 95 / 173;   // width/height, painted car.webp's ratio as a placeholder
     var ready = false;
     var lastW = 1;           // last width measure() asked for
-    var libs = 'loading';    // 'loading' | 'ok' | 'failed' — state of the three CDN scripts
+    var libs = 'loading';    // 'loading' | 'ok' | 'failed' — state of vendor/three.min.js
     var wantInit = false;    // start() has called init() but libs were still loading
 
-    var CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0/';
     /* Started by buildRibbon() once every ribbon chunk has arrived, not when
      * road.js runs: on a slow connection bandwidth is the bottleneck, and
      * Three.js (then the 3.5MB .glb it fetches) downloading alongside the
      * ribbon art only delays the road itself, which is the thing people came
      * to see — the painted car covers the wait. On a normal connection the
      * ribbon is in within a fraction of a second, so the 3D car is barely
-     * later than before. Dynamic scripts with async=false still download in parallel but
-     * EXECUTE in insertion order — the loaders assign onto window.THREE, so
-     * they must run after three.min.js — and, unlike a deferred tag, block
-     * nothing else on the page while they do. One failure (blocked CDN,
-     * ad-blocker, offline) is enough to fail the lot: the loaders are useless
-     * without the core. */
+     * later than before. vendor/three.min.js is one self-hosted, tree-shaken
+     * bundle with the loaders already inside (see tools/three-bundle.js), so
+     * there is no load order to manage and no third-party origin to connect
+     * to. A failure (offline, a dropped request) falls back to the painted
+     * car in build(). */
     function loadLibs() {
-      var srcs = ['build/three.min.js', 'examples/js/loaders/GLTFLoader.js', 'examples/js/loaders/DRACOLoader.js'];
-      srcs.forEach(function (src, i) {
-        var s = document.createElement('script');
-        s.src = CDN + src;
-        s.async = false;
-        s.onerror = function () { libsDone('failed'); };
-        if (i === srcs.length - 1) s.onload = function () { libsDone('ok'); };
-        document.head.appendChild(s);
-      });
+      var s = document.createElement('script');
+      s.src = 'vendor/three.min.js';
+      s.onerror = function () { libsDone('failed'); };
+      s.onload = function () { libsDone('ok'); };
+      document.head.appendChild(s);
     }
     function libsDone(state) {
-      if (libs !== 'loading') return;  // several onerrors can fire; the first result wins
+      if (libs !== 'loading') return;
       libs = state;
       if (wantInit) build();
     }
@@ -216,8 +210,8 @@
 
     function build() {
       if (!canvas) return;
-      /* A blocked or failed CDN request (ad-blocker, offline, a dropped
-       * request for one of the three scripts) leaves window.THREE undefined —
+      /* A failed request for vendor/three.min.js (offline, a dropped
+       * request) leaves window.THREE undefined —
        * calling into it would throw. Fall back the same way a failed model
        * fetch does, before ever touching THREE. */
       if (libs !== 'ok' || typeof THREE === 'undefined' || !THREE.GLTFLoader || !THREE.DRACOLoader) {
@@ -253,7 +247,7 @@
       scene.add(fill);
 
       var dracoLoader = new THREE.DRACOLoader();
-      dracoLoader.setDecoderPath(CDN + 'examples/js/libs/draco/');
+      dracoLoader.setDecoderPath('vendor/draco/');
       var loader = new THREE.GLTFLoader();
       loader.setDRACOLoader(dracoLoader);
       loader.load('models/ecosport/scene-compressed.glb', function (gltf) {

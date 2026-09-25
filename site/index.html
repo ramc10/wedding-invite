@@ -8,23 +8,22 @@
 <meta name="description" content="Join us as we celebrate our wedding.">
 <!-- Open Graph / Twitter Card — what WhatsApp, iMessage, Slack etc. show when
      this link is shared. Needs an absolute image URL (a relative path or data
-     URI won't unfurl), so this is pinned to the deployed origin rather than
-     left relative like every other asset reference in this file. Update the
-     og:url/og:image host if the project ever moves to a custom domain. -->
+     URI won't unfurl), so this is pinned to the live domain rather than left
+     relative like every other asset reference in this file. Update the
+     og:url/og:image host if the domain ever changes. -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="Bhavya &amp; Ramcharan">
 <meta property="og:description" content="Join us as we celebrate our wedding.">
-<meta property="og:image" content="https://wedding-invite-a0glgctj7.vercel.app/art/og-preview.jpg">
+<meta property="og:image" content="https://weareactuallydoingthis.wtf/art/og-preview.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:url" content="https://wedding-invite-a0glgctj7.vercel.app/">
+<meta property="og:url" content="https://weareactuallydoingthis.wtf/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Bhavya &amp; Ramcharan">
 <meta name="twitter:description" content="Join us as we celebrate our wedding.">
-<meta name="twitter:image" content="https://wedding-invite-a0glgctj7.vercel.app/art/og-preview.jpg">
+<meta name="twitter:image" content="https://weareactuallydoingthis.wtf/art/og-preview.jpg">
 <link rel="icon" type="image/png" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="fonts.css">
 <link rel="preload" as="image" href="art/ribbon-000.webp">
 <!-- road.js builds the whole scene off ribbon.json, but as a deferred script
      it can't even ask for it until the HTML has finished parsing. Preloading
@@ -193,7 +192,7 @@
 </dialog>
 
 <!-- No Three.js tags here on purpose: road.js loads Three.js + its loaders
-     (~700KB, from cdn.jsdelivr.net) itself, after it has started building the
+     (vendor/three.min.js, ~550KB) itself, after it has started building the
      scene. As deferred tags ahead of road.js they had to finish downloading
      before road.js could run at all — defer keeps document order — so a slow
      connection left the page unscrollable for what is visually a small car.
