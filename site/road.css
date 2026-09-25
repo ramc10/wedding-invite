@@ -104,6 +104,12 @@ body {
     radial-gradient(36% 15% at 11% 85%, rgba(255,252,246,.34), rgba(255,252,246,0) 76%);
 }
 
+/* falling petals (petals.js) — above the car, under the time-of-day tint so
+   they take the same light as the road */
+.petals { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 14; pointer-events: none;
+          opacity: 0; transition: opacity 1.2s ease; }
+.petals.on { opacity: 1; }
+
 /* normal blending on purpose — see the DAY table in road.js for why, and
  * for how its tint colours were fitted to match the old soft-light look */
 .tint  { position: fixed; inset: 0; z-index: 18; pointer-events: none; background-color: rgba(255,226,70,.046); }
