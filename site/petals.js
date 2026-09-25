@@ -100,18 +100,17 @@
     '  return mat3(oc*a.x*a.x + c, oc*a.x*a.y + a.z*s, oc*a.z*a.x - a.y*s,',
     '              oc*a.x*a.y - a.z*s, oc*a.y*a.y + c, oc*a.y*a.z + a.x*s,',
     '              oc*a.z*a.x + a.y*s, oc*a.y*a.z - a.x*s, oc*a.z*a.z + c); }',
-    /* one shared wind field: slow gust fronts travelling along the wind */
-    'float windGust(vec3 wp){',
-    '  float along = dot(wp.xz, uWind.xy);',
-    '  float g = 0.55 + 0.45 * sin(uTime * 0.55 - along * 0.045) * (0.6 + 0.4 * sin(uTime * 0.21 + wp.x * 0.013 - wp.z * 0.011));',
-    '  return max(g, 0.08) * uWind.z;',
-    '}',
     'void main(){',
     '  float t = uTime * aAxis.w;',
     '  vec3 wind = vec3(uWind.x, 0.0, uWind.y);',
     '  vec3 p = aSeed.xyz * uBox;',
-    '  float g = windGust(uCam + p - uBox * 0.5);',
-    '  p += wind * (uTime * (1.1 + aSeed.w * 0.9)) * (0.7 + 0.5 * g) * uWindK;',
+    /* steady drift at the gusts' average strength, plus the gusts as a bounded
+     * surge back and forth along the wind. The reference multiplied the whole
+     * drift (speed * time) by the gust factor, so the gusts' effect on speed
+     * grew with time on the page — calm at first, a gale minutes later. */
+    '  float v = (1.1 + aSeed.w * 0.9) * uWindK * uWind.z;',
+    '  float along = dot(p.xz, uWind.xy) * 0.045;',
+    '  p += wind * v * (uTime + 0.4 * sin(uTime * 0.55 - along));',
     '  p.y -= uTime * (0.55 + aSeed.w * 0.6);',
     '  p.x += sin(t * 1.7 + aSeed.w * 30.0) * 0.3; p.z += cos(t * 1.3 + aSeed.x * 20.0) * 0.3;',
     /* wrap into a box in front of the camera */
