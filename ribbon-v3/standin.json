@@ -63,6 +63,7 @@
     {
       "src": "plates/dam-reservoir.png",
       "kind": "once",
+      "hd": 2,
       "overlap": 200,
       "bias": 0.0,
       "road": [1395, 170],

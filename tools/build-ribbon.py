@@ -184,7 +184,7 @@ def water_slice(alpha, y0, y1, scale):
 EDGE_FEATHER = 48   # px over which a padded segment's edge fades to transparent
 
 
-def render(im, centres, scale, out_w, canvas_w=None, side="right"):
+def render(im, centres, scale, out_w, canvas_w=None, side="right", feather=EDGE_FEATHER):
     """Rescale to the common altitude and straighten the road onto the frame centre.
 
     Sliding a whole plate by its *median* road position — which is what this did —
@@ -205,6 +205,9 @@ def render(im, centres, scale, out_w, canvas_w=None, side="right"):
     less than canvas_w, the rendered content is centred on the same road-aligned
     midline as every other segment and the leftover canvas is transparent, feathered
     at the seam — not stretched pixels, which read as horizontal streaking.
+
+    feather is the edge fade's width in output px — EDGE_FEATHER at ribbon
+    resolution, scaled with it for an "hd" re-render (see main()).
     """
     canvas_w = canvas_w or out_w
     nw, nh = max(1, round(im.width * scale)), max(1, round(im.height * scale))
@@ -235,7 +238,7 @@ def render(im, centres, scale, out_w, canvas_w=None, side="right"):
     out[:, left:left + out_w, :3] = content
     alpha = np.zeros(canvas_w, dtype=np.float32)
     alpha[left:left + out_w] = 255
-    f = min(EDGE_FEATHER, out_w // 2)
+    f = min(feather, out_w // 2)
     if f > 0:
         ramp = np.linspace(0, 255, f, dtype=np.float32)
         alpha[left:left + f] = np.minimum(alpha[left:left + f], ramp)
@@ -390,11 +393,12 @@ def main():
     rgbs = np.array([asphalt_rgb(p[0], p[1], ROAD_W) for p in {id(p): p for p in plates}.values()])
     target = rgbs.mean(0)
     print(f"  asphalt target rgb {target.round(1).tolist()}")
-    graded = {}
+    graded, gains = {}, {}
     for k, (norm, centres, scale, med, osz) in cache.items():
         cur = asphalt_rgb(norm, centres, ROAD_W)
         gain = np.clip(target / np.maximum(cur, 1.0), 0.85, 1.18)
         graded[k] = (apply_gain(norm, gain), centres)
+        gains[k] = gain
         if np.abs(gain - 1).max() > 0.02:
             print(f"  {os.path.basename(k[0])[:26]:26s} exposure gain {gain.round(3).tolist()}")
 
@@ -404,6 +408,7 @@ def main():
     # land wherever they land — usually on filler, because a painting's subjects are
     # not evenly spaced. A segment names the row worth stopping at instead.
     stops, petals, joins, links, cursor, prev = [], [], [], [], 0, None
+    spans = []   # per segment: where it starts in the strip and how its head was joined
     for i, s in enumerate(seq):
         im, centres = graded[key(s)]
         a = np.asarray(im, dtype=np.uint8)
@@ -486,6 +491,7 @@ def main():
         # starting where A left off. Net length drops by v either way.
         trim = bool(s.get("trim", False))
         impose = bool(s.get("impose", False))
+        spans.append({"seg": s, "start": seg_start, "head": max(v, int(s.get("blend", 0)))})
         if prev is None:
             strip_parts.append(a); centre_parts.append(c); bias_parts.append(bz)
         else:
@@ -616,9 +622,61 @@ def main():
     # mobile scroll jank (see the CSS-filter cost model any browser rendering
     # doc covers for `filter` + `transform` on the same element). Same visual
     # result, applied once here instead of continuously at scroll time.
-    strip_im = ImageEnhance.Contrast(Image.fromarray(strip)).enhance(1.113)
+    contrast = ImageEnhance.Contrast(Image.fromarray(strip))
+    strip_im = contrast.enhance(1.113)
     strip_im = ImageEnhance.Color(strip_im).enhance(1.08)
     strip = np.asarray(strip_im)
+
+    # "hd": <n> — ship this segment's rows at n x pixel density. The ribbon is
+    # built at one resolution, fitted to the road width, and a phone's screen
+    # then *stretches* it (~1.23x on a 390pt 3x iPhone), which is what reads as
+    # soft. An hd segment is re-rendered from its plate at n x the scale and cut
+    # into its own tiles; road.js sizes every tile by its ribbon rows, never by
+    # its pixel count, so the phone shrinks these instead of stretching them and
+    # nothing else — geometry, ribbon.json rows, every other tile — changes.
+    #
+    # Only the segment's own rows qualify: never its head (blended with the
+    # segment before) or its tail (the next segment's head blends over it), so
+    # an hd tile is pure re-rendered plate, exact to re-grade. Same exposure
+    # gain; same contrast pivot — Contrast() pivots on the WHOLE strip's mean
+    # luminance, so the hd pixels are graded against the 1x strip's mean, not
+    # their own. The check below downsamples each hd region back to 1x and
+    # compares it with the 1x strip: a misaligned or mis-graded render shows
+    # there as a large difference, not as a subtle seam on a phone.
+    hd = []
+    HD_MARGIN = 8
+    for i, sp in enumerate(spans):
+        D = int(sp["seg"].get("hd", 1))
+        if D <= 1:
+            continue
+        s = sp["seg"]
+        if s.get("count", 1) != 1 or s.get("gap"):
+            raise SystemExit(f"hd: {s['src']} - only single, gap-free segments are supported")
+        r0 = int(math.ceil(sp["start"] + sp["head"])) + HD_MARGIN
+        r1 = (int(math.floor(spans[i + 1]["start"])) if i + 1 < len(spans) else H) - HD_MARGIN
+        if r1 - r0 < 64:
+            raise SystemExit(f"hd: {s['src']} has no unblended rows to re-render")
+        im, centres, med, scale, _ = meas[key(s)]
+        norm, _ = render(im, centres, scale * D, seg_width(s) * D, CANVAS_W * D,
+                         s.get("wide_side", "right"), feather=EDGE_FEATHER * D)
+        local0 = int(round((r0 - sp["start"]) * D))
+        part = apply_gain(norm, gains[key(s)]).crop(
+            (0, local0, CANVAS_W * D, local0 + (r1 - r0) * D))
+        grade = ImageEnhance.Contrast(part)
+        grade.degenerate = Image.new("L", part.size, contrast.degenerate.getpixel((0, 0))[0]) \
+            .convert(part.mode)
+        if "A" in part.getbands():
+            grade.degenerate.putalpha(part.getchannel("A"))
+        part = ImageEnhance.Color(grade.enhance(1.113)).enhance(1.08)
+        back = np.asarray(part.resize((CANVAS_W, r1 - r0), Image.LANCZOS), dtype=np.float32)
+        ref = strip[r0:r1].astype(np.float32)
+        opaque = (ref[..., 3] == 255) & (back[..., 3] == 255)
+        diff = np.abs(back[..., :3] - ref[..., :3])[opaque].mean()
+        print(f"  hd x{D}: {os.path.basename(s['src'])} rows {r0}-{r1} "
+              f"({CANVAS_W * D}x{(r1 - r0) * D}px), mean |diff| vs 1x {diff:.2f}")
+        if diff > 3.0:
+            raise SystemExit("hd: re-render does not match the 1x strip - refusing to ship it")
+        hd.append((r0, r1, D, np.asarray(part)))
 
     # slice — a cut, not a blend: every tile is the strip's own pixels, so the
     # overlap below is identical content on both sides, never a blend.
@@ -642,11 +700,32 @@ def main():
               "texture limit many mobile GPUs have; lower chunk_height")
     chunks, total, water_kb = [], 0, 0
     walpha = water_alpha(strip) if args.water else None
-    n = math.ceil(H / CH)
-    for i in range(n):
-        y0, y1 = i * CH, min(H, (i + 1) * CH + OVER_T)
+    # (start row, end row, density, hd pixels) for every tile, in order
+    plan, at = [], 0
+    for r0, r1, D, px in hd + [(H, H, 1, None)]:
+        while at < r0:
+            plan.append((at, min(r0, at + CH), 1, None))
+            at = plan[-1][1]
+        step = (4096 // D) - OVER_T            # keep the tile, overlap included, inside 4096px
+        while at < r1:
+            plan.append((at, min(r1, at + step), D, (r0, px)))
+            at = plan[-1][1]
+    for i, (y0, y1, D, src) in enumerate(plan):
+        y1 = min(H, y1 + OVER_T)
         name = f"ribbon-{i:03d}.webp"
-        tile = strip[y0:y1].copy()
+        if D == 1:
+            tile = strip[y0:y1].copy()
+        else:
+            r0, px = src
+            tile = px[(y0 - r0) * D:(y1 - r0) * D]
+            if tile.shape[0] < (y1 - y0) * D:
+                # the overlap rows past the hd run are the next segment's blend —
+                # not re-rendered; they sit under the next tile, so the 1x strip
+                # scaled up is all they need to be
+                more = Image.fromarray(strip[y0 + tile.shape[0] // D:y1].copy())
+                more = np.asarray(more.resize((CANVAS_W * D, (y1 - y0) * D - tile.shape[0]), Image.LANCZOS))
+                tile = np.concatenate([tile, more], 0)
+            tile = tile.copy()
         if y1 < H and OVER_T:
             # The overlap is drawn twice — this tile, then the next on top.
             # Opaque pixels composite to the same result; a partially
@@ -655,13 +734,15 @@ def main():
             # across the feathered edges at scale 1. Drop the overlap there:
             # those columns butt-join as before, where the art is already
             # fading into the ground, and every opaque column keeps it.
-            ov = tile[-OVER_T:]
+            ov = tile[-OVER_T * D:]
             ov[ov[..., 3] < 255] = 0
         Image.fromarray(tile).save(
             os.path.join(art_dir, name), "WEBP", quality=args.quality, method=6)
         kb = os.path.getsize(os.path.join(art_dir, name)) // 1024
         total += kb
         c = {"src": f"art/{name}", "y": y0, "h": y1 - y0, "kb": kb}
+        if D > 1:
+            c["density"] = D
 
         # Where the water is. Kept for a future pass that displaces the painted
         # water itself; nothing consumes it today, so it is off unless asked for.
