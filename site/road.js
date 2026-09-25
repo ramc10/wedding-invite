@@ -35,7 +35,15 @@
    * naturally, so it's a no-op there, same as MAX_SCALE only ever binding on a
    * wide one. */
   var MOBILE_CROP_PCT = 0.23;
-  var ZOOM      = 1.0;   /* fit to width — no runtime crop */
+  /* ...but only on a phone. A portrait tablet (768-1024 wide) is portrait too, and
+   * the full 23% zoomed an iPad in to ~1.5x its landscape framing — the verges
+   * cut off, and the sides jumping every rotation. So the crop is held at 23% up
+   * to CROP_FULL_W (the same 640px phone breakpoint road.css uses) and eased
+   * out to none by CROP_NONE_W, where plain fit-to-width takes over — close to
+   * what the same tablet shows in landscape. */
+  var CROP_FULL_W = 640;
+  var CROP_NONE_W = 900;
+  var ZOOM     = 1.0;   /* fit to width — no runtime crop */
   var CAR_ROAD  = 0.78;  // car width as a share of the painted road
   var STREAK_LEAD = 1.12;
   var STREAK_TILE = 420;
@@ -872,7 +880,9 @@
     /* rw = vw / (1 - 2*crop) is the render width that leaves exactly MOBILE_CROP_PCT
      * cropped off each side of a vw-wide viewport; dividing by R.width turns that
      * into a scale. */
-    var cropFloor = isPortrait ? (S.vw / (1 - 2 * MOBILE_CROP_PCT)) / R.width : 0;
+    var cropPct = MOBILE_CROP_PCT *
+      clamp((CROP_NONE_W - S.vw) / (CROP_NONE_W - CROP_FULL_W), 0, 1);
+    var cropFloor = isPortrait ? (S.vw / (1 - 2 * cropPct)) / R.width : 0;
     /* MOBILE_CROP_PCT is a fixed, non-negotiable target — do not add a second
      * floor here (e.g. "guarantee scroll reaches the last join") to fix a
      * mobile scroll problem. That was tried twice: it works, but it means
