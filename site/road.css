@@ -404,128 +404,190 @@ body {
    bottom sheet on phones, a centred card on wider screens. */
 html.sheet-open { overflow: hidden; }
 
+/* The event card: dark olive glass with gold hairlines, a centred title over
+   an ornament rule, and a sakura branch that creeps in from the top-left and
+   bottom-right corners every time it opens (built in road.js, Sheets.bloom).
+   The dialog itself clips (rounded corners crop the branches) while
+   .sheet-body scrolls, so the branches stay pinned to the card's corners
+   instead of scrolling away with the content. */
 .sheet {
-  --glass: rgba(255, 255, 255, .14);
-  --glass-edge: rgba(255, 255, 255, .32);
-  --glass-hi: rgba(255, 255, 255, .22);
-  --ink-soft: rgba(255, 255, 255, .72);
-  width: min(440px, calc(100vw - 32px));
-  max-height: min(78vh, 640px);
+  --ivory: #F3EBDD;
+  --ivory-soft: rgba(243, 235, 221, .72);
+  --hair: rgba(243, 235, 221, .2);
+  --gold-hair: rgba(232, 198, 106, .4);
+  width: min(420px, calc(100vw - 24px));
   margin: auto;
-  padding: 10px 22px 22px;
-  border: 1px solid var(--glass-edge);
+  padding: 0;
+  border: 1px solid var(--gold-hair);
   border-radius: 28px;
-  background:
-    linear-gradient(160deg, rgba(255,255,255,.20), rgba(255,255,255,.04) 45%, rgba(255,255,255,.08)),
-    var(--glass);
-  backdrop-filter: blur(28px) saturate(170%);
-  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  background: linear-gradient(165deg, rgba(78, 86, 42, .66), rgba(36, 42, 19, .78));
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
   box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    inset 0 -1px 0 rgba(255, 255, 255, .06),
-    0 24px 60px rgba(0, 0, 0, .45);
-  color: var(--text);
+    inset 0 1px 0 rgba(255, 255, 255, .14),
+    inset 0 0 0 5px rgba(232, 198, 106, .04),
+    0 30px 70px rgba(0, 0, 0, .5);
+  color: var(--ivory);
   font-family: "EB Garamond", Georgia, serif;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
-  animation: sheet-in .38s cubic-bezier(.2, .9, .25, 1.05);
+  overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  animation: sheet-in .5s cubic-bezier(.2, .9, .25, 1.05);
 }
 .sheet::backdrop {
-  background: rgba(10, 14, 8, .35);
+  background: rgba(10, 14, 8, .4);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   animation: sheet-fade .3s ease;
 }
 .sheet.closing { animation: sheet-out .22s ease forwards; }
 .sheet.closing::backdrop { animation: sheet-fade .22s ease reverse forwards; }
 
-@keyframes sheet-in  { from { opacity: 0; transform: translateY(24px) scale(.97); } }
-@keyframes sheet-out { to   { opacity: 0; transform: translateY(24px) scale(.97); } }
+@keyframes sheet-in  { from { opacity: 0; transform: translateY(24px) scale(.96); } }
+@keyframes sheet-out { to   { opacity: 0; transform: translateY(16px) scale(.97); } }
 @keyframes sheet-fade { from { opacity: 0; } }
 
-.sheet-grab {
-  width: 38px; height: 5px; margin: 0 auto 8px; border-radius: 3px;
-  background: rgba(255, 255, 255, .45);
+.sheet-body {
+  position: relative; z-index: 1;
+  max-height: min(86vh, 720px);
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: 46px 22px 22px;
 }
-.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.sheet-title { margin: 4px 0 0; font-weight: 500; font-size: 1.6rem; line-height: 1.15; }
-.sheet-sub { margin: 2px 0 0; color: var(--ink-soft); font-style: italic; font-size: 1.05rem; }
+
+.sheet-head { text-align: center; padding: 0 30px; }
+.sheet-title {
+  margin: 0; font-weight: 500; line-height: 1.08;
+  font-size: clamp(1.9rem, 8vw, 2.3rem);
+}
+.sheet-sub {
+  margin: 8px 0 0; color: var(--ivory-soft);
+  font-size: .78rem; letter-spacing: .34em; text-indent: .34em; text-transform: uppercase;
+}
+.sheet-rule {
+  display: flex; align-items: center; gap: 10px;
+  width: 78%; margin: 12px auto 0; color: var(--gold);
+}
+.sheet-rule::before, .sheet-rule::after {
+  content: ""; flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-hair));
+}
+.sheet-rule::after { background: linear-gradient(270deg, transparent, var(--gold-hair)); }
+.sheet-rule svg { flex: none; width: 22px; height: 17px; }
+
 .sheet-close {
-  flex: none; width: 34px; height: 34px; margin-top: 4px; border-radius: 50%;
-  border: 1px solid var(--glass-edge); background: rgba(255, 255, 255, .12);
-  color: var(--text); font-size: 1.4rem; line-height: 1; cursor: pointer;
+  position: absolute; z-index: 3; top: 14px; right: 14px;
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--hair); background: rgba(0, 0, 0, .18);
+  color: var(--ivory); font: inherit; font-size: 1.5rem; line-height: 1; cursor: pointer;
 }
-.sheet-close:hover { background: rgba(255, 255, 255, .22); }
+.sheet-close:hover { background: rgba(255, 255, 255, .12); }
 .sheet-close:focus { outline: none; }
 .sheet-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
-/* segmented control, iOS style: a sliding pill behind the active tab */
-.sheet-tabs {
-  position: relative; display: flex; margin: 18px 0 4px; padding: 3px;
-  border-radius: 14px; background: rgba(0, 0, 0, .18);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .2);
+/* the venue's events, one after another, split by hairlines: line icon on
+   the left, then name and time, a single dress-code colour where there is
+   one, and the one-line note */
+.sheet-events { list-style: none; margin: 20px 0 0; padding: 0; }
+.sheet-ev {
+  display: grid; grid-template-columns: 44px 1fr; column-gap: 16px;
+  padding: 16px 0; border-top: 1px solid var(--hair);
 }
-.sheet-pill {
-  position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 11px;
-  background: rgba(255, 255, 255, .26);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 2px 8px rgba(0, 0, 0, .18);
-  transition: transform .32s cubic-bezier(.3, .9, .3, 1), width .32s ease;
+.sheet-ev:first-child { border-top: 0; padding-top: 6px; }
+.sheet-ev:last-child { padding-bottom: 4px; }
+.sheet-ev::before {
+  content: ""; grid-row: 1 / span 3; width: 44px; height: 44px; margin-top: 2px;
+  background: var(--gold);
+  -webkit-mask: var(--art) center / contain no-repeat;
+          mask: var(--art) center / contain no-repeat;
 }
-.sheet-tabs [role="tab"] {
-  position: relative; flex: 1; padding: 8px 6px;
-  border: 0; background: none; color: var(--ink-soft);
-  font: inherit; font-size: 1.02rem; cursor: pointer;
-  transition: color .2s ease;
+.sheet-ev > * { grid-column: 2; }
+.sheet-ev[data-art="vinyl"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='20' cy='27' r='16'/%3E%3Ccircle cx='20' cy='27' r='10' stroke-opacity='.55'/%3E%3Ccircle cx='20' cy='27' r='2.6'/%3E%3Cpath d='M43 5l-7 17-5 3'/%3E%3Cpath d='M40 31v9a2.6 2.6 0 1 1-1.4-2.3M40 31l5-1.6'/%3E%3C/svg%3E"); }
+.sheet-ev[data-art="sun"]   { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='24' cy='24' r='7'/%3E%3Ccircle cx='24' cy='24' r='2' stroke-opacity='.6'/%3E%3Cpath d='M24 5v6M24 37v6M5 24h6M37 24h6M10.6 10.6l4.2 4.2M33.2 33.2l4.2 4.2M10.6 37.4l4.2-4.2M33.2 14.8l4.2-4.2'/%3E%3C/svg%3E"); }
+.sheet-ev[data-art="rings"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='18' cy='29' r='10.5'/%3E%3Ccircle cx='30' cy='29' r='10.5'/%3E%3Cpath d='M26.8 14.5L30 10l3.2 4.5L30 18z'/%3E%3C/svg%3E"); }
+.sheet-ev[data-art="thali"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='24' cy='33' rx='20' ry='7'/%3E%3Cellipse cx='24' cy='32' rx='12' ry='3.6' stroke-opacity='.6'/%3E%3Cpath d='M17 24c-2-2.6 2-4.4 0-7.6M24 23c-2-2.6 2-4.4 0-7.6M31 24c-2-2.6 2-4.4 0-7.6'/%3E%3C/svg%3E"); }
+.ev-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ev-name { margin: 0; font-weight: 500; font-size: 1.35rem; line-height: 1.2; }
+.ev-when {
+  flex: none; margin: 0; color: var(--gold);
+  font-size: .76rem; letter-spacing: .16em; text-transform: uppercase;
 }
-.sheet-tabs [aria-selected="true"] { color: var(--text); }
-.sheet-tabs [role="tab"]:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; border-radius: 11px; }
+.ev-dress {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0 0;
+  color: var(--ivory-soft); font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+}
+.ev-dress::before {
+  content: ""; flex: none; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--c); border: 1px solid rgba(255, 255, 255, .5);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+}
+.ev-note { margin: 6px 0 0; font-style: italic; font-size: 1.08rem; line-height: 1.3; color: var(--ivory-soft); }
 
-.sheet-panel { padding-top: 14px; animation: sheet-fade .25s ease; }
-.sheet-event { margin: 0 0 12px; font-weight: 500; font-size: 1.3rem; color: var(--gold); }
-.sheet-facts { margin: 0; display: grid; gap: 10px; }
-.sheet-facts div { display: grid; grid-template-columns: 6.5rem 1fr; gap: 10px; }
-.sheet-facts dt { color: var(--ink-soft); font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; padding-top: 3px; }
-.sheet-facts dd { margin: 0; font-size: 1.05rem; line-height: 1.35; }
-.sheet-swatches { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.sheet-swatches span { display: inline-flex; align-items: center; gap: 6px; }
-.sheet-swatches span::before {
-  content: ""; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--c); border: 1px solid rgba(255, 255, 255, .55);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
-}
-.sheet-note {
-  margin: 16px 0 0; padding: 12px 14px; border-radius: 14px;
-  background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .14);
-  font-style: italic; line-height: 1.4;
-}
 .sheet-directions {
-  display: block; margin-top: 18px; padding: 12px; border-radius: 14px;
-  text-align: center; text-decoration: none; color: #1b2416;
-  background: rgba(232, 198, 106, .92); text-shadow: none;
-  font-size: 1.1rem; font-weight: 500;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 4px 14px rgba(0, 0, 0, .25);
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin-top: 22px; padding: 15px; border-radius: 18px;
+  text-decoration: none; color: var(--ivory);
+  background: linear-gradient(180deg, #6B2C16, #4B1B0C);
+  border: 1px solid rgba(232, 198, 106, .3);
+  font-size: 1.2rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 20px rgba(0, 0, 0, .3);
+  transition: transform .15s ease;
 }
+.sheet-directions::after { content: "\2192"; font-size: 1.3rem; transition: transform .25s ease; }
+.sheet-directions:hover::after { transform: translateX(4px); }
 .sheet-directions:active { transform: scale(.98); }
+
+/* ---- the sakura branches. One drawing (Sheets.bloom in road.js), placed at
+   the top-left and turned 180deg for the bottom-right. The stems draw
+   themselves in (stroke-dashoffset over pathLength=1), each blossom pops
+   open as the stem reaches it (--d, from its distance to the corner), then
+   the whole branch sways. A dialog is display:none while closed, so every
+   open replays the lot from the start. */
+.sheet-bloom {
+  position: absolute; z-index: 2; pointer-events: none;
+  width: min(54%, 190px); aspect-ratio: 1;
+}
+.sheet-bloom--tl { top: -3px; left: -3px; }
+.sheet-bloom--br { bottom: -3px; right: -3px; transform: rotate(180deg); }
+.sheet-bloom svg {
+  display: block; width: 100%; height: 100%; overflow: visible;
+  transform-origin: 0 0;
+  animation: bloom-sway 5s ease-in-out 1.9s infinite alternate;
+}
+.sheet-bloom .stem {
+  fill: none; stroke: #4A2C20; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: bloom-creep 1.1s cubic-bezier(.45, 0, .25, 1) var(--d) forwards;
+}
+.sheet-bloom .bl {
+  transform-box: fill-box; transform-origin: center;
+  opacity: 0; transform: scale(0) rotate(-70deg);
+  animation: bloom-open .7s cubic-bezier(.3, 1.5, .5, 1) var(--d) forwards;
+}
+.sheet-bloom .fall {
+  opacity: 0;
+  animation: bloom-fall 6s linear var(--d) infinite;
+}
+@keyframes bloom-creep { to { stroke-dashoffset: 0; } }
+@keyframes bloom-open  { to { opacity: 1; transform: none; } }
+@keyframes bloom-sway  { to { transform: rotate(1.8deg); } }
+@keyframes bloom-fall {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0); }
+  12%  { opacity: .9; }
+  100% { opacity: 0; transform: translate(70px, 150px) rotate(320deg); }
+}
 
 /* browsers without backdrop-filter get a solid-enough tint to stay legible */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sheet { background: rgba(27, 36, 22, .94); }
+  .sheet { background: rgba(36, 42, 19, .96); }
 }
 
-/* phones: a bottom sheet rather than a floating card */
+/* phones: the card rises from the bottom edge of the screen into place and
+   sinks back down when closed, like a bottom sheet, but stays a floating card */
 @media (max-width: 640px) {
-  .sheet {
-    width: 100vw; max-width: 100vw; margin: auto 0 0;
-    border-radius: 28px 28px 0 0; border-bottom: 0;
-    padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
-    animation-name: sheet-up;
-  }
-  .sheet.closing { animation-name: sheet-down; }
-  .sheet-facts div { grid-template-columns: 5.5rem 1fr; }
+  .sheet-body { padding: 46px 18px 20px; }
+  .sheet { animation: sheet-rise .55s cubic-bezier(.2, .9, .25, 1); }
+  .sheet.closing { animation: sheet-sink .22s cubic-bezier(.5, 0, .75, 0) forwards; }
 }
-@media (min-width: 641px) { .sheet-grab { display: none; } }
-@keyframes sheet-up   { from { transform: translateY(100%); } }
-@keyframes sheet-down { to   { transform: translateY(100%); } }
+@keyframes sheet-rise { from { transform: translateY(100vh); } }
+@keyframes sheet-sink { to   { transform: translateY(100vh); } }
 
 /* ------------------------------------------------------- reduced motion */
 
@@ -533,5 +595,9 @@ html.sheet-open { overflow: hidden; }
   .car-drop, .cue span { animation: none !important; }
   .streaks { display: none !important; }
   .title, .details, .dam-caption, .venue, .music-toggle { transition: none; }
-  .sheet, .sheet::backdrop, .sheet-panel, .sheet-pill { animation: none !important; transition: none !important; }
+  .sheet, .sheet::backdrop { animation: none !important; transition: none !important; }
+  .sheet-bloom svg, .sheet-bloom .stem, .sheet-bloom .bl { animation: none !important; }
+  .sheet-bloom .stem { stroke-dashoffset: 0; }
+  .sheet-bloom .bl { opacity: 1; transform: none; }
+  .sheet-bloom .fall { display: none; }
 }

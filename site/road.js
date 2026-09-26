@@ -442,52 +442,92 @@
       d.addEventListener('close', function () {
         document.documentElement.classList.remove('sheet-open');
       });
-      /* swipe the sheet down by its grab handle to dismiss (phones) */
+      /* swipe the card down from the top of its content to dismiss (phones) */
+      var body = d.querySelector('.sheet-body');
       var y0 = null;
       d.addEventListener('touchstart', function (e) {
-        y0 = d.scrollTop <= 0 ? e.touches[0].clientY : null;
+        y0 = body.scrollTop <= 0 ? e.touches[0].clientY : null;
       }, { passive: true });
       d.addEventListener('touchend', function (e) {
         if (y0 !== null && e.changedTouches[0].clientY - y0 > 90) close(d);
         y0 = null;
       });
-      tabs(d);
+      d.insertAdjacentHTML('beforeend', bloom('tl') + bloom('br'));
     });
 
-    function tabs(d) {
-      var list = d.querySelector('[role="tablist"]');
-      if (!list) return;
-      var btns = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
-      var pill = list.querySelector('.sheet-pill');
-      function select(i, focus) {
-        btns.forEach(function (b, j) {
-          var on = j === i;
-          b.setAttribute('aria-selected', on);
-          b.tabIndex = on ? 0 : -1;
-          document.getElementById(b.getAttribute('aria-controls')).hidden = !on;
+    /* A flowering sakura branch for one corner of the card (see .sheet-bloom
+     * in road.css for how it animates). Drawn for the top-left, in a 220-unit
+     * box whose origin is the card's corner: one stem runs along the top edge,
+     * one down the left, with short twigs off each. The bottom-right copy is
+     * the same drawing turned 180deg by CSS. Every blossom's --d is when the
+     * creeping stem reaches it, so they open in a wave out from the corner. */
+    function bloom(corner) {
+      var PETAL = 'M0 0C-3.6-2.6-5.8-7.8-2.7-10.4L0-8.8 2.7-10.4C5.8-7.8 3.6-2.6 0 0Z';
+      var STEMS = [
+        ['M-6 8C40 4 70 22 110 16S165 24 208 15', 2.6, 0],
+        ['M8-6C4 40 22 70 14 110S20 165 9 208', 2.4, .05],
+        ['M56 15C63 22 70 28 79 33', 1.4, .4],
+        ['M138 16C145 10 151 5 160 3', 1.3, .65],
+        ['M15 56C22 63 28 68 38 72', 1.4, .4],
+        ['M13 146C18 153 24 157 32 161', 1.2, .7]
+      ];
+      /* x, y, size */
+      var BLOOMS = [
+        [16, 14, 1.45], [38, 8, 1.15], [9, 38, 1.2], [30, 30, .9], [58, 21, .95],
+        [81, 35, .9], [100, 15, 1.05], [126, 17, .82], [160, 4, .85], [185, 19, .75],
+        [24, 57, .9], [40, 76, .95], [14, 99, 1], [10, 130, .8], [33, 163, .82],
+        [16, 188, .7]
+      ];
+      var BUDS = [[207, 14], [8, 207], [69, 26], [146, 19], [6, 76], [22, 118], [112, 24], [26, 144]];
+      /* The bottom-right copy only climbs half as far up the side: at full
+       * height it reached the last event's time on the right of the card.
+       * Its side stem ends at y=110, and anything drawn past that is left out. */
+      var MAX_Y = corner === 'br' ? 112 : 220;
+      if (corner === 'br') STEMS[1][0] = 'M8-6C4 40 22 70 14 110';
+      var fits = function (p) { return p[1] <= MAX_Y; };
+      STEMS = STEMS.filter(function (s) { return !/^M13 146/.test(s[0]) || MAX_Y > 146; });
+      BLOOMS = BLOOMS.filter(fits);
+      BUDS = BUDS.filter(fits);
+      var at = function (x, y) { return (.45 + (x + y) / 240).toFixed(2) + 's'; };
+      var svg = '<svg viewBox="0 0 220 220" aria-hidden="true" focusable="false">';
+      STEMS.forEach(function (s) {
+        svg += '<path class="stem" pathLength="1" d="' + s[0] + '" stroke-width="' + s[1] +
+          '" style="--d:' + (.15 + s[2]).toFixed(2) + 's"/>';
+      });
+      BLOOMS.forEach(function (b, i) {
+        var petals = '';
+        for (var k = 0; k < 5; k++) {
+          petals += '<path d="' + PETAL + '" transform="rotate(' + (k * 72) + ')" fill="' +
+            (k % 2 ? '#FAD9E2' : '#F6C4D2') + '" stroke="#E597AE" stroke-width=".5"/>';
+        }
+        var stamens = '';
+        for (var m = 0; m < 5; m++) {
+          var a = (m * 72 + 36) * Math.PI / 180;
+          stamens += '<circle cx="' + (Math.sin(a) * 3.6).toFixed(2) + '" cy="' + (-Math.cos(a) * 3.6).toFixed(2) +
+            '" r=".75" fill="#B8365C"/>';
+        }
+        svg += '<g transform="translate(' + b[0] + ' ' + b[1] + ') scale(' + b[2] + ') rotate(' + (i * 47 % 72) + ')">' +
+          '<g class="bl" style="--d:' + at(b[0], b[1]) + '">' + petals +
+          '<circle r="2.3" fill="#E0708F"/>' + stamens + '</g></g>';
+      });
+      BUDS.forEach(function (b) {
+        svg += '<g transform="translate(' + b[0] + ' ' + b[1] + ')"><g class="bl" style="--d:' + at(b[0], b[1]) + '">' +
+          '<ellipse rx="2.2" ry="3" fill="#E98AA7" stroke="#C9567A" stroke-width=".5"/></g></g>';
+      });
+      /* a few loose petals drifting off across the card — top-left only: the
+       * bottom-right branch is upside down, so its petals would fall upward */
+      if (corner === 'tl') {
+        [[40, 22, 2.2], [20, 70, 3.9], [100, 20, 5.4]].forEach(function (f) {
+          svg += '<g transform="translate(' + f[0] + ' ' + f[1] + ') scale(.6)"><path class="fall" d="' + PETAL +
+            '" fill="#F6C4D2" style="--d:' + f[2] + 's"/></g>';
         });
-        pill.style.width = btns[i].offsetWidth + 'px';
-        pill.style.transform = 'translateX(' + btns[i].offsetLeft + 'px)';
-        if (focus) btns[i].focus();
       }
-      btns.forEach(function (b, i) {
-        b.addEventListener('click', function () { select(i); });
-        b.addEventListener('keydown', function (e) {
-          var k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-          if (k) { e.preventDefault(); select((i + k + btns.length) % btns.length, true); }
-        });
-      });
-      /* the pill is sized from laid-out tabs, so it can only be placed
-       * once the dialog is actually showing */
-      d.addEventListener('sheetopen', function () {
-        select(Math.max(0, btns.findIndex(function (b) { return b.getAttribute('aria-selected') === 'true'; })));
-      });
+      return '<div class="sheet-bloom sheet-bloom--' + corner + '">' + svg + '</svg></div>';
     }
 
     function open(d) {
       document.documentElement.classList.add('sheet-open');
       d.showModal();
-      d.dispatchEvent(new Event('sheetopen'));
     }
     function close(d) {
       d.classList.add('closing');

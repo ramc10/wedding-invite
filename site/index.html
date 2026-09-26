@@ -116,80 +116,52 @@
      before sharing. -->
 <dialog class="sheet" id="sheetBeach" aria-labelledby="sheetBeachTitle"
         data-map="https://www.google.com/maps/search/?api=1&amp;query=Palm+Beach+Hotel+Visakhapatnam">
-  <div class="sheet-grab" aria-hidden="true"></div>
+  <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  <div class="sheet-body">
   <header class="sheet-head">
-    <div>
-      <h2 class="sheet-title" id="sheetBeachTitle">Palm Beach Hotel</h2>
-      <p class="sheet-sub">Visakhapatnam</p>
-    </div>
-    <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+    <h2 class="sheet-title" id="sheetBeachTitle">Palm Beach Hotel</h2>
+    <p class="sheet-sub">Visakhapatnam</p>
+    <div class="sheet-rule" aria-hidden="true"><svg viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16.5L2.6 8.2a10 10 0 0 1 18.8 0z"/><path d="M12 16.5L6 4.2M12 16.5L9 2.4M12 16.5V2M12 16.5l3-14.1M12 16.5l6-12.3"/></svg></div>
   </header>
-  <div class="sheet-tabs" role="tablist" aria-label="Events">
-    <span class="sheet-pill" aria-hidden="true"></span>
-    <button type="button" role="tab" id="tab-reception" aria-controls="panel-reception" aria-selected="true">Reception</button>
-    <button type="button" role="tab" id="tab-haldi" aria-controls="panel-haldi" aria-selected="false" tabindex="-1">Haldi</button>
-    <button type="button" role="tab" id="tab-muhurtham" aria-controls="panel-muhurtham" aria-selected="false" tabindex="-1">Muhurtham</button>
-  </div>
-
-  <section class="sheet-panel" role="tabpanel" id="panel-reception" aria-labelledby="tab-reception">
-    <dl class="sheet-facts">
-      <div><dt>When</dt><dd>November 17th · 7 PM</dd></div>
-      <div><dt>Dress code</dt><dd class="sheet-swatches">
-        <span style="--c:#1F4E79">Ocean blue</span>
-        <span style="--c:#F3EBDD">Ivory</span>
-        <span style="--c:#D8C08A">Champagne</span>
-      </dd></div>
-    </dl>
-    <p class="sheet-note">Dance till the tide gives up.</p>
-  </section>
-
-  <section class="sheet-panel" role="tabpanel" id="panel-haldi" aria-labelledby="tab-haldi" hidden>
-    <dl class="sheet-facts">
-      <div><dt>When</dt><dd>November 18th · 8 AM</dd></div>
-      <div><dt>Dress code</dt><dd class="sheet-swatches">
-        <span style="--c:#F2B705">Marigold</span>
-        <span style="--c:#FFE27A">Sunshine</span>
-        <span style="--c:#FFFFFF">White</span>
-      </dd></div>
-    </dl>
-    <p class="sheet-note">Arrive in white, leave in yellow.</p>
-  </section>
-
-  <section class="sheet-panel" role="tabpanel" id="panel-muhurtham" aria-labelledby="tab-muhurtham" hidden>
-    <dl class="sheet-facts">
-      <div><dt>When</dt><dd>November 18th · 8 PM</dd></div>
-      <div><dt>Dress code</dt><dd class="sheet-swatches">
-        <span style="--c:#8B1E2D">Maroon</span>
-        <span style="--c:#C9A227">Gold</span>
-        <span style="--c:#1E5E4E">Emerald</span>
-      </dd></div>
-    </dl>
-    <p class="sheet-note">Blink and you&rsquo;ll miss the knot.</p>
-  </section>
+  <ol class="sheet-events">
+    <li class="sheet-ev" data-art="vinyl">
+      <div class="ev-head"><h3 class="ev-name">Reception</h3><p class="ev-when">Nov 17 · 7 PM</p></div>
+      <p class="ev-note">Dance till the tide gives up.</p>
+    </li>
+    <li class="sheet-ev" data-art="sun">
+      <div class="ev-head"><h3 class="ev-name">Haldi</h3><p class="ev-when">Nov 18 · 8 AM</p></div>
+      <p class="ev-dress" style="--c:#F2C230">Wear yellow</p>
+      <p class="ev-note">Arrive in white, leave in yellow.</p>
+    </li>
+    <li class="sheet-ev" data-art="rings">
+      <div class="ev-head"><h3 class="ev-name">Muhurtham</h3><p class="ev-when">Nov 18 · 8 PM</p></div>
+      <p class="ev-dress" style="--c:#F4EAD5">Wear cream</p>
+      <p class="ev-note">Blink and you&rsquo;ll miss the knot.</p>
+    </li>
+  </ol>
 
   <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+  </div>
 </dialog>
-
 <dialog class="sheet" id="sheetDam" aria-labelledby="sheetDamTitle"
         data-map="https://www.google.com/maps/search/?api=1&amp;query=AMR+Unnati+Convention+Karimnagar">
-  <div class="sheet-grab" aria-hidden="true"></div>
+  <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  <div class="sheet-body">
   <header class="sheet-head">
-    <div>
-      <h2 class="sheet-title" id="sheetDamTitle">AMR Unnati Convention</h2>
-      <p class="sheet-sub">Karimnagar</p>
-    </div>
-    <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+    <h2 class="sheet-title" id="sheetDamTitle">AMR Unnati Convention</h2>
+    <p class="sheet-sub">Karimnagar</p>
+    <div class="sheet-rule" aria-hidden="true"><svg viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M2 7.5q2.5-3 5 0t5 0 5 0 5 0M2 12.5q2.5-3 5 0t5 0 5 0 5 0"/></svg></div>
   </header>
 
-  <section class="sheet-panel">
-    <h3 class="sheet-event">Dawat by the Manair</h3>
-    <dl class="sheet-facts">
-      <div><dt>When</dt><dd>November 21st · 7 PM</dd></div>
-    </dl>
-    <p class="sheet-note">Come hungry, leave rolling.</p>
-  </section>
+  <ol class="sheet-events">
+    <li class="sheet-ev" data-art="thali">
+      <div class="ev-head"><h3 class="ev-name">Dawat by the Manair</h3><p class="ev-when">Nov 21 · 7 PM</p></div>
+      <p class="ev-note">Come hungry, leave rolling.</p>
+    </li>
+  </ol>
 
   <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+  </div>
 </dialog>
 
 <!-- No Three.js tags here on purpose: road.js loads Three.js + its loaders
