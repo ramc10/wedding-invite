@@ -504,21 +504,31 @@ html.sheet-open { overflow: hidden; }
 .sheet-ev[data-art="rings"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='18' cy='29' r='10.5'/%3E%3Ccircle cx='30' cy='29' r='10.5'/%3E%3Cpath d='M26.8 14.5L30 10l3.2 4.5L30 18z'/%3E%3C/svg%3E"); }
 .sheet-ev[data-art="thali"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='24' cy='33' rx='20' ry='7'/%3E%3Cellipse cx='24' cy='32' rx='12' ry='3.6' stroke-opacity='.6'/%3E%3Cpath d='M17 24c-2-2.6 2-4.4 0-7.6M24 23c-2-2.6 2-4.4 0-7.6M31 24c-2-2.6 2-4.4 0-7.6'/%3E%3C/svg%3E"); }
 .ev-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.ev-name { margin: 0; font-weight: 500; font-size: 1.35rem; line-height: 1.2; }
+.ev-name { min-width: 0; margin: 0; font-weight: 500; font-size: 1.35rem; line-height: 1.2; text-wrap: balance; }
 .ev-when {
   flex: none; margin: 0; color: var(--gold);
   font-size: .76rem; letter-spacing: .16em; text-transform: uppercase;
 }
+/* the dress code is the one thing guests act on, so it gets a chip tinted in
+   its own colour rather than another line of small text */
 .ev-dress {
-  display: flex; align-items: center; gap: 8px; margin: 6px 0 0;
-  color: var(--ivory-soft); font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+  justify-self: start;
+  display: inline-flex; align-items: center; gap: 10px;
+  margin: 10px 0 0; padding: 5px 14px 5px 5px; border-radius: 999px;
+  background: rgba(0, 0, 0, .18);
+  background: color-mix(in srgb, var(--c) 16%, rgba(0, 0, 0, .18));
+  border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  color: var(--ivory); font-size: 1.08rem; line-height: 1.2;
 }
 .ev-dress::before {
-  content: ""; flex: none; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--c); border: 1px solid rgba(255, 255, 255, .5);
+  content: ""; flex: none; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--c); border: 1px solid rgba(255, 255, 255, .6);
   box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
 }
-.ev-note { margin: 6px 0 0; font-style: italic; font-size: 1.08rem; line-height: 1.3; color: var(--ivory-soft); }
+.ev-dress span {
+  color: var(--ivory-soft); font-size: .68rem; letter-spacing: .18em; text-transform: uppercase;
+}
+.ev-note { margin: 8px 0 0; font-style: italic; font-size: 1rem; line-height: 1.3; color: rgba(243, 235, 221, .6); }
 
 .sheet-directions {
   display: flex; align-items: center; justify-content: center; gap: 14px;
