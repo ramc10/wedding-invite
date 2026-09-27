@@ -1,0 +1,588 @@
+/* /v2/ — the DOM layer over the 3D drive: overlay type, HUD, callouts, the
+ * loader and the glass event sheets. Type and sheets are ported from the
+ * root site's road.css so both versions read as the same invitation; the
+ * differences are for a live scene (overlays are faded per frame by
+ * ui/overlays.js rather than by CSS transitions, and text sits over a bright
+ * sky rather than painted art). */
+
+:root {
+  --asphalt: #2B2C2E;
+  --leaf-deep: #25401F;
+  --ground: #1b2416;
+  --gold: #E8C66A;
+  --blossom: #F6DDE3;
+  --text: #FFFFFF;
+  /* Every fixed text overlay: a tight dark layer for edge contrast plus a soft
+     wide one so the glyph reads over pale sky or water (see road.css). */
+  --overlay-shadow:
+    0 1px 3px rgba(0, 0, 0, .75),
+    0 2px 10px rgba(0, 0, 0, .6),
+    0 4px 30px rgba(10, 18, 8, .55);
+  --gutter: 16px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  /* the bottom text slot (venue lines); the callout and cue sit above it */
+  --venue-bottom: calc(3vh + var(--safe-b));
+  --glass: rgba(27, 36, 22, .5);
+  --glass-edge: rgba(232, 198, 106, .45);
+}
+
+* { box-sizing: border-box; }
+/* black until the scene is up, so the canvas fades in from black, not green */
+html, body { margin: 0; padding: 0; background: #070806; }
+html.ready, html.ready body { background: var(--ground); }
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+  font-family: "EB Garamond", Georgia, serif;
+  color: var(--text);
+  overflow-x: hidden;
+}
+/* core/scroll.js lock(): body pinned where it was while a sheet or detour holds the drive */
+html.scroll-locked body { position: fixed; left: 0; right: 0; overflow: hidden; }
+
+#scene {
+  position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0;
+  touch-action: pan-y; opacity: 0; transition: opacity 2.4s cubic-bezier(.3, 0, .2, 1) .15s;
+}
+html.ready #scene { opacity: 1; }
+#track { position: relative; width: 1px; pointer-events: none; }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+/* ------------------------------------------------------------ overlays */
+
+/* ui/overlays.js writes opacity, a small rise and a blur per frame from s.
+   Hidden until then so nothing flashes before the first frame. */
+.overlays > * {
+  position: fixed; z-index: 2; pointer-events: none;
+  text-align: center; opacity: 0; visibility: hidden;
+  padding-left: var(--gutter); padding-right: var(--gutter);
+  will-change: opacity, transform;
+}
+
+/* Names and the ending line: top-anchored rather than centred so the type
+   stays clear of the car, which the chase camera holds in the lower half. */
+.title {
+  inset: 0;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: calc(20vh + var(--safe-t));
+}
+.title h1 {
+  margin: 0; font-family: "Mrs Saint Delafield", "EB Garamond", cursive, serif;
+  font-weight: 400; font-size: clamp(4.6rem, 16vw, 10rem);
+  line-height: 1.15; color: var(--text);
+  text-shadow: var(--overlay-shadow);
+}
+/* the script face's descenders swing wide; a touch of side room stops clipping */
+.title h1 span { padding: 0 .06em; }
+.title .amp-word { display: none; }
+#ending h1 { font-size: clamp(4rem, 13vw, 8.5rem); }
+
+/* Below this width the names no longer fit one line at the size above, so
+   they stack: "Bhavya", "and", "Ramcharan" — the word reads better standing
+   alone than a lone "&" does. */
+@media (max-width: 640px) {
+  .title h1 { font-size: clamp(4.2rem, 19vw, 5.6rem); line-height: 1.02; }
+  .title .first-name, .title .second-name, .title .amp-word { display: block; }
+  .title .amp { display: none; }
+  .title .amp-word {
+    font-family: "EB Garamond", Georgia, serif; font-style: italic;
+    font-size: .32em; letter-spacing: .06em; margin: .15em 0 .1em;
+  }
+  #ending h1 { font-size: clamp(3.6rem, 17vw, 4.6rem); }
+}
+
+.details, .dam-caption {
+  inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding-top: calc(15vh + var(--safe-t));
+}
+
+/* pinned to the device's bottom edge, clear of the home indicator */
+.venue { left: 0; right: 0; bottom: var(--venue-bottom); }
+.venue p, .details p { margin: 0; }
+
+/* The brief: venue small uppercase letterspaced; ceremony EB Garamond 500;
+   times italic warm off-white. */
+.details-place {
+  font-weight: 600; font-size: clamp(.95rem, 3.6vw, 1.125rem);
+  line-height: 1.7; text-transform: uppercase;
+  letter-spacing: .36em; padding-left: .36em; /* balance the trailing tracking so lines centre optically */
+  color: var(--text); text-shadow: var(--overlay-shadow);
+}
+.details-events {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: .55em;
+}
+.details-events li { display: flex; flex-direction: column; align-items: center; gap: .1em; }
+.details-ceremony {
+  font-weight: 500; font-size: clamp(1.8rem, 6.5vw, 2.2rem); line-height: 1.15;
+  color: var(--text); text-shadow: var(--overlay-shadow);
+}
+.details-when {
+  font-style: italic; font-weight: 400; font-size: clamp(1.05rem, 3.6vw, 1.2rem);
+  color: #FFF6E8; text-shadow: var(--overlay-shadow);
+}
+
+/* ---------------------------------------------------------------- HUD */
+
+.hud {
+  position: fixed; z-index: 5;
+  top: calc(var(--gutter) + var(--safe-t));
+  right: calc(var(--gutter) + env(safe-area-inset-right, 0px));
+  display: flex; align-items: center; gap: 8px;
+}
+.hud button {
+  font: inherit; color: var(--gold); cursor: pointer;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .18);
+  transition: background .25s ease, border-color .25s ease, transform .15s ease, opacity .6s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.hud button:hover { border-color: rgba(232, 198, 106, .8); }
+.hud button:active { transform: scale(.94); }
+.hud button[aria-pressed="true"] { background: rgba(232, 198, 106, .2); border-color: var(--gold); }
+
+/* music toggle: same gold-on-dark disc as the root site */
+.music-toggle {
+  width: 44px; height: 44px; border-radius: 50%; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem !important; line-height: 1;
+}
+
+.autoplay {
+  height: 44px; border-radius: 999px; padding: 0 18px 0 14px;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 1.02rem !important; letter-spacing: .02em; color: #FFF6E8 !important;
+}
+.autoplay-icon { width: 13px; height: 13px; fill: var(--gold); flex: none; }
+.autoplay .i-pause, .autoplay[aria-pressed="true"] .i-play { display: none; }
+.autoplay[aria-pressed="true"] .i-pause { display: inline; }
+
+@media (max-width: 640px) {
+  .music-toggle { width: 40px; height: 40px; font-size: 1rem !important; }
+  .autoplay { height: 40px; padding: 0 14px 0 12px; font-size: .95rem !important; }
+}
+
+/* HUD waits for the scene; before that the loader owns the screen */
+.hud, .route { opacity: 0; transition: opacity .9s ease .6s; }
+html.ready .hud, html.ready .route { opacity: 1; }
+
+/* ---- route: the seven legs as a hairline with a dot per leg. Segment
+   widths are proportional to each leg's length (set from zones in hud.js);
+   the gold fill is how far along the drive the car is. */
+.route {
+  position: fixed; z-index: 5;
+  top: calc(var(--gutter) + var(--safe-t));
+  left: calc(var(--gutter) + env(safe-area-inset-left, 0px));
+  height: 44px; width: clamp(140px, 18vw, 220px);
+  display: flex; align-items: center;
+}
+.route-line {
+  position: absolute; left: 11px; right: 11px; top: 50%; height: 1px; margin-top: -.5px;
+  background: rgba(255, 255, 255, .38);
+  box-shadow: 0 0 0 .5px rgba(10, 18, 8, .25), 0 1px 3px rgba(10, 18, 8, .45);
+}
+.route-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 100%;
+  background: var(--gold); transform-origin: 0 50%; transform: scaleX(0);
+}
+.route-dot {
+  position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  padding: 0; border: 0; background: none; cursor: pointer; font: inherit;
+  display: grid; place-items: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.route-dot::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255, 255, 255, .7);
+  box-shadow: 0 0 0 1px rgba(10, 18, 8, .42), 0 1px 3px rgba(10, 18, 8, .55);
+  transition: background .35s ease, transform .35s ease, box-shadow .35s ease;
+}
+.route-dot.past::before { background: var(--gold); }
+.route-dot.on::before {
+  background: var(--gold); transform: scale(1.6);
+  box-shadow: 0 0 0 1px rgba(10, 18, 8, .5), 0 0 10px rgba(232, 198, 106, .75);
+}
+.route-dot:hover::before { transform: scale(1.4); }
+.route-dot.on:hover::before { transform: scale(1.7); }
+.route-dot:focus-visible { outline-offset: 0; border-radius: 50%; }
+/* the leg's name, shown under the line for the current leg and on hover/focus */
+.route-dot span {
+  position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+  white-space: nowrap; pointer-events: none;
+  font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; font-weight: 500;
+  color: #FFF6E8; text-shadow: var(--overlay-shadow);
+  opacity: 0; transition: opacity .4s ease;
+}
+.route-dot.on span, .route-dot:hover span, .route-dot:focus-visible span { opacity: .92; }
+/* the first/last labels would hang past the gutter; pin them to the line's ends */
+.route-dot:first-of-type span { left: 0; transform: none; }
+.route-dot:last-of-type span { left: auto; right: 0; transform: none; }
+/* a hovered neighbour's label would overprint the current one */
+.route:hover .route-dot.on:not(:hover) span, .route:focus-within .route-dot.on:not(:focus-visible) span { opacity: 0; }
+
+/* ---------------------------------------------------- callouts and cue */
+
+/* "Take me here": a glass pill with a pin, above the venue lines at the
+   bottom centre, breathing gently so it reads as the one thing to tap. */
+.callout {
+  position: fixed; z-index: 4; left: 50%;
+  bottom: calc(var(--venue-bottom) + 78px);
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 0 20px 0 16px; height: 46px; border-radius: 999px;
+  font: inherit; font-size: 1.08rem; letter-spacing: .03em; color: #FFF6E8;
+  background: linear-gradient(180deg, rgba(107, 44, 22, .72), rgba(75, 27, 12, .78));
+  border: 1px solid rgba(232, 198, 106, .55);
+  backdrop-filter: blur(10px) saturate(130%); -webkit-backdrop-filter: blur(10px) saturate(130%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 8px 26px rgba(0, 0, 0, .35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+  cursor: pointer; white-space: nowrap;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translate(-50%, 14px) scale(.96);
+  transition: opacity .45s ease, transform .55s cubic-bezier(.2, .9, .25, 1.1), visibility 0s linear .45s, border-color .25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.callout svg { width: 14px; height: 18px; flex: none; }
+.callout svg path { fill: var(--gold); }
+.callout svg circle { fill: #4B1B0C; }
+.callout.on {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: translate(-50%, 0);
+  transition: opacity .45s ease, transform .55s cubic-bezier(.2, .9, .25, 1.1), visibility 0s, border-color .25s ease;
+}
+.callout:hover { border-color: var(--gold); }
+.callout:active { transform: translate(-50%, 0) scale(.97); }
+/* the pulse is a ring on a pseudo-element so the pill itself stays still to tap */
+.callout::after {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  border: 1px solid rgba(232, 198, 106, .7);
+  animation: callout-pulse 2.6s ease-out infinite;
+}
+@keyframes callout-pulse {
+  0%   { opacity: .8; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(1.18, 1.45); }
+}
+
+/* The opening hint. Guests missed a small caption, so it's a glass pill with
+   a gesture that shows the motion: a finger swiping up on touch screens, a
+   wheel rolling on desktop. Tapping it nudges the car forward (ui/overlays.js). */
+.cue {
+  position: fixed; z-index: 4; left: 50%;
+  bottom: calc(var(--venue-bottom) + 78px);
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 0 20px 0 16px; height: 52px; border-radius: 999px;
+  font: inherit; color: #FFF6E8; white-space: nowrap; cursor: pointer;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(10px) saturate(130%); -webkit-backdrop-filter: blur(10px) saturate(130%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 26px rgba(0, 0, 0, .35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translate(-50%, 14px);
+  transition: opacity .6s ease, transform .7s cubic-bezier(.2, .9, .25, 1.1), visibility 0s linear .6s;
+  -webkit-tap-highlight-color: transparent;
+}
+html.ready .cue {
+  opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0);
+  transition: opacity .6s ease .5s, transform .7s cubic-bezier(.2, .9, .25, 1.1) .5s, visibility 0s .5s;
+  animation: cue-hop 4s ease-in-out 3s infinite;
+}
+html.ready .cue.gone {
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 14px); animation: none;
+  transition: opacity .4s ease, transform .4s ease, visibility 0s linear .4s;
+}
+.cue:hover { border-color: var(--gold); }
+/* a small hop every few seconds while it's still being ignored */
+@keyframes cue-hop {
+  0%, 84%, 100% { transform: translate(-50%, 0); }
+  88% { transform: translate(-50%, -7px); }
+  92% { transform: translate(-50%, 0); }
+  95% { transform: translate(-50%, -3px); }
+}
+.cue-text { font-size: .95rem; letter-spacing: .18em; padding-left: .18em; text-transform: uppercase; font-weight: 500; }
+.cue-gesture { width: 20px; height: 27px; flex: none; }
+.cue-phone { fill: none; stroke: #FFF6E8; stroke-width: 1.6; opacity: .85; }
+.cue-finger { fill: var(--gold); animation: cue-swipe 1.8s cubic-bezier(.5, 0, .3, 1) infinite; }
+.cue-wheel { fill: var(--gold); animation: cue-wheel 1.6s ease-in-out infinite; }
+@keyframes cue-swipe {
+  0%   { transform: translateY(4px); opacity: 0; }
+  15%  { opacity: 1; }
+  70%  { transform: translateY(-12px); opacity: 1; }
+  100% { transform: translateY(-12px); opacity: 0; }
+}
+@keyframes cue-wheel { 0% { transform: translateY(0); opacity: 1; } 70% { transform: translateY(6px); opacity: 0; } 100% { transform: translateY(0); opacity: 0; } }
+.cue-chev {
+  width: 16px; height: 10px; flex: none; fill: none; stroke: var(--gold); stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+  animation: cue 2.2s ease-in-out infinite;
+}
+@keyframes cue { 0%, 100% { opacity: .35; transform: translateY(-2px); } 50% { opacity: 1; transform: translateY(4px); } }
+/* touch screens swipe, everything else scrolls */
+.cue .cue-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .cue .cue-touch { display: inline; }
+  .cue .cue-mouse { display: none; }
+}
+
+/* -------------------------------------------------------------- credit */
+
+/* CC-BY needs the credit on the page. Always there, quiet mid-drive, fully
+   legible on the loader and at the ending (html.at-end, set by overlays.js). */
+.credit {
+  position: fixed; z-index: 11; margin: 0;
+  left: calc(var(--gutter) + env(safe-area-inset-left, 0px));
+  bottom: calc(8px + var(--safe-b));
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; letter-spacing: .02em; line-height: 1.3;
+  color: rgba(255, 246, 232, .7); text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+  /* a faint smoked backing so it stays legible over pale ground or sky */
+  background: rgba(12, 16, 10, .28);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  transition: color .8s ease, background .8s ease;
+}
+.credit a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(255, 246, 232, .3); }
+.credit a:hover { color: #FFF6E8; border-bottom-color: var(--gold); }
+html.at-end .credit, html:not(.ready) .credit { color: rgba(255, 246, 232, .9); }
+html:not(.ready) .credit { background: none; }
+
+/* Phones: the venue lines and the credit share the bottom edge, so the credit
+   centres under them and the venue slot lifts clear of it. */
+@media (max-width: 640px) {
+  :root { --venue-bottom: calc(2.2vh + 22px + var(--safe-b)); }
+  .credit { left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 2 * var(--gutter)); text-align: center; font-size: 10.5px; bottom: calc(6px + var(--safe-b)); }
+  .callout { bottom: calc(var(--venue-bottom) + 70px); }
+}
+
+/* ------------------------------------------------------------- loader */
+
+.loader {
+  position: fixed; inset: 0; z-index: 10;
+  display: grid; place-items: center; padding: var(--gutter);
+  background: radial-gradient(120% 90% at 50% 45%, #141a10 0%, #070806 70%);
+  transition: opacity 1.2s ease, visibility 0s linear 1.2s;
+}
+html.ready .loader { opacity: 0; visibility: hidden; pointer-events: none; }
+.loader-inner {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  transition: transform 1.4s cubic-bezier(.3, 0, .2, 1), filter 1.2s ease;
+}
+html.ready .loader-inner { transform: scale(1.06); filter: blur(4px); }
+
+.enso { width: clamp(130px, 34vw, 170px); height: auto; overflow: visible; }
+.enso-reveal {
+  fill: none; stroke: #fff; stroke-width: 26; stroke-linecap: round;
+  stroke-dasharray: 1 1; stroke-dashoffset: 1;
+  transition: stroke-dashoffset .7s cubic-bezier(.4, 0, .2, 1);
+}
+.enso-body { fill: none; stroke: var(--gold); stroke-width: 9; stroke-linecap: round; opacity: .95; }
+.enso-dry { fill: none; stroke: var(--gold); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 14 5 30 4 8 6; opacity: .45; }
+.enso-dry--in { stroke-width: 1.2; stroke-dasharray: 22 7 9 5; opacity: .35; }
+.enso-tail { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; opacity: .8; }
+
+.loader-names {
+  margin: 14px 0 0; font-family: "Mrs Saint Delafield", cursive;
+  font-size: clamp(2.5rem, 11vw, 3.4rem); line-height: 1.1; color: #FFF6E8;
+}
+.loader-names .amp { font-family: "EB Garamond", Georgia, serif; font-style: italic; font-size: .45em; color: var(--gold); vertical-align: .35em; }
+.loader-status {
+  margin: 10px 0 0; font-size: .74rem; letter-spacing: .34em; padding-left: .34em; text-transform: uppercase;
+  color: rgba(255, 246, 232, .55);
+}
+.loader-error { margin-top: 18px; max-width: 36ch; }
+.loader-error p { margin: 0 0 14px; font-size: 1.1rem; font-style: italic; color: #FFF6E8; }
+.loader-error a {
+  display: inline-block; padding: 11px 20px; border-radius: 999px;
+  color: #FFF6E8; text-decoration: none; font-size: 1.05rem;
+  background: linear-gradient(180deg, #6B2C16, #4B1B0C); border: 1px solid rgba(232, 198, 106, .45);
+}
+.loader.failed .enso { opacity: .3; }
+.loader.failed .enso-reveal { stroke-dashoffset: 0 !important; transition: none; }
+.loader.failed .loader-status { display: none; }
+
+/* ------------------------------------------------------- event sheets */
+
+/* The event card, ported from road.css: dark olive glass with gold
+   hairlines, a centred title over an ornament rule, and a sakura branch that
+   creeps in from two corners every open (ui/sheets.js builds it). The dialog
+   clips (rounded corners crop the branches); .sheet-body scrolls. */
+.sheet {
+  --ivory: #F3EBDD;
+  --ivory-soft: rgba(243, 235, 221, .72);
+  --hair: rgba(243, 235, 221, .2);
+  --gold-hair: rgba(232, 198, 106, .4);
+  width: min(420px, calc(100vw - 2 * var(--gutter)));
+  max-width: none; max-height: none;
+  margin: auto; padding: 0;
+  border: 1px solid var(--gold-hair); border-radius: 28px;
+  background: linear-gradient(165deg, rgba(78, 86, 42, .66), rgba(36, 42, 19, .78));
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .14),
+    inset 0 0 0 5px rgba(232, 198, 106, .04),
+    0 30px 70px rgba(0, 0, 0, .5);
+  color: var(--ivory);
+  font-family: "EB Garamond", Georgia, serif;
+  overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  animation: sheet-in .5s cubic-bezier(.2, .9, .25, 1.05);
+}
+.sheet::backdrop {
+  background: rgba(10, 14, 8, .4);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  animation: sheet-fade .3s ease;
+}
+.sheet.closing { animation: sheet-out .22s ease forwards; }
+.sheet.closing::backdrop { animation: sheet-fade .22s ease reverse forwards; }
+/* following a swipe-down: sheets.js sets the offset, the card tracks the finger */
+.sheet.dragging { animation: none; transition: none; transform: translateY(var(--drag, 0px)); }
+.sheet.dragged { animation: none; }
+/* a close after a drag sinks on from where the finger let go */
+.sheet.closing.dragged { animation: none; transition: transform .22s cubic-bezier(.5, 0, .75, 0), opacity .22s ease; transform: translateY(100vh); }
+.sheet.settling { animation: none; transition: transform .3s cubic-bezier(.2, .9, .25, 1); transform: translateY(0); }
+
+@keyframes sheet-in  { from { opacity: 0; transform: translateY(24px) scale(.96); } }
+@keyframes sheet-out { to   { opacity: 0; transform: translateY(16px) scale(.97); } }
+@keyframes sheet-fade { from { opacity: 0; } }
+
+.sheet-body {
+  position: relative; z-index: 1;
+  max-height: min(86vh, 720px); max-height: min(86dvh, 720px);
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: 46px 22px 22px;
+}
+
+.sheet-head { text-align: center; padding: 0 30px; }
+.sheet-title { margin: 0; font-weight: 500; line-height: 1.08; font-size: clamp(1.9rem, 8vw, 2.3rem); }
+.sheet-sub {
+  margin: 8px 0 0; color: var(--ivory-soft);
+  font-size: .78rem; letter-spacing: .34em; text-indent: .34em; text-transform: uppercase;
+}
+.sheet-rule { display: flex; align-items: center; gap: 10px; width: 78%; margin: 12px auto 0; color: var(--gold); }
+.sheet-rule::before, .sheet-rule::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-hair)); }
+.sheet-rule::after { background: linear-gradient(270deg, transparent, var(--gold-hair)); }
+.sheet-rule svg { flex: none; width: 22px; height: 17px; }
+
+.sheet-close {
+  position: absolute; z-index: 3; top: 14px; right: 14px;
+  width: 38px; height: 38px; border-radius: 50%; padding: 0;
+  border: 1px solid var(--hair); background: rgba(0, 0, 0, .18);
+  color: var(--ivory); font: inherit; font-size: 1.5rem; line-height: 1; cursor: pointer;
+}
+.sheet-close:hover { background: rgba(255, 255, 255, .12); }
+.sheet-close:focus { outline: none; }
+.sheet-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* the venue's events split by hairlines: line icon, name and time, a single
+   dress-code colour where there is one, and the one-line note */
+.sheet-events { list-style: none; margin: 20px 0 0; padding: 0; }
+.sheet-ev { display: grid; grid-template-columns: 44px 1fr; column-gap: 16px; padding: 16px 0; border-top: 1px solid var(--hair); }
+.sheet-ev:first-child { border-top: 0; padding-top: 6px; }
+.sheet-ev:last-child { padding-bottom: 4px; }
+.sheet-ev::before {
+  content: ""; grid-row: 1 / span 3; width: 44px; height: 44px; margin-top: 2px;
+  background: var(--gold);
+  -webkit-mask: var(--art) center / contain no-repeat;
+          mask: var(--art) center / contain no-repeat;
+}
+.sheet-ev > * { grid-column: 2; }
+.sheet-ev[data-art="vinyl"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='20' cy='27' r='16'/%3E%3Ccircle cx='20' cy='27' r='10' stroke-opacity='.55'/%3E%3Ccircle cx='20' cy='27' r='2.6'/%3E%3Cpath d='M43 5l-7 17-5 3'/%3E%3Cpath d='M40 31v9a2.6 2.6 0 1 1-1.4-2.3M40 31l5-1.6'/%3E%3C/svg%3E"); }
+.sheet-ev[data-art="sun"]   { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='24' cy='24' r='7'/%3E%3Ccircle cx='24' cy='24' r='2' stroke-opacity='.6'/%3E%3Cpath d='M24 5v6M24 37v6M5 24h6M37 24h6M10.6 10.6l4.2 4.2M33.2 33.2l4.2 4.2M10.6 37.4l4.2-4.2M33.2 14.8l4.2-4.2'/%3E%3C/svg%3E"); }
+.sheet-ev[data-art="rings"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='18' cy='29' r='10.5'/%3E%3Ccircle cx='30' cy='29' r='10.5'/%3E%3Cpath d='M26.8 14.5L30 10l3.2 4.5L30 18z'/%3E%3C/svg%3E"); }
+.sheet-ev[data-art="thali"] { --art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='24' cy='33' rx='20' ry='7'/%3E%3Cellipse cx='24' cy='32' rx='12' ry='3.6' stroke-opacity='.6'/%3E%3Cpath d='M17 24c-2-2.6 2-4.4 0-7.6M24 23c-2-2.6 2-4.4 0-7.6M31 24c-2-2.6 2-4.4 0-7.6'/%3E%3C/svg%3E"); }
+.ev-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ev-name { margin: 0; font-weight: 500; font-size: 1.35rem; line-height: 1.2; }
+.ev-when { flex: none; margin: 0; color: var(--gold); font-size: .76rem; letter-spacing: .16em; text-transform: uppercase; }
+.ev-dress {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0 0;
+  color: var(--ivory-soft); font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+}
+.ev-dress::before {
+  content: ""; flex: none; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--c); border: 1px solid rgba(255, 255, 255, .5);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+}
+.ev-note { margin: 6px 0 0; font-style: italic; font-size: 1.08rem; line-height: 1.3; color: var(--ivory-soft); }
+
+.sheet-directions {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin-top: 22px; padding: 15px; border-radius: 18px;
+  text-decoration: none; color: var(--ivory);
+  background: linear-gradient(180deg, #6B2C16, #4B1B0C);
+  border: 1px solid rgba(232, 198, 106, .3);
+  font-size: 1.2rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 20px rgba(0, 0, 0, .3);
+  transition: transform .15s ease;
+}
+.sheet-directions::after { content: "\2192"; font-size: 1.3rem; transition: transform .25s ease; }
+.sheet-directions:hover::after { transform: translateX(4px); }
+.sheet-directions:active { transform: scale(.98); }
+.sheet-directions:focus-visible { outline-offset: 2px; }
+
+/* ---- the sakura branches (sheets.js bloom()): stems draw in, blossoms pop
+   open as the stem reaches them (--d), then the branch sways. A closed
+   dialog is display:none, so every open replays it. */
+.sheet-bloom { position: absolute; z-index: 2; pointer-events: none; width: min(54%, 190px); aspect-ratio: 1; }
+.sheet-bloom--tl { top: -3px; left: -3px; }
+.sheet-bloom--br { bottom: -3px; right: -3px; transform: rotate(180deg); }
+.sheet-bloom svg {
+  display: block; width: 100%; height: 100%; overflow: visible;
+  transform-origin: 0 0;
+  animation: bloom-sway 5s ease-in-out 1.9s infinite alternate;
+}
+.sheet-bloom .stem {
+  fill: none; stroke: #4A2C20; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: bloom-creep 1.1s cubic-bezier(.45, 0, .25, 1) var(--d) forwards;
+}
+.sheet-bloom .bl {
+  transform-box: fill-box; transform-origin: center;
+  opacity: 0; transform: scale(0) rotate(-70deg);
+  animation: bloom-open .7s cubic-bezier(.3, 1.5, .5, 1) var(--d) forwards;
+}
+.sheet-bloom .fall { opacity: 0; animation: bloom-fall 6s linear var(--d) infinite; }
+@keyframes bloom-creep { to { stroke-dashoffset: 0; } }
+@keyframes bloom-open  { to { opacity: 1; transform: none; } }
+@keyframes bloom-sway  { to { transform: rotate(1.8deg); } }
+@keyframes bloom-fall {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0); }
+  12%  { opacity: .9; }
+  100% { opacity: 0; transform: translate(70px, 150px) rotate(320deg); }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sheet { background: rgba(36, 42, 19, .96); }
+  .hud button, .callout { background: rgba(27, 36, 22, .85); }
+}
+
+/* phones: the card rises from the bottom edge and sinks back when closed,
+   like a bottom sheet, but stays a floating card */
+@media (max-width: 640px) {
+  .sheet-body { padding: 46px 18px 20px; }
+  .sheet { animation: sheet-rise .55s cubic-bezier(.2, .9, .25, 1); }
+  .sheet.closing { animation: sheet-sink .22s cubic-bezier(.5, 0, .75, 0) forwards; }
+}
+@keyframes sheet-rise { from { transform: translateY(100vh); } }
+@keyframes sheet-sink { to   { transform: translateY(100vh); } }
+
+/* ------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  #scene, .loader, .loader-inner, .hud, .route, .cue, .callout { transition-duration: .01s !important; transition-delay: 0s !important; }
+  html.ready .loader-inner { transform: none; filter: none; }
+  .cue, .cue-chev, .cue-finger, .cue-wheel, .callout::after { animation: none !important; }
+  html.ready .cue, html.ready .cue.gone { transform: translate(-50%, 0); }
+  .callout, .callout.on { transform: translate(-50%, 0); }
+  .sheet, .sheet::backdrop { animation: none !important; transition: none !important; }
+  .sheet-bloom svg, .sheet-bloom .stem, .sheet-bloom .bl { animation: none !important; }
+  .sheet-bloom .stem { stroke-dashoffset: 0; }
+  .sheet-bloom .bl { opacity: 1; transform: none; }
+  .sheet-bloom .fall { display: none; }
+  .enso-reveal { transition: none; }
+}

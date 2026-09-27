@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b2416">
+<title>Bhavya &amp; Ramcharan</title>
+<meta name="description" content="Join us as we celebrate our wedding.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Bhavya &amp; Ramcharan">
+<meta property="og:description" content="Join us as we celebrate our wedding.">
+<meta property="og:image" content="https://weareactuallydoingthis.wtf/art/og-preview.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://weareactuallydoingthis.wtf/v2/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Bhavya &amp; Ramcharan">
+<meta name="twitter:description" content="Join us as we celebrate our wedding.">
+<meta name="twitter:image" content="https://weareactuallydoingthis.wtf/art/og-preview.jpg">
+<link rel="icon" type="image/png" href="../favicon-32.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="../fonts/mrs-saint-delafield-400.woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="v2.css">
+<link rel="modulepreload" href="vendor/three.module.min.js">
+<link rel="preload" as="fetch" href="../models/ecosport/scene-compressed.glb" crossorigin>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+
+<audio id="bg-audio" loop preload="none" playsinline>
+  <source src="../audio/loop.m4a" type="audio/mp4">
+  <source src="../audio/loop.mp3" type="audio/mpeg">
+</audio>
+
+<canvas id="scene" aria-hidden="true"></canvas>
+
+<!-- the page's scroll height: every scroll px moves the car (core/scroll.js) -->
+<div id="track" aria-hidden="true"></div>
+
+<!-- route: one dot per leg, built from core/zones.js by ui/hud.js -->
+<nav class="route" id="route" aria-label="Route"></nav>
+
+<div class="hud">
+  <button type="button" class="autoplay" id="autoplay" data-autoplay aria-pressed="false">
+    <svg class="autoplay-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path class="i-play" d="M5 3.2v9.6L12.6 8z"/><path class="i-pause" d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z"/></svg>
+    <span>Drive for me</span>
+  </button>
+  <button type="button" class="music-toggle" id="musicToggle" aria-label="Play music" aria-pressed="false">&#9834;</button>
+</div>
+
+<!-- text keyed to s (core/timeline.js OVERLAYS); ui/overlays.js fades them -->
+<div class="overlays">
+  <div class="title" id="title"><h1><span class="first-name">Bhavya</span> <span class="amp" aria-hidden="true">&amp;</span><span class="amp-word">and</span> <span class="second-name">Ramcharan</span></h1></div>
+  <div class="venue" id="titleVenue"><p class="details-place">Bengaluru</p></div>
+
+  <div class="details" id="details">
+    <ul class="details-events">
+      <li><span class="details-ceremony">Reception By the Shore</span><span class="details-when">November 17th, 7 PM</span></li>
+      <li><span class="details-ceremony">Haldi</span><span class="details-when">November 18th, 8 AM</span></li>
+      <li><span class="details-ceremony">Muhurtham</span><span class="details-when">November 18th, 8 PM</span></li>
+    </ul>
+  </div>
+  <div class="venue" id="venue"><p class="details-place">Palm Beach Hotel<br>Visakhapatnam</p></div>
+
+  <div class="dam-caption" id="damCaption">
+    <ul class="details-events">
+      <li><span class="details-ceremony">Dawat by the Manair</span><span class="details-when">November 21st, 7 PM</span></li>
+    </ul>
+  </div>
+  <div class="venue" id="damVenue"><p class="details-place">AMR Unnati Convention<br>Karimnagar</p></div>
+
+  <div class="title" id="ending"><h1>The Beginning</h1></div>
+  <div class="venue" id="endingVenue"><p class="details-place">of everything</p></div>
+</div>
+
+<!-- one per STOPS entry (id callout-<stop.id>); ui/overlays.js shows each over its stop.callout span -->
+<button type="button" class="callout" id="callout-vizag" tabindex="-1" aria-hidden="true">
+  <svg viewBox="0 0 16 20" aria-hidden="true" focusable="false"><path d="M8 19s6-6.2 6-11A6 6 0 0 0 2 8c0 4.8 6 11 6 11z"/><circle cx="8" cy="8" r="2.2"/></svg>
+  <span>Take me here</span>
+</button>
+<button type="button" class="callout" id="callout-karimnagar" tabindex="-1" aria-hidden="true">
+  <svg viewBox="0 0 16 20" aria-hidden="true" focusable="false"><path d="M8 19s6-6.2 6-11A6 6 0 0 0 2 8c0 4.8 6 11 6 11z"/><circle cx="8" cy="8" r="2.2"/></svg>
+  <span>Take me here</span>
+</button>
+
+<!-- first-time hint; ui/overlays.js hides it once the drive starts, a tap nudges the car forward -->
+<button type="button" class="cue" id="cue" aria-label="Start the drive">
+  <svg class="cue-gesture cue-touch" viewBox="0 0 24 32" aria-hidden="true" focusable="false"><rect class="cue-phone" x="2" y="1" width="20" height="30" rx="4"/><circle class="cue-finger" cx="12" cy="21" r="3.2"/></svg>
+  <svg class="cue-gesture cue-mouse" viewBox="0 0 24 32" aria-hidden="true" focusable="false"><rect class="cue-phone" x="4" y="2" width="16" height="26" rx="8"/><rect class="cue-wheel" x="10.8" y="8" width="2.4" height="5" rx="1.2"/></svg>
+  <span class="cue-text"><span class="cue-touch">Swipe up to drive</span><span class="cue-mouse">Scroll down to drive</span></span>
+  <svg class="cue-chev" viewBox="0 0 20 12" aria-hidden="true" focusable="false"><path d="M2 2l8 8 8-8"/></svg>
+</button>
+
+<p class="credit" id="credit">Car: <a href="https://sketchfab.com/3d-models/2012-ford-ecosport-4e491913d5f74b60a838555cb7ab610b" target="_blank" rel="noopener">&ldquo;2012 Ford EcoSport&rdquo;</a> by <a href="https://sketchfab.com/tonielpro520" target="_blank" rel="noopener">tonielpro520</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;4.0</a></p>
+
+<!-- ensō drawn by load progress (ui/loader.js); inline so it paints before any module runs -->
+<div class="loader" id="loader">
+  <div class="loader-inner">
+    <svg class="enso" viewBox="0 0 200 200" aria-hidden="true" focusable="false">
+      <defs>
+        <filter id="ensoBrush" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency=".9 .06" numOctaves="2" seed="7" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="5" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <mask id="ensoReveal" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+          <path class="enso-reveal" pathLength="1" d="M76.1 34.2A70 70 0 0 1 135 160.6A68 68 0 0 1 45.1 61.5"/>
+        </mask>
+      </defs>
+      <g mask="url(#ensoReveal)" filter="url(#ensoBrush)">
+        <path class="enso-body" d="M76.1 34.2A70 70 0 0 1 135 160.6A68 68 0 0 1 45.1 61.5"/>
+        <path class="enso-dry" d="M79 29.6A74 74 0 0 1 138 165A72 72 0 0 1 41 59.5"/>
+        <path class="enso-dry enso-dry--in" d="M78 39A65 65 0 0 1 132 156A63 63 0 0 1 49 63"/>
+        <path class="enso-tail" d="M45.1 61.5Q51 50 62 42"/>
+      </g>
+    </svg>
+    <p class="loader-names"><span>Bhavya</span> <span class="amp">&amp;</span> <span>Ramcharan</span></p>
+    <p class="loader-status" id="loaderStatus" role="status">Setting out&hellip;</p>
+    <div class="loader-error" id="loaderError" role="alert" hidden>
+      <p>The 3D road couldn&rsquo;t load here.</p>
+      <a href="../">Take the painted road instead</a>
+    </div>
+  </div>
+</div>
+
+<!-- Event sheets, opened by a stop's "Take me here" (core/timeline.js STOPS[].sheet).
+     Same markup as the root site's; data-map backs the Directions button.
+     DRAFT: dress codes, colours and notes below are placeholders — confirm before sharing. -->
+<dialog class="sheet" id="sheetBeach" aria-labelledby="sheetBeachTitle"
+        data-map="https://www.google.com/maps/search/?api=1&amp;query=Palm+Beach+Hotel+Visakhapatnam">
+  <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  <div class="sheet-body">
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="sheetBeachTitle">Palm Beach Hotel</h2>
+    <p class="sheet-sub">Visakhapatnam</p>
+    <div class="sheet-rule" aria-hidden="true"><svg viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16.5L2.6 8.2a10 10 0 0 1 18.8 0z"/><path d="M12 16.5L6 4.2M12 16.5L9 2.4M12 16.5V2M12 16.5l3-14.1M12 16.5l6-12.3"/></svg></div>
+  </header>
+  <ol class="sheet-events">
+    <li class="sheet-ev" data-art="vinyl">
+      <div class="ev-head"><h3 class="ev-name">Reception</h3><p class="ev-when">Nov 17 · 7 PM</p></div>
+      <p class="ev-note">Dance till the tide gives up.</p>
+    </li>
+    <li class="sheet-ev" data-art="sun">
+      <div class="ev-head"><h3 class="ev-name">Haldi</h3><p class="ev-when">Nov 18 · 8 AM</p></div>
+      <p class="ev-dress" style="--c:#F2C230">Wear yellow</p>
+      <p class="ev-note">Arrive in white, leave in yellow.</p>
+    </li>
+    <li class="sheet-ev" data-art="rings">
+      <div class="ev-head"><h3 class="ev-name">Muhurtham</h3><p class="ev-when">Nov 18 · 8 PM</p></div>
+      <p class="ev-dress" style="--c:#F4EAD5">Wear cream</p>
+      <p class="ev-note">Blink and you&rsquo;ll miss the knot.</p>
+    </li>
+  </ol>
+
+  <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+  </div>
+</dialog>
+<dialog class="sheet" id="sheetDam" aria-labelledby="sheetDamTitle"
+        data-map="https://www.google.com/maps/search/?api=1&amp;query=AMR+Unnati+Convention+Karimnagar">
+  <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  <div class="sheet-body">
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="sheetDamTitle">AMR Unnati Convention</h2>
+    <p class="sheet-sub">Karimnagar</p>
+    <div class="sheet-rule" aria-hidden="true"><svg viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M2 7.5q2.5-3 5 0t5 0 5 0 5 0M2 12.5q2.5-3 5 0t5 0 5 0 5 0"/></svg></div>
+  </header>
+
+  <ol class="sheet-events">
+    <li class="sheet-ev" data-art="thali">
+      <div class="ev-head"><h3 class="ev-name">Dawat by the Manair</h3><p class="ev-when">Nov 21 · 7 PM</p></div>
+      <p class="ev-note">Come hungry, leave rolling.</p>
+    </li>
+  </ol>
+
+  <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+  </div>
+</dialog>
+
+<script>
+/* Failure path, deliberately a classic inline script: if any module in the
+   graph fails to load or link, neither main.js nor ui/loader.js ever runs, so
+   nothing would report 'v2:error' and the loader would spin forever. This
+   handles that, 'v2:error' from boot, no WebGL, and a long stall. */
+(function () {
+  var root = document.documentElement, done = false;
+  function fail(stalled) {
+    if (done || root.classList.contains('ready')) return;
+    var l = document.getElementById('loader'), box = document.getElementById('loaderError');
+    if (!l || !box) return;
+    if (!stalled) { done = true; window.__v2err = true; l.classList.add('failed'); }
+    else box.querySelector('p').textContent = 'This is taking a while on this connection.';
+    box.hidden = false;
+  }
+  addEventListener('v2:error', function () { fail(false); });
+  addEventListener('error', function () { if (!window.__v2) fail(false); });
+  try {
+    var c = document.createElement('canvas');
+    if (!(c.getContext('webgl2') || c.getContext('webgl'))) fail(false);
+  } catch (e) { fail(false); }
+  setTimeout(function () { fail(true); }, 45000);
+})();
+</script>
+<script type="module" src="main.js"></script>
+<script src="../audio.js" defer></script>
+</body>
+</html>
