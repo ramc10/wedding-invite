@@ -664,7 +664,7 @@ function grassMaterial() {
 
 function buildGrass(ctx) {
   const tier = ctx.quality.tier;
-  const n = { low: 900, med: 2000, high: 3800 }[tier] ?? 2000;
+  const n = { low: 900, med: 2000, high: 3200 }[tier] ?? 2000;   // high capped for frame time
   const mesh = new THREE.InstancedMesh(tuftGeometry(tier === 'low' ? 7 : 10), grassMaterial(), n);
   mesh.frustumCulled = false;
   mesh.name = 'grass';

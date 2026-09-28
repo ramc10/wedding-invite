@@ -154,6 +154,7 @@ export function makeWater(ctx, { s0, s1, lateral0, lateral1, y = 0, kind = 'sea'
     vertexShader: VERT,
     fragmentShader: FRAG
   });
+  if (kind === 'sea') { mat.polygonOffset = true; mat.polygonOffsetFactor = -2; mat.polygonOffsetUnits = -6; }
   const m = new THREE.Mesh(g, mat);
   m.name = 'water-' + kind;
   m.renderOrder = 1;
@@ -167,7 +168,7 @@ attribute vec4 aFrame;
 uniform float uTime, uAmp, uKind;
 varying vec3 vWorld, vN;
 varying vec2 vUV;
-varying float vDepth, vCrest, vSurf;
+varying float vDepth, vCrest, vSurf, vD0;
 #include <fog_pars_vertex>
 
 // one Gerstner wave in shore space u = (along, offshore); d is its unit direction
@@ -208,9 +209,13 @@ void main() {
   vec2 F = aFrame.xy, O = aFrame.zw;
   worldPosition.xz += disp.x * F + disp.z * O;
   worldPosition.y += disp.y;
+  // sea: the strip just above the waterline is lifted onto the sand so the
+  // fragment shader can draw the wet-sand band and the swash film on it
+  if (uKind < 0.5 && dep < 0.0 && dep > -0.9) worldPosition.y += -dep + 0.1 - disp.y * 0.8;
   vN = normalize(vec3(0.0, 1.0, 0.0) - grad.x * vec3(F.x, 0.0, F.y) - grad.y * vec3(O.x, 0.0, O.y));
   vCrest = crest / amax;                          // −1 trough … +1 crest
   vDepth = aDepth + disp.y;
+  vD0 = aDepth;
   vSurf = smoothstep(2.6, 1.1, aDepth) * smoothstep(0.05, 0.45, aDepth);   // surf (breaking) zone
   vUV = u;
   vWorld = worldPosition.xyz;
@@ -224,7 +229,7 @@ uniform float uTime, uDusk, uFoam, uAmp, uScale, uFlow, uAlphaShallow, uKind;
 uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCamPos, uDeep, uMid, uShallow;
 varying vec3 vWorld, vN;
 varying vec2 vUV;
-varying float vDepth, vCrest, vSurf;
+varying float vDepth, vCrest, vSurf, vD0;
 #include <fog_pars_fragment>
 
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -303,7 +308,24 @@ void main() {
   // swash: white edge at the moving waterline, bubbles thinning seaward
   float edge = 1.0 - smoothstep(0.0, 0.07 + 0.25 * lace, d);
   float swash = edge * (0.55 + 0.45 * lace2) + (1.0 - smoothstep(0.05, 0.5, d)) * smoothstep(0.5, 0.8, lace) * 0.5;
-  float foam = (brk + trail) * isSea + swash;
+  // persistent breaker lines over the bars (keyed to rest depth), with
+  // spilling whitewater bores rolling shoreward between them
+  float D = vD0;
+  float alongN = vnoise(vec2(vUV.x * 0.045, 3.1));
+  float bars = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float Di = 0.5 + fi * 0.8 + (alongN - 0.5) * 0.3;
+    float wi = 0.22 + fi * 0.1;
+    float pulse = 0.55 + 0.45 * sin(t * 0.8 - fi * 1.9 + vUV.x * 0.021 + alongN * 4.0);
+    float gap = smoothstep(0.08, 0.4, vnoise(vec2(vUV.x * 0.05 + fi * 7.3 - t * 0.05, fi * 3.0)));
+    bars += exp(-pow((D - Di) / wi, 2.0)) * pulse * gap * (1.0 - fi * 0.2) * 1.5;
+  }
+  float bore = smoothstep(0.78, 0.97, fract(vUV.y / 9.0 + t * 0.11 + alongN * 0.7))
+             * smoothstep(2.6, 0.3, D) * smoothstep(-0.02, 0.12, D);
+  float surfFoam = clamp(bars * (0.6 + 0.6 * lace), 0.0, 1.0) + bore * (0.4 + 0.6 * lace2);
+  surfFoam *= 1.0 - smoothstep(400.0, 1800.0, dist) * 0.4;
+  float foam = (brk + trail + surfFoam) * isSea + swash;
   // creek: white water over the stones and along the banks
   float streak = vnoise(vec2(vUV.y * 3.0, vUV.x * 0.7 - t * 1.8));
   foam += isCreek * (stones * smoothstep(0.35, 0.75, streak) * 1.3 + (1.0 - smoothstep(0.0, 0.18, d)) * 0.4);
@@ -318,6 +340,24 @@ void main() {
   alpha = mix(alpha, 1.0, max(fres, smoothstep(60.0, 300.0, dist)));
   alpha *= smoothstep(0.0, 0.06, d);
   alpha = max(alpha, foam * smoothstep(-0.05, 0.02, vDepth));
+
+  // sea, above the waterline: swash film running up and back, its foam
+  // front, and the dark glossy wet-sand band it leaves behind
+  if (isSea > 0.5 && D < 0.0) {
+    float h = -D;
+    float run = 0.07 + 0.17 * (0.5 + 0.5 * sin(t * 0.55 + vUV.x * 0.017 + alongN * 3.0));
+    float film = 1.0 - smoothstep(run - 0.03, run, h);
+    float front = exp(-pow((h - run) / 0.022, 2.0)) * (0.55 + 0.6 * lace);
+    float wet = 1.0 - smoothstep(0.2, 0.62, h + (lace - 0.5) * 0.12);
+    vec3 lit = (0.4 + 0.75 * sunUp) * mix(vec3(1.0), uSunCol, 0.3);
+    vec3 wetCol = vec3(0.27, 0.22, 0.16) * lit;
+    wetCol = mix(wetCol, sky, fres * 0.55) + uSunCol * spec * 0.35 * (1.0 - uDusk * 0.75);
+    vec3 filmCol = mix(uShallow * lit * 0.8, sky, fres);
+    col = mix(wetCol, filmCol, film * 0.7);
+    col = mix(col, foamCol, clamp(front + film * lace2 * 0.35, 0.0, 0.95));
+    col = mix(col, col * 0.55 + sky * 0.25, uDusk * 0.6);
+    alpha = clamp(max(wet * 0.45, max(film * 0.6, front)), 0.0, 0.95);
+  }
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

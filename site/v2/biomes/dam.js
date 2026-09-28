@@ -415,7 +415,7 @@ function makeMats() {
   const M = {
     conc: new THREE.MeshStandardMaterial({ map: conc, bumpMap: conc, bumpScale: 1.2, roughness: 0.92, vertexColors: true, side: THREE.DoubleSide }),
     riprap: new THREE.MeshStandardMaterial({ map: riprapTex(), roughness: 0.95, vertexColors: true, side: THREE.DoubleSide }),
-    parapet: new THREE.MeshStandardMaterial({ map: parapetTex(), roughness: 0.85, side: THREE.DoubleSide }),
+    parapet: new THREE.MeshStandardMaterial({ map: parapetTex(), color: 0xaaa7a2, roughness: 0.97, side: THREE.DoubleSide }),
     kerb: new THREE.MeshStandardMaterial({ map: kerbTex(), roughness: 0.8, side: THREE.DoubleSide }),
     path: new THREE.MeshStandardMaterial({ map: pathTex(), roughness: 0.9, side: THREE.DoubleSide }),
     steel: new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.45, roughness: 0.5, side: THREE.DoubleSide }),
@@ -427,7 +427,7 @@ function makeMats() {
     pave: new THREE.MeshStandardMaterial({ map: paveTex(), roughness: 0.85 }),
     lawn: new THREE.MeshStandardMaterial({ map: lawnTex(), roughness: 0.95 }),
   };
-  M.glass.emissiveMap = M.glass.map;
+  M.glass.emissiveMap = M.glass.map; M.glass.emissive.set(0xffd9a8);
   const sign = signTex();
   M.sign = new THREE.MeshStandardMaterial({ map: sign, emissiveMap: sign, emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.6 });
   M.lawn.map.repeat.set(1, 1);
@@ -484,7 +484,7 @@ function buildBody(ctx, M) {
     // railing: posts every 2.5 m, two pipes
     const rails = [];
     for (let s = CREST_A + 1; s < CREST_B - 1; s += 2.5) {
-      rails.push(place(ctx, cyl(0.03, 0.03, 0.6, 6), s, sg * PAR, top(s) + 0.38));
+      rails.push(place(ctx, cyl(0.035, 0.035, 0.74, 6), s, sg * PAR, top(s) + 0.45));
     }
     for (const dy of [0.36, 0.64]) rails.push(sweep(ctx, ss, s => {
       const y = top(s) + 0.08 + dy, r = 0.03; return [[sg * PAR - r, y - r], [sg * PAR - r, y + r], [sg * PAR + r, y + r], [sg * PAR + r, y - r], [sg * PAR - r, y - r]];
@@ -566,7 +566,9 @@ function buildSpillway(ctx, M) {
     const s = bayS(j);
     out.conc.push(tint(place(ctx, box(3.4, 2.7, 5.2, 3), s, 9.6, Yd + 1.35), 0xe6dcc0, 0.08, j));
     out.conc.push(tint(place(ctx, box(3.9, 0.18, 5.8, 3), s, 9.6, Yd + 2.8), 0x8a4a38));
-    out.steel.push(tint(place(ctx, box(0.06, 1.9, 1.0, 2), s - 1.2, 7.9 + 3.4 / 2 - 0.1, Yd + 1.15), 0x4a5a44)); // door
+    out.steel.push(tint(place(ctx, box(0.06, 1.9, 1.0, 2), s - 1.2, 7.9 - 0.02, Yd + 1.15), 0x4a5a44)); // door
+    out.steel.push(tint(place(ctx, box(0.06, 0.8, 1.6, 1), s + 0.9, 7.9 - 0.02, Yd + 1.65), 0x26303a));   // window
+    out.conc.push(tint(place(ctx, box(0.3, 0.12, 1.9, 1), s + 0.9, 7.8, Yd + 1.2), 0xf0e8d8));            // sill
   }
 
   // radial gates: skin plate, girders, arms, hoist ropes; open bays lifted
@@ -852,33 +854,86 @@ function buildVenue(ctx, M, K, group) {
     out.steel.push(tint(place(ctx, merge(leaf), s, LOT.l0 - 0.3, PY, dir * 0.25), 0x2b2b2e));
   }
 
-  // 20. the hall: plinth, block, glass curtain wall between pilasters, fascia sign, porte-cochère
-  const HS = VENUE.s + 2, HL = 36, HW = 44, HD = 22, HH = 9.5, fl = HL - HD / 2; // front line
-  out.plaster.push(tint(place(ctx, box(HD + 1.2, 0.7, HW + 1.2, 3), HS, HL, PY + 0.35), 0xb9a88c));
-  out.plaster.push(tint(place(ctx, box(HD, HH, HW, 4), HS, HL, PY + 0.7 + HH / 2), cream, 0.04, 3));
-  out.plaster.push(tint(place(ctx, box(HD + 0.6, 0.9, HW + 0.6, 4), HS, HL, PY + 0.7 + HH + 0.45), 0xd9ccb2));
-  const gl = new THREE.PlaneGeometry(HW - 2, HH - 3).rotateY(-Math.PI / 2);
-  out.glass.push(place(ctx, gl, HS, fl - 0.06, PY + 0.7 + (HH - 3) / 2 + 0.2));
-  for (const sd of [-1, 1]) {      // side windows
-    const sw = new THREE.PlaneGeometry(HD - 6, 3).rotateY(sd > 0 ? Math.PI : 0);
-    out.glass.push(place(ctx, sw, HS + sd * (HW / 2 + 0.06), HL, PY + 3.4));
+  // 20. the hall: two storeys on a stone plinth, maroon floor band, glazed ground floor,
+  //     windowed upper floor between pilasters, roof parapet with LED outline, serial-light curtains
+  const HS = VENUE.s + 2, HL = 36, HW = 44, HD = 22, fl = HL - HD / 2; // front line
+  const G = PY + 0.7, F1 = 5.2, F2 = 4.6, RT = G + F1 + 0.45 + F2;      // ground floor, first floor, roof top
+  const maroon = 0x7e2c24, stone = 0xa8957a, trim = 0xf6efe2, dark = 0x2f2926;
+  const HB = (w, h, d, s, l, y, col, T = 3, j = 0) => out.plaster.push(tint(place(ctx, box(w, h, d, T), s, l, y), col, j, s + l));
+  const LED = (w, h, d, s, l, y, col = 0xffe6b0) => out.glow.push(tint(place(ctx, box(w, h, d, 1), s, l, y), col));
+  HB(HD + 1.2, 0.7, HW + 1.2, HS, HL, PY + 0.35, stone, 2, 0.08);                 // plinth
+  HB(HD, F1, HW, HS, HL, G + F1 / 2, cream, 4, 0.04);                              // ground storey
+  HB(HD + 0.9, 0.45, HW + 0.9, HS, HL, G + F1 + 0.22, maroon, 3);                  // floor band / chajja
+  HB(HD, F2, HW, HS, HL, G + F1 + 0.45 + F2 / 2, 0xf1e7d3, 4, 0.04);               // first storey
+  HB(HD + 0.3, 1.2, HW + 0.3, HS, HL, RT + 0.6, 0xe7dcc6, 3);                      // roof parapet
+  HB(HD + 0.7, 0.2, HW + 0.7, HS, HL, RT + 1.3, 0xd2c3a6, 3);                      // coping
+  // LED outline: coping edges (front + sides), floor band underside, building corners
+  LED(0.06, 0.07, HW + 0.7, HS, fl - 0.37, RT + 1.44);
+  LED(0.06, 0.06, HW + 0.9, HS, fl - 0.47, G + F1 - 0.03);
+  for (const sd of [-1, 1]) {
+    LED(HD + 0.7, 0.07, 0.06, HS + sd * (HW / 2 + 0.37), HL, RT + 1.44);
+    LED(0.06, RT + 1.4 - G, 0.06, HS + sd * (HW / 2 + 0.17), fl - 0.17, (RT + 1.4 + G) / 2);
   }
-  for (let k = 0; k <= 8; k++) out.plaster.push(tint(place(ctx, box(0.9, HH - 1.2, 0.9, 3), HS - HW / 2 + 1 + k * (HW - 2) / 8, fl - 0.4, PY + 0.7 + (HH - 1.2) / 2), 0xf6efe2));
-  out.plaster.push(tint(place(ctx, box(0.8, 2.2, HW + 0.4, 3), HS, fl - 0.45, PY + 0.7 + HH - 1.4), 0x3a2a24));
-  const fas = new THREE.PlaneGeometry(26, 1.9).rotateY(-Math.PI / 2);
+  // ground floor glazing: tall central entrance + two flanking shopfront bays, dark mullions
+  const glass = (w, h, s, l, y, ry = -Math.PI / 2) => out.glass.push(place(ctx, new THREE.PlaneGeometry(w, h).rotateY(ry), s, l, y));
+  const mull = (h, s, y, n, w) => { for (let k = 0; k <= n; k++) out.steel.push(tint(place(ctx, box(0.14, h, 0.12, 1), s - w / 2 + k * w / n, fl - 0.1, y), dark)); };
+  glass(14, 4.3, HS, fl - 0.05, G + 2.25); mull(4.3, HS, G + 2.25, 7, 14);
+  out.steel.push(tint(place(ctx, box(0.16, 0.14, 14, 1), HS, fl - 0.1, G + 3.3), dark));  // transom
+  for (const sd of [-1, 1]) {
+    const s = HS + sd * 14.5;
+    glass(11, 3.2, s, fl - 0.05, G + 1.9); mull(3.2, s, G + 1.9, 5, 11);
+    HB(0.5, 0.18, 11.6, s, fl - 0.25, G + 0.3, stone);                           // sill
+    HB(0.6, 0.2, 11.8, s, fl - 0.3, G + 3.6, trim);                               // lintel
+  }
+  // first floor: window strip between pilasters, sill band
+  glass(HW - 2, 2.5, HS, fl - 0.05, G + F1 + 0.45 + 2.3);
+  HB(0.55, 0.22, HW - 1, HS, fl - 0.27, G + F1 + 0.45 + 0.95, trim);
+  for (let k = 0; k <= 10; k++) HB(0.7, F2, 0.7, HS - HW / 2 + 1 + k * (HW - 2) / 10, fl - 0.3, G + F1 + 0.45 + F2 / 2, trim);
+  // side elevations: two rows of windows each
+  for (const sd of [-1, 1]) for (const [y, h] of [[G + 1.9, 2.6], [G + F1 + 0.45 + 2.3, 2.2]]) {
+    glass(HD - 5, h, HS + sd * (HW / 2 + 0.05), HL, y, sd > 0 ? 0 : Math.PI);
+  }
+  // serial-light curtains down the upper facade (warm white + gold), clear of the porch sign
+  {
+    const bulbs = [], R = makeRng('serial');
+    for (let s = HS - HW / 2 + 0.6; s < HS + HW / 2 - 0.4; s += 0.8) {
+      if (Math.abs(s - HS) < 8.2) continue;
+      const len = 3.4 + R() * 1.4;
+      for (let y = RT + 1.2; y > RT + 1.2 - len; y -= 0.42) {
+        const b = box(0.07, 0.07, 0.07, 1).toNonIndexed();
+        bulbs.push(tint(place(ctx, b, s, fl - 0.72, y), R() < 0.5 ? 0xffe2a0 : 0xffb458));
+      }
+    }
+    out.glow.push(merge(bulbs));
+  }
+  // grand porte-cochère: six columns (base, fluted-look shaft, capital), deep canopy slab with a
+  // maroon fascia and LED edge, downlights, and a raised sign wall carrying the lit name board
+  const PC = { l0: fl - 10, l1: fl - 0.3, w: 18 }, PT = PY + 6.4, pm = (PC.l0 + PC.l1) / 2;
+  for (const [l, ds] of [[PC.l0 + 0.9, -8], [PC.l0 + 0.9, -3], [PC.l0 + 0.9, 3], [PC.l0 + 0.9, 8], [fl - 1.4, -8], [fl - 1.4, 8]]) {
+    HB(1.2, 0.5, 1.2, HS + ds, l, PY + 0.25, stone, 1);
+    out.plaster.push(tint(place(ctx, cyl(0.4, 0.46, PT - PY - 0.95, 20, 2), HS + ds, l, PY + 0.5 + (PT - PY - 0.95) / 2), 0xfaf5ea));
+    HB(1.15, 0.45, 1.15, HS + ds, l, PT - 0.22, trim, 1);
+  }
+  HB(PC.l1 - PC.l0, 0.75, PC.w, HS, pm, PT + 0.37, 0xf3ead8);                          // canopy slab
+  HB(0.4, 0.95, PC.w + 0.4, HS, PC.l0 - 0.1, PT + 0.47, maroon);                        // fascia front
+  for (const sd of [-1, 1]) HB(PC.l1 - PC.l0, 0.95, 0.4, HS + sd * (PC.w / 2 + 0.1), pm, PT + 0.47, maroon);
+  LED(0.06, 0.06, PC.w + 0.4, HS, PC.l0 - 0.33, PT + 0.96);
+  LED(0.06, 0.06, PC.w + 0.4, HS, PC.l0 - 0.33, PT + 0.0);
+  for (let l = PC.l0 + 2; l < PC.l1 - 1; l += 2.6) for (let ds = -6; ds <= 6; ds += 3) LED(0.4, 0.03, 0.4, HS + ds, l, PT - 0.02, 0xfff0d0);
+  // sign wall on the canopy front, name board on it, LED frame
+  HB(0.45, 2.6, 15, HS, PC.l0 + 0.4, PT + 0.95 + 1.3, cream, 3);
+  HB(0.6, 0.18, 15.3, HS, PC.l0 + 0.4, PT + 0.95 + 2.69, 0xd2c3a6);
+  const fas = new THREE.PlaneGeometry(13.6, 1.75).rotateY(-Math.PI / 2);
   { const uv = fas.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, 1 / 3 + uv.getY(k) / 3); }
-  out.sign.push(place(ctx, fas, HS, fl - 0.87, PY + 0.7 + HH - 1.4));
-  // porte-cochère: slab on six columns, steps up to the doors
-  const PC = { l0: fl - 9, l1: fl - 0.4, w: 16 };
-  out.plaster.push(tint(place(ctx, box(PC.l1 - PC.l0, 0.8, PC.w, 3), HS, (PC.l0 + PC.l1) / 2, PY + 6.2), 0xf3ead8));
-  out.plaster.push(tint(place(ctx, box(PC.l1 - PC.l0 + 0.3, 0.35, PC.w + 0.3, 3), HS, (PC.l0 + PC.l1) / 2, PY + 6.75), 0x8a3b2e));
-  out.glow.push(tint(place(ctx, box(PC.l1 - PC.l0 - 1.5, 0.04, PC.w - 2, 1), HS, (PC.l0 + PC.l1) / 2, PY + 5.78), 0xffd9a0));
-  for (const l of [PC.l0 + 0.6, (PC.l0 + PC.l1) / 2]) for (const ds of [-PC.w / 2 + 0.8, 0, PC.w / 2 - 0.8]) {
-    if (ds === 0 && l !== PC.l0 + 0.6) continue;
-    out.plaster.push(tint(place(ctx, cyl(0.38, 0.42, 5.8, 16, 3), HS + ds, l, PY + 2.9), 0xfaf5ea));
-    out.plaster.push(tint(place(ctx, box(1.0, 0.3, 1.0, 1), HS + ds, l, PY + 0.15), 0xb9a88c));
-  }
-  for (let k = 0; k < 3; k++) out.plaster.push(tint(place(ctx, box(1.2, 0.18 * (3 - k), 10, 2), HS, fl - 0.6 - 1.2 * k, PY + 0.09 * (3 - k)), 0xcdbfa6));
+  out.sign.push(place(ctx, fas, HS, PC.l0 + 0.16, PT + 0.95 + 1.3));
+  LED(0.05, 0.05, 14.2, HS, PC.l0 + 0.14, PT + 0.95 + 2.25);
+  LED(0.05, 0.05, 14.2, HS, PC.l0 + 0.14, PT + 0.95 + 0.35);
+  for (const sd of [-1, 1]) LED(0.05, 1.95, 0.05, HS + sd * 7.1, PC.l0 + 0.14, PT + 0.95 + 1.3);
+  // under-porch floor (polished stone) and three broad steps up to the entrance
+  HB(PC.l1 - PC.l0, 0.06, PC.w, HS, pm, PY + 0.03, 0xcbbfae, 2);
+  for (let k = 0; k < 3; k++) HB(1.1 + 0.9 * (2 - k), 0.235 * (k + 1), 15, HS, fl - 0.55 - (1.1 + 0.9 * (2 - k)) / 2, PY + 0.235 * (k + 1) / 2, 0xd8ccb8, 2);
+  // wall lanterns flanking the flank bays
+  for (const ds of [-20.5, -9, 9, 20.5]) LED(0.25, 0.4, 0.25, HS + ds, fl - 0.25, G + 3.9, 0xffd08a);
   return { out, PY, LW, HS, HL, fl };
 }
 
@@ -896,6 +951,8 @@ function dressVenue(ctx, M, K, group, V) {
     out.steel.push(place(ctx, car(cols[n % cols.length]), s + 1.25, 10.7, PY, Math.PI + (R() - 0.5) * 0.06));
     n++;
   }
+  // second row nose-in to the hall, right of the porch
+  for (let k = 0; k < 4; k++) out.steel.push(place(ctx, car(cols[(k + 2) % cols.length]), V.HS + 11.5 + k * 2.7, V.fl - 11.5, PY, (R() - 0.5) * 0.08));
   // 22. lawn: string lights between poles, lantern posts, lit mandap
   const poles = [];
   for (const s of [LW.s0 + 1, LW.s1 - 1]) for (const l of [LW.l0 + 1, (LW.l0 + LW.l1) / 2, LW.l1 - 1]) {

@@ -305,7 +305,8 @@ function pane(G, R, axis, sgn, c, a0, a1, y0, y1) {
 /** One rectangular block: walls, slab bands, fins, glazing, balconies. */
 function block(ctx, S, G, B, R, { x, z, w, d, storeys, balcSides = [-1, 1], endGlass = true, skipBalc = () => false }) {
   const { T } = S, H = storeys * STOREY;
-  S.parts.push(box(w, H, d, x, T + H / 2, z, CREAM));
+  const RC = 0.45;                                                         // glazing recess behind the fins/slab line
+  S.parts.push(box(w - 2 * RC, H, d, x, T + H / 2, z, CREAM));
   S.parts.push(box(w + 0.12, 0.5, d + 0.12, x, T + 0.25, z, STONE));                     // stone plinth
   for (let k = 1; k <= storeys; k++) S.parts.push(box(w + 0.5, 0.28, d + 0.5, x, T + k * STOREY - 0.14, z, SLAB));
   const nb = Math.round(d / BAY), bw = d / nb;
@@ -314,7 +315,16 @@ function block(ctx, S, G, B, R, { x, z, w, d, storeys, balcSides = [-1, 1], endG
     for (let b = 0; b <= nb; b++) S.parts.push(box(0.5, H, 0.42, fx + sg * 0.2, T + H / 2, z - d / 2 + b * bw, WHITE)); // fins
     for (let b = 0; b < nb; b++) for (let k = 0; k < storeys; k++) {
       const za = z - d / 2 + b * bw + 0.3, zb = za + bw - 0.6, y0 = T + k * STOREY + (k ? 0.1 : 0.5);
-      pane(G, R, 'x', sg, fx + sg * 0.03, za, zb, y0, T + (k + 1) * STOREY - 0.32);
+      const y1 = T + (k + 1) * STOREY - 0.32, gx = fx - sg * (RC - 0.03);
+      pane(G, R, 'x', sg, gx, za, zb, y0, y1);
+      // aluminium frame: sill, head, jambs and a sliding-door mullion
+      S.parts.push(box(0.14, 0.09, zb - za + 0.1, gx + sg * 0.05, y0 - 0.02, (za + zb) / 2, STEEL));
+      S.parts.push(box(0.14, 0.09, zb - za + 0.1, gx + sg * 0.05, y1 + 0.02, (za + zb) / 2, STEEL));
+      for (const zz of [za - 0.03, zb + 0.03, (za + zb) / 2]) S.parts.push(box(0.12, y1 - y0, 0.07, gx + sg * 0.05, (y0 + y1) / 2, zz, STEEL));
+      S.parts.push(box(RC, y1 - y0 + 0.3, 0.1, fx - sg * RC / 2, (y0 + y1) / 2, za - 0.25, WHITE));   // reveal returns
+      S.parts.push(box(RC, y1 - y0 + 0.3, 0.1, fx - sg * RC / 2, (y0 + y1) / 2, zb + 0.25, WHITE));
+      // split AC outdoor unit on every other balcony wall
+      if (k > 0 && (b + k) % 2 === 0) S.parts.push(box(0.3, 0.55, 0.8, fx - sg * RC + sg * 0.16, T + k * STOREY + 0.32, zb - 0.1, 0xe6e4df));
       if (k > 0 && balcSides.includes(sg) && !skipBalc(sg, b, k)) B.push({ x: fx, y: T + k * STOREY, z: za + (bw - 0.6) / 2, sg });
     }
   }
@@ -400,6 +410,21 @@ export function buildHotel(ctx, venue) {
   S.parts.push(box(0.5, 0.35, TL - 3, MX + TW / 2 - 0.2, ttop + 3.4, 0, WHITE));
   for (const z of [-TL / 2 + 1.8, TL / 2 - 1.8]) S.parts.push(box(0.45, 3.4, 0.45, MX + TW / 2 - 0.2, ttop + 1.7, z, WHITE));
 
+  // more roof plant: tilted solar rows on the wings, condensers + a stair
+  // head, lightning finials and a dish on the tower
+  for (const sz of [-1, 1]) for (let r = 0; r < 3; r++) for (let q = 0; q < 2; q++) {
+    const pz = sz * (TL / 2 + 6 + q * 4.2), px = MX + 1.2 + r * 1.9;
+    S.parts.push(colored(new THREE.BoxGeometry(1.7, 0.05, 3.9).rotateZ(-0.22).translate(px, top + 0.75, pz), 0x1d2a3e));
+    for (const oz of [-1.6, 1.6]) S.parts.push(box(0.06, 0.6, 0.06, px + 0.6, top + 0.42, pz + oz, 0x9a9a9a));
+  }
+  for (const sz of [-1, 1]) S.parts.push(box(3.2, 2.6, 3, MX + 3.5, top + 1.3, sz * (TL / 2 + wl - 2), CREAM), box(3.5, 0.18, 3.3, MX + 3.5, top + 2.68, sz * (TL / 2 + wl - 2), SLAB));
+  for (let i = 0; i < 4; i++) {
+    const ux = MX + 2.2 + (i % 2) * 2.4, uz = 1.5 + Math.floor(i / 2) * 2.2;
+    S.parts.push(box(1.1, 0.9, 1.6, ux, ttop + 0.57, uz, 0xdcdad4), cyl(0.42, 0.42, 0.05, 16, ux, ttop + 1.04, uz - 0.35, 0x2a2a2a), cyl(0.42, 0.42, 0.05, 16, ux, ttop + 1.04, uz + 0.35, 0x2a2a2a));
+  }
+  for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) S.parts.push(cyl(0.025, 0.025, 1.6, 5, MX + ax * (TW / 2 - 0.2), ttop + 1.9, az * (TL / 2 - 0.2), 0x8a8a8a));
+  S.parts.push(colored(new THREE.SphereGeometry(0.55, 12, 6, 0, Math.PI * 2, 0, 1.1).rotateZ(1.2).translate(MX - 5.5, ttop + 1.1, 4.5), 0xe8e8e8));
+  S.parts.push(box(0.1, 0.9, 0.1, MX - 5.2, ttop + 0.5, 4.5, 0x8a8a8a));
   // porte-cochère on the road side of the tower
   const px0 = MX + TW / 2, px1 = px0 + 10, pcx = (px0 + px1) / 2, cy = T + 4.9;
   S.parts.push(box(10, 0.6, 13, pcx, cy, 0, SLAB));
@@ -647,6 +672,24 @@ function buildSite(ctx, venue, H) {
     const pts = []; for (let k = 0; k <= 8; k++) { const l = latP - 0.8 + (latE + 1.5 - latP) * (k / 8); pts.push(W(sMid + sg * (halfAt(l) + 0.1), l)); }
     wallAlong(parts, pts, 0.12, 0.2, 0xd8d2c6, 0xd8d2c6);
   }
+  // forecourt landscaping: clipped hedges behind the kerbs, bollard lights,
+  // and a flag court of three poles
+  for (const sg of [-1, 1]) for (let k = 0; k < 7; k++) {
+    const l0 = latP - 1.4 - k * 3.3, l1 = l0 - 2.8, lm = (l0 + l1) / 2;
+    if (l1 < latE + 4) break;
+    const sH = sMid + sg * (halfAt(lm) + 0.75);
+    const pa = W(sH, l0), pb = W(sH, l1), len = Math.hypot(pb.x - pa.x, pb.z - pa.z);
+    const pm = W(sH, lm);
+    parts.push(colored(new THREE.BoxGeometry(0.75, 0.8, len).rotateY(Math.atan2(pb.x - pa.x, pb.z - pa.z)).translate(pm.x, pm.y + 0.36, pm.z), 0x5a8a3c));
+    const bl = W(sMid + sg * (halfAt(l0) + 0.2), l0 - 1.4);
+    parts.push(cyl(0.09, 0.1, 0.8, 8, bl.x, bl.y + 0.4, bl.z, 0x2e2e2e), cyl(0.12, 0.12, 0.12, 8, bl.x, bl.y + 0.84, bl.z, 0xf3efe2));
+  }
+  for (let k = 0; k < 3; k++) {
+    const p = W(g0 - 7 + k * 1.8, latP - 3.5);
+    parts.push(cyl(0.06, 0.08, 9.5, 8, p.x, p.y + 4.75, p.z, 0xdcdcdc), cyl(0.3, 0.35, 0.3, 10, p.x, p.y + 0.15, p.z, STONE), colored(new THREE.SphereGeometry(0.1, 8, 6).translate(p.x, p.y + 9.55, p.z), 0xc9a44a));
+    const hd = path.sample(g0).heading, fv = new THREE.Vector3(0, 0, -0.8).applyAxisAngle(UP, hd);
+    parts.push(colored(new THREE.BoxGeometry(0.03, 1.0, 1.5).rotateY(hd).translate(p.x + fv.x, p.y + 8.9, p.z + fv.z), [0x23355e, 0xefe6d2, 0xb4623c][k]));
+  }
   // lit name boards: overhead on the gate (road face) + the monument sign
   const signGeo = (w, h, s, lat, y, yaw = 0) => { const p = W(s, lat); return new THREE.PlaneGeometry(w, h).rotateY(Math.PI / 2 + yaw).translate(0, 0, 0).rotateY(path.sample(s).heading).translate(p.x, p.y + y, p.z).toNonIndexed(); };
   const gateSign = new THREE.Mesh(mergeGeo([
@@ -709,7 +752,7 @@ function kindAt(kind, pts, seed, { sway = true, rough = 0.85, sink = 0 } = {}) {
 function islet(ctx, center, Rad, wl) {
   const r = makeRng('islet');
   const tx = textures();
-  const rings = 16, segs = 56, pos = [], col = [], uv = [], idx = [];
+  const rings = 26, segs = 96, pos = [], col = [], uv = [], idx = [];
   const cRock = new THREE.Color(0xffffff), cDark = new THREE.Color(0x6a6258), cWet = new THREE.Color(0x3e4038);
   const cGreen = new THREE.Color(0x6e8a44), cDry = new THREE.Color(0xa39a64), c = new THREE.Color();
   const edge = [];
@@ -735,7 +778,7 @@ function islet(ctx, center, Rad, wl) {
       uv.push((a * Rad) / 6, y / 6 + u * 2);
       const veg = smoothstep(0.62, 0.45, u) * smoothstep(3.5, 6, y);
       if (y < 0.9) c.copy(cWet).lerp(cDark, smoothstep(-0.5, 0.9, y));
-      else c.copy(cRock).lerp(cDark, r() * 0.45);
+      else c.copy(cRock).lerp(cDark, r() * 0.35).multiplyScalar(0.8 + 0.2 * Math.sin(y * 2.7 + Math.sin(a * 7) * 0.8)); // bedding strata
       c.lerp(r() < 0.5 ? cGreen : cDry, veg * (0.7 + r() * 0.3));
       col.push(c.r, c.g, c.b);
     }

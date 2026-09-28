@@ -310,6 +310,7 @@ const PAINT = [[C.LEAF, paintLeaf, 1], [C.LEAF2, paintLeaf2, 1], [C.BUSH, paintB
   [C.HEADS, paintHeads, 2], [C.FLEAF, paintFLeaf, 0]]; // mask mode: 1 all tintable, 0 none, 2 non-green only
 const BUMP = { [C.BARK]: 5, [C.PINEBARK]: 6, [C.PALMBARK]: 4, [C.ROCK]: 4, [C.GRASS]: 0.5 };
 let ATLAS = null;
+const NB4 = [4, -4, AS * 4, -AS * 4];
 function atlas() {
   if (ATLAS) return ATLAS;
   const cv = document.createElement('canvas'); cv.width = cv.height = AS;
@@ -341,22 +342,25 @@ function atlas() {
     const avg = [sr / sn, sg / sn, sb / sn];
     for (let pass = 0; pass < 3; pass++) cellPx(i, (x, y, o) => {
       if (col[o + 3] !== 0 || x === 0 || y === 0 || x === CS - 1 || y === CS - 1) return;
-      for (const d of [4, -4, AS * 4, -AS * 4]) if (col[o + d + 3] > 0) {
+      for (let j = 0; j < 4; j++) { const d = NB4[j]; if (col[o + d + 3] > 0) {
         col[o] = col[o + d]; col[o + 1] = col[o + d + 1]; col[o + 2] = col[o + d + 2]; col[o + 3] = 1; return;
-      }
+      } }
     });
-    cellPx(i, (x, y, o) => { if (col[o + 3] === 0) { col[o] = avg[0]; col[o + 1] = avg[1]; col[o + 2] = avg[2]; } });
-    cellPx(i, (x, y, o) => { if (col[o + 3] === 1) col[o + 3] = 0; });
+    cellPx(i, (x, y, o) => { const a = col[o + 3]; if (a === 0) { col[o] = avg[0]; col[o + 1] = avg[1]; col[o + 2] = avg[2]; } else if (a === 1) col[o + 3] = 0; });
   }
   // normals from height (wrapping inside each cell so tiling cells stay seamless)
   for (let i = 0; i < 16; i++) {
     const k = BUMP[i] ?? 0.8, cx = (i % 4) * CS, cy = (i >> 2) * CS;
-    const H = (x, y) => dat[((cy + ((y + CS) % CS)) * AS + cx + ((x + CS) % CS)) * 4 + 3] / 255;
-    cellPx(i, (x, y, o) => {
-      const nx = (H(x - 1, y) - H(x + 1, y)) * k, ny = (H(x, y - 1) - H(x, y + 1)) * k;
-      const l = Math.hypot(nx, ny, 1);
-      dat[o] = (nx / l * 0.5 + 0.5) * 255; dat[o + 1] = (ny / l * 0.5 + 0.5) * 255;
-    });
+    const kk = k / 255, M = CS - 1;
+    for (let y = 0; y < CS; y++) {
+      const row = (cy + y) * AS + cx, rDn = (cy + ((y + M) & M)) * AS + cx, rUp = (cy + ((y + 1) & M)) * AS + cx;
+      for (let x = 0; x < CS; x++) {
+        const nx = (dat[(row + ((x + M) & M)) * 4 + 3] - dat[(row + ((x + 1) & M)) * 4 + 3]) * kk;
+        const ny = (dat[(rDn + x) * 4 + 3] - dat[(rUp + x) * 4 + 3]) * kk;
+        const il = 127.5 / Math.sqrt(nx * nx + ny * ny + 1), o = (row + x) * 4;
+        dat[o] = nx * il + 127.5; dat[o + 1] = ny * il + 127.5;
+      }
+    }
   }
   const mk = (arr, srgb) => {
     const t = new THREE.DataTexture(arr, AS, AS, THREE.RGBAFormat);
@@ -370,11 +374,11 @@ function atlas() {
 /* ---------- indexed geometry builder ---------- */
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 class GB {
-  constructor() { this.p = []; this.n = []; this.uv = []; this.cell = []; this.c = []; this.f = []; this.i = []; }
+  constructor() { this.p = []; this.n = []; this.uv = []; this.cell = []; this.c = []; this.f = []; this.i = []; this.pv = []; this.nc = 0; }
   vert(p, n, u, v, cell, col, f) {
     const [cu, cv] = cellOrigin(cell);
     this.p.push(p.x, p.y, p.z); this.n.push(n.x, n.y, n.z); this.uv.push(u, v); this.cell.push(cu, cv);
-    this.c.push(col[0], col[1], col[2]); this.f.push(f[0], f[1], f[2]);
+    this.c.push(col[0], col[1], col[2]); this.f.push(f[0], f[1], f[2]); this.pv.push(0, 0, 0, 2);
     return this.p.length / 3 - 1;
   }
   quad(a, b, c, d) { this.i.push(a, b, c, a, c, d); }
@@ -413,6 +417,9 @@ class GB {
       const p = V3().copy(c).addScaledVector(rt, x * w).addScaledVector(up, y * h);
       this.vert(p, nFn ? nFn(p, nz) : nz, u, v, cell, typeof col === 'function' ? col(p, y) : col, typeof f === 'function' ? f(p, y) : f);
     }
+    // LOD pivot: card centre + an evenly spread rank (golden-ratio sequence) for distance thinning
+    const pc = V3().copy(c).addScaledVector(up, h * 0.5), rank = (this.nc++ * 0.6180339887) % 1;
+    for (let k = 0, L = this.pv.length - 16; k < 4; k++) { const j = L + k * 4; this.pv[j] = pc.x; this.pv[j + 1] = pc.y; this.pv[j + 2] = pc.z; this.pv[j + 3] = rank; }
     this.quad(b, b + 1, b + 2, b + 3);
   }
   geometry() {
@@ -423,6 +430,7 @@ class GB {
     g.setAttribute('aCell', new THREE.Float32BufferAttribute(this.cell, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
     g.setAttribute('aFlora', new THREE.Float32BufferAttribute(this.f, 3));
+    g.setAttribute('aPivot', new THREE.Float32BufferAttribute(this.pv, 4));
     g.setIndex(this.i);
     g.computeBoundingSphere(); g.computeBoundingBox();
     return g;
@@ -737,7 +745,18 @@ const SWAY = `{
   float s2 = dot(R3[0], R3[0]);
   transformed += (transpose(R3) * w) / max(s2, 1e-4) * sqrt(s2);
 }`;
-const VDECL = `attribute vec3 aFlora; attribute vec2 aCell; uniform float uTime; uniform vec2 uWind;
+// distance LOD: past ~90 m a growing share of foliage cards (by rank) collapse to their centre (no raster cost);
+// the survivors grow so the crown keeps its coverage. Trunks/tubes and foreign geometry (w ≥ 1) never thin.
+const LOD = `if (aPivot.w < 1.0) {
+  vec4 lodO = vec4(0.0, 0.0, 0.0, 1.0);
+  #ifdef USE_INSTANCING
+    lodO = instanceMatrix * lodO;
+  #endif
+  float lodD = length((modelViewMatrix * lodO).xyz);
+  float keep = mix(1.0, 0.3, smoothstep(90.0, 260.0, lodD));
+  transformed = aPivot.w >= keep ? aPivot.xyz : aPivot.xyz + (transformed - aPivot.xyz) * min(1.7, inversesqrt(keep));
+}`;
+const VDECL = `attribute vec3 aFlora; attribute vec2 aCell; attribute vec4 aPivot; uniform float uTime; uniform vec2 uWind;
   varying float vLeaf; varying vec4 vAt; varying vec3 vTint; varying vec3 vObj; varying vec3 vObjN; varying mat3 vO2V;`;
 const FDECL = `uniform vec3 uSunDir; uniform vec3 uSunCol; uniform sampler2D uAtlas; uniform sampler2D uData;
   varying float vLeaf; varying vec4 vAt; varying vec3 vTint; varying vec3 vObj; varying vec3 vObjN; varying mat3 vO2V;`;
@@ -798,6 +817,7 @@ function patchVertex(sh, sway) {
         #endif
         vO2V = o2v;
       }
+      ${LOD}
       ${sway ? SWAY : ''}`)
     .replace('#include <color_vertex>', `#include <color_vertex>
       #if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)

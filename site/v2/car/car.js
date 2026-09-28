@@ -84,7 +84,10 @@ async function init(ctx) {
   window.__carObject = object;   // debug handle for close-up QA shots
   try {
     const T = ctx.buildTimes || {}, t0 = performance.now();
-    const gltf = await ctx.loadGLTF(new URL('../../models/ecosport/scene-compressed.glb', import.meta.url).href);
+    // ?car=<file in v2/models> swaps the model for side-by-side QA
+    const pick = new URLSearchParams(location.search).get('car');
+    const url = pick ? new URL('../models/' + pick.replace(/[^\w.-]/g, ''), import.meta.url) : new URL('../../models/ecosport/scene-compressed.glb', import.meta.url);
+    const gltf = await ctx.loadGLTF(url.href);
     const t1 = performance.now();
     buildCar(gltf.scene);
     const t2 = performance.now();
@@ -131,9 +134,10 @@ function buildCar(root) {
   const tex = paintTextures();
   const paint = new THREE.MeshPhysicalMaterial({
     color: PAINT, metalness: 0.4, roughness: 0.34,
-    normalMap: tex.flake, normalScale: new THREE.Vector2(0.12, 0.12),
+    // No normal maps on the paint: the body's UVs are a colour-palette
+    // layout, not an unwrap, so any normal map (flake, orange peel) sheared
+    // into wavy "dents" across the doors and bonnet.
     clearcoat: 1, clearcoatRoughness: 0.03,
-    clearcoatNormalMap: tex.peel, clearcoatNormalScale: new THREE.Vector2(0.04, 0.04),
     specularIntensity: 0.6, specularColor: new THREE.Color(0xff9a8a),
     envMapIntensity: 1.25
   });
