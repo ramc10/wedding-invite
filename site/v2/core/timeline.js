@@ -29,13 +29,13 @@ export const STOPS = [
     park: { s: vizagS + 12 } },
   { id: 'karimnagar', s: karimS, slow: [karimS - 90, karimS + 50], callout: [karimS - 60, karimS + 30],
     sheet: 'sheetDam', label: 'AMR Unnati Convention',
-    venue: { s: karimS + 78, lateral: 36 }, pullover: { side: 'right', lateral: 4.9 },
+    venue: { s: karimS + 68, lateral: 36 }, pullover: { side: 'right', lateral: 4.9 },
     park: { s: karimS + 40 } }
 ];
 
 export const OVERLAYS = [
-  { id: 'title', els: ['title', 'titleVenue'], from: -1e9, to: at('garden-beach', 0.35), fade: 40 },
-  { id: 'vizag', els: ['details', 'venue'], from: at('cove', 0.12), to: at('hills', 0.15), fade: 40 },
+  { id: 'title', els: ['title', 'titleVenue'], from: -1e9, to: at('garden', 0.3), fade: 40 },   // gone before the garden opens up
+  { id: 'vizag', els: ['details', 'venue'], from: at('cove', 0.12), to: at('cove', 0.92), fade: 40 },    // leaves with the coast
   { id: 'karimnagar', els: ['damCaption', 'damVenue'], from: at('dam', 0.12), to: at('creek', 0.18), fade: 40 },
   { id: 'ending', els: ['ending', 'endingVenue'], from: at('creek', 0.3), to: 1e9, fade: 60 }
 ];

@@ -54,7 +54,7 @@ function far(d, s, lat, prof) {
   return smoothstep(130, 230, d) * 38 * (0.55 + 0.45 * fbm(s * 0.004 + (lat > 0 ? 50 : 0), 0.5));
 }
 
-function heightSL(s, lateral) {
+function rawHeightSL(s, lateral) {
   const b = path.roadY(s) - 0.12;
   const d = Math.max(0, Math.abs(lateral) - VERGE);
   if (d === 0) return b;
@@ -67,6 +67,30 @@ function heightSL(s, lateral) {
     h += w[i] * (PROFILES[prof](d, b, s, lateral, z.water) + far(d, s, lateral, prof));
   }
   return h;
+}
+
+/* Ground height is asked for at the same places over and over (terrain
+ * vertices, grass recycling every frame, every planted instance, the camera
+ * clamp), and each raw evaluation is several fbm calls plus zone weights. So
+ * off the road it's served from a lazily filled grid — 1 m along s, 0.5 m
+ * across — bilinearly interpolated, each corner computed once. On the road
+ * (|lateral| ≤ VERGE) the exact value is cheap and returned directly. */
+const GS = 1, GL = 0.5, GMAX = 300, GW = Math.round(2 * GMAX / GL) + 1;
+const rows = new Map();
+function corner(i, j) {
+  let r = rows.get(i);
+  if (!r) { r = new Float32Array(GW).fill(NaN); rows.set(i, r); }
+  let v = r[j];
+  if (v !== v) v = r[j] = rawHeightSL(i * GS, j * GL - GMAX);
+  return v;
+}
+function heightSL(s, lateral) {
+  if (Math.abs(lateral) <= VERGE) return path.roadY(Math.min(Math.max(s, 0), path.length)) - 0.12;
+  if (Math.abs(lateral) >= GMAX - GL || s < 0 || s > path.length) return rawHeightSL(s, lateral);
+  const fs = s / GS, fl = (lateral + GMAX) / GL;
+  const i = Math.floor(fs), j = Math.floor(fl), ts = fs - i, tl = fl - j;
+  const a = corner(i, j), b = corner(i, j + 1), c = corner(i + 1, j), d = corner(i + 1, j + 1);
+  return (a + (b - a) * tl) * (1 - ts) + (c + (d - c) * tl) * ts;
 }
 
 function heightAt(x, z) {

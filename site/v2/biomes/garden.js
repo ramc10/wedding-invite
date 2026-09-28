@@ -398,7 +398,10 @@ function beds(ctx, L, group, K) {
     }
     // flower heads on the mound
     // massed planting: heads almost touching, hex-offset rows (Lalbagh carpet beds)
-    const sp = { rose: 0.24, salvia: 0.11, marigold: 0.14 }[bd.kind] / Math.sqrt(K);
+    // spacing sets the triangle bill: ~0.1 m spacing was 125k heads (2.5M tris)
+    // for beds seen from a car; heads are enlarged to match and the bed's own
+    // flower-coloured foliage fills between them
+    const sp = { rose: 0.3, salvia: 0.24, marigold: 0.27 }[bd.kind] / Math.sqrt(K);
     let rowI = 0;
     for (let z = -ihl + 0.08; z < ihl - 0.06; z += sp * 0.87, rowI++) for (let x = -ihw + 0.08 + (rowI & 1) * sp * 0.5; x < ihw - 0.06; x += sp) {
       const jx = x + (R() - 0.5) * sp * 0.5, jz = z + (R() - 0.5) * sp * 0.5;
@@ -501,9 +504,9 @@ function flowerHeads(ctx, heads, group) {
   const specs = {
     marigold: { geo: marigoldGeometry(), r: [0.035, 0.05], cols: [0xff8c0a, 0xffa412, 0xffc21a, 0xf06a0c, 0xffb000] },
     rose: { geo: roseGeometry(), r: [0.05, 0.065], cols: [0xc0102c, 0xd81e3e, 0xa00c24, 0xf06a8a, 0xf6d6dc, 0xe03050] },
-    salvia: { geo: salviaGeometry(), r: [0.9, 1.15], cols: [0xd0141a, 0xe0221e, 0xb80e16, 0xe83424] }
+    salvia: { geo: salviaGeometry(), r: [1.35, 1.7], cols: [0xd0141a, 0xe0221e, 0xb80e16, 0xe83424] }
   };
-  specs.marigold.geo = marigoldGeometry(0); specs.marigold.r = [0.05, 0.068];
+  specs.marigold.geo = marigoldGeometry(0); specs.marigold.r = [0.085, 0.11];
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), e = new THREE.Euler(), c = new THREE.Color();
   for (const k of ['marigold', 'rose', 'salvia']) {
     const H = heads[k], S = specs[k];
@@ -748,7 +751,7 @@ function gates(ctx, sList, group) {
   const bases = sList.map(s => roadFrame(ctx, s, 0, 0, 1, path.roadY(s) - 0.05));
   const frame = new THREE.InstancedMesh(gateFrame(), new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(31), roughness: 0.8, side: THREE.DoubleSide }), bases.length);
   const lay = gateLayout();
-  const fl = new THREE.InstancedMesh(marigoldGeometry(), new THREE.MeshStandardMaterial({ map: petalTex(), vertexColors: true, roughness: 0.78 }), lay.F.length * bases.length);
+  const fl = new THREE.InstancedMesh(marigoldGeometry(0), new THREE.MeshStandardMaterial({ map: petalTex(), vertexColors: true, roughness: 0.78 }), lay.F.length * bases.length);
   const lvMat = new THREE.MeshStandardMaterial({ color: 0x3c7424, roughness: 0.55, side: THREE.DoubleSide });
   const lv = new THREE.InstancedMesh(mangoLeafGeometry(), lvMat, lay.Lv.length * bases.length);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3(), c = new THREE.Color();
@@ -773,6 +776,7 @@ function gates(ctx, sList, group) {
   const kal = new THREE.InstancedMesh(kalashGeometry(), brass, bases.length * 2);
   bases.forEach((base, k) => { for (const sg of [-1, 1]) kal.setMatrixAt(k * 2 + (sg > 0), m.makeTranslation(sg * PX, POST_TOP + 0.12, 0).premultiply(base)); });
   for (const x of [frame, fl, lv, kal]) { x.castShadow = true; x.computeBoundingSphere(); }
+  fl.castShadow = false;   // thousands of tiny heads: their shadow is noise, and doubles their cost
   frame.name = 'gate-frame'; fl.name = 'gate-marigolds'; lv.name = 'gate-mango-leaves'; kal.name = 'gate-kalash';
   group.add(frame, fl, lv, kal);
 

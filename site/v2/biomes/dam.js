@@ -49,7 +49,9 @@ import { STOPS } from '../core/timeline.js';
 import { fbm, hash2, smoothstep, rng as makeRng } from '../core/noise.js';
 
 const FLOOR = -16;           // valley floor (matches world.js 'drop')
-const VENUE = STOPS[1].venue;
+// The hall sits 10 m nearer the dam than STOPS[1].venue so its gate lines up with the pull-over spot
+const PARK_S = STOPS[1].park.s, GATE_C = PARK_S + 8;          // gate centre = where the car turns in
+const VENUE = { s: STOPS[1].venue.s - 10, lateral: STOPS[1].venue.lateral };
 
 /* ---------- procedural textures ---------- */
 
@@ -399,7 +401,9 @@ function catenary(out, a, b, n, sag) {
 
 /* ---------- layout (road space) ---------- */
 
-const CREST_A = 1746, CREST_B = 2186, RIP_B = 2166; // left pitching ends where the far bank rises        // abutments (crest ends)
+const CREST_A = 1746, CREST_B = 2186, RIP_B = 2166; // abutments (crest ends); left pitching ends where the far bank rises
+// right-hand crest (parapet, footpath, kerb) ends at the abutment before the venue frontage and the pull-over apron
+const CREST_BR = Math.min(CREST_B, PARK_S - 10);
 const FOOT = [3.6, 5.4], PAR = 5.6, PAR_W = 0.4, PAR_H = 0.95;
 const SP = { n: 5, bay: 12, pier: 2.8, c: 2020 }; // spillway: bays, clear width, pier thickness, centre s
 SP.len = SP.n * SP.bay + (SP.n + 1) * SP.pier;
@@ -408,7 +412,7 @@ const pierS = i => SP.a + SP.pier / 2 + i * (SP.bay + SP.pier);
 const bayS = i => pierS(i) + (SP.bay + SP.pier) / 2;
 const OPEN = [1, 3];                          // bays spilling
 const TOE = 32, BASIN = [30, 46], RIVER = [52, 68];
-const LOT = { s0: VENUE.s - 32, s1: VENUE.s + 46, l0: 8, l1: VENUE.lateral + 26 };
+const LOT = { s0: CREST_BR + 1.5, s1: VENUE.s + 46, l0: 11, l1: VENUE.lateral + 26 };
 
 function makeMats() {
   const conc = concreteTex();
@@ -446,7 +450,7 @@ function buildBody(ctx, M) {
   // 1. downstream face draped on the 'drop' ground; the last column dips into the valley floor
   const dl = [5.5, 6, 6.6, 7.3, 8, 9, 10, 11, 12, 13.5, 15, 16.5, 18, 20, 22, 24, 26.5, 29, TOE, TOE + 1.5];
   const c = new THREE.Color();
-  out.conc.push(ribbon(ctx, ss, dl, (s, l, j) => {
+  out.conc.push(ribbon(ctx, range(CREST_A, CREST_BR, 2), dl, (s, l, j) => {
     const g = H(s, l);
     return j === dl.length - 1 ? g - 0.4 : j === 0 ? Y(s) + 0.1 : g + 0.18;
   }, (s, l, y) => [s / 6, (l + Y(s) - y) / 6], (s, l, y) => {
@@ -468,25 +472,29 @@ function buildBody(ctx, M) {
   out.conc.push(tint(sweep(ctx, range(CREST_A, RIP_B, 2), s => [[-5.8, Y(s) - 0.9], [-6.5, Y(s) - 0.2], [-6.5, Y(s) + 0.05], [-5.8, Y(s) + 0.05]], 6, 6), 0xd8d0c0));
 
   // 3. raised footpaths (concrete) + painted kerbs
+  const ssR = range(CREST_A, CREST_BR, 2), side = sg => sg > 0 ? ssR : ss;
   for (const sg of [-1, 1]) {
-    const a = sg * FOOT[0], b = sg * FOOT[1];
+    const a = sg * FOOT[0], b = sg * FOOT[1], ss = side(sg);
     out.path.push(sweep(ctx, ss, s => [[a, Y(s) + 0.2], [b, Y(s) + 0.2], [sg * (PAR - PAR_W / 2), Y(s) + 0.2]], 2, 2, sg < 0));
     out.kerb.push(sweep(ctx, ss, s => [[a, Y(s) - 0.1], [a, Y(s) + 0.2], [a + sg * 0.2, Y(s) + 0.22]], 2, 0.3, sg > 0));
   }
 
   // 4. parapets: continuous walls with an expansion joint every 15 m (texture u=0), pipe railing above
   for (const sg of [-1, 1]) {
-    const li = sg * (PAR - PAR_W / 2), lo = sg * (PAR + PAR_W / 2);
-    const top = s => Y(s) + 0.2 + PAR_H;
-    out.parapet.push(sweep(ctx, ss, s => [[li, Y(s) + 0.2], [li, top(s)]], 15, PAR_H + 0.3));
-    out.parapet.push(sweep(ctx, ss, s => [[lo, Math.min(Y(s) - 0.6, H(s, lo + sg * 0.6) - 0.3)], [lo, top(s)]], 15, PAR_H + 0.3));
+    const li = sg * (PAR - PAR_W / 2), lo = sg * (PAR + PAR_W / 2), ss = side(sg);
+    // downstream (right) side: a low curb wall under an open 3-rail railing, so the drop to the
+    // valley reads from the road; the reservoir side keeps the full-height parapet
+    const ph = sg > 0 ? 0.42 : PAR_H, top = s => Y(s) + 0.2 + ph;
+    out.parapet.push(sweep(ctx, ss, s => [[li, Y(s) + 0.2], [li, top(s)]], 15, ph + 0.3));
+    out.parapet.push(sweep(ctx, ss, s => [[lo, Math.min(Y(s) - 0.6, H(s, lo + sg * 0.6) - 0.3)], [lo, top(s)]], 15, ph + 0.3));
     out.conc.push(tint(sweep(ctx, ss, s => [[li - sg * 0.04, top(s)], [li - sg * 0.04, top(s) + 0.08], [lo + sg * 0.04, top(s) + 0.08], [lo + sg * 0.04, top(s)]], 6, 6), 0xf2eee6));
     // railing: posts every 2.5 m, two pipes
     const rails = [];
-    for (let s = CREST_A + 1; s < CREST_B - 1; s += 2.5) {
-      rails.push(place(ctx, cyl(0.035, 0.035, 0.74, 6), s, sg * PAR, top(s) + 0.45));
+    for (let s = CREST_A + 1; s < (sg > 0 ? CREST_BR : CREST_B) - 1; s += 2.5) {
+      const ph2 = sg > 0 ? 1.0 : 0.74;
+      rails.push(place(ctx, cyl(0.04, 0.04, ph2, 6), s, sg * PAR, top(s) + 0.08 + ph2 / 2));
     }
-    for (const dy of [0.36, 0.64]) rails.push(sweep(ctx, ss, s => {
+    for (const dy of sg > 0 ? [0.3, 0.62, 0.95] : [0.36, 0.64]) rails.push(sweep(ctx, ss, s => {
       const y = top(s) + 0.08 + dy, r = 0.03; return [[sg * PAR - r, y - r], [sg * PAR - r, y + r], [sg * PAR + r, y + r], [sg * PAR + r, y - r], [sg * PAR - r, y - r]];
     }, 4, 4));
     out.steel.push(tint(merge(rails), 0x5a6068));
@@ -652,14 +660,15 @@ function buildFurniture(ctx, M, K) {
   const stone = 0xc2a27c;
 
   // 5. abutments: masonry pillars where the parapets end + wing walls down the slopes
-  for (const s of [CREST_A, CREST_B]) {
-    const Y = path.roadY(s), sgn = s === CREST_A ? -1 : 1;
+  for (const s0 of [CREST_A, CREST_B]) {
+    const sgn = s0 === CREST_A ? -1 : 1;
     for (const sg of [-1, 1]) {
+      const s = sg > 0 && s0 === CREST_B ? CREST_BR : s0, Y = path.roadY(s);
       out.conc.push(tint(place(ctx, box(1.1, 2.4, 1.3, 2), s, sg * PAR, Y + 1.0), stone, 0.1, s + sg));
       out.conc.push(tint(place(ctx, box(1.35, 0.22, 1.55, 2), s, sg * PAR, Y + 2.3), 0xf0ebe0));
       out.conc.push(tint(place(ctx, new THREE.SphereGeometry(0.3, 12, 8).toNonIndexed(), s, sg * PAR, Y + 2.62), 0xf0ebe0));
       const lats = sg > 0 ? range(PAR + 0.2, TOE + 3, 1.5) : range(PAR + 0.2, 34, 1.5).map(v => -v);
-      const ws = sg < 0 && s === CREST_B ? RIP_B : s;
+      const ws = sg < 0 && s0 === CREST_B ? RIP_B : s;
       const top = l => Math.min(Y + 0.9, Math.max(H(ws - 0.7, l), H(ws + 0.7, l), H(ws, l)) + 0.9);
       const bot = l => Math.min(H(ws - 0.7, l), H(ws + 0.7, l), H(ws, l)) - 1.2;
       out.conc.push(tint(wallAcross(ctx, ws + sgn * 0.2, lats, top, bot, 1.4), stone, 0.1, s * 3 + sg));
@@ -681,7 +690,7 @@ function buildFurniture(ctx, M, K) {
   // 12. sodium street lamps: tapered octagonal poles, outreach arm, cobra-head luminaire, light pool
   const spots = [];
   let side = 1;
-  for (let s = CREST_A + 12; s < CREST_B - 6; s += 30, side = -side) {
+  for (let s = CREST_A + 12; s < CREST_BR - 6; s += 30, side = -side) {
     const Y = path.roadY(s) + 0.2, l = side * 5.0, h = 9;
     out.steel.push(tint(place(ctx, cyl(0.07, 0.13, h, 8), s, l, Y + h / 2), 0x9a9c98));
     out.steel.push(tint(place(ctx, cyl(0.2, 0.22, 0.5, 8), s, l, Y + 0.25), 0x9a9c98));
@@ -784,11 +793,15 @@ function buildSetting(ctx, M, K, group) {
   group.add(plant(ctx, { kind: 'palm', count: Math.round(70 * K), seed: 'dam-palms', scale: [0.9, 1.4], place: R => {
     const s = CREST_A - 60 + R() * (CREST_B - CREST_A + 40), l = TOE + 4 + R() * 150;
     const bs = Math.round(s / 24) * 24 + (R() - 0.5) * 2, bl = Math.round(l / 18) * 18;  // on bund lines
+    if (bs > CREST_B - 50 && bl > 40) return null;                                        // valley floor only
     return avoid(bs, bl) ? null : { s: bs, lateral: bl };
   } }));
-  group.add(plant(ctx, { kind: 'broadleaf', count: Math.round(90 * K), seed: 'dam-trees', scale: [0.9, 1.5], place: R => {
-    const s = CREST_A - 60 + R() * (CREST_B - CREST_A + 40);
-    const l = R() < 0.5 ? RIVER[1] + 4 + R() * 8 : TOE + 3 + R() * 190;
+  group.add(plant(ctx, { kind: 'broadleaf', count: Math.round(170 * K), seed: 'dam-trees', scale: [1.0, 1.8], place: R => {
+    // valley trees stay on the valley floor (s < CREST_B - 50): past that the ground climbs back
+    // to road level towards the venue and a tree there reads as floating over the valley
+    const s = CREST_A - 60 + R() * (CREST_B - CREST_A - 10);
+    const r = R(), l = r < 0.45 ? RIVER[1] + 4 + R() * 10 : r < 0.7 ? 95 + R() * 25 : TOE + 3 + R() * 150;
+    if (s > CREST_B - 50 && l > 40) return null;
     return avoid(s, l) ? null : { s, lateral: l };
   } }));
   group.add(plant(ctx, { kind: 'bush', count: Math.round(80 * K), seed: 'dam-bush', place: R => {
@@ -815,7 +828,7 @@ function buildVenue(ctx, M, K, group) {
   const { path, world } = ctx;
   const H = (s, l) => world.heightSL(s, l);
   const PY = path.roadY(VENUE.s) + 0.02;               // lot pad level = road level
-  const out = { plaster: [], steel: [], glow: [], sign: [], glass: [], conc: [] };
+  const out = { plaster: [], steel: [], glow: [], sign: [], glass: [], conc: [], path: [], kerb: [] };
   const ssl = range(LOT.s0, LOT.s1, 3), cream = 0xefe4cf;
 
   // 17. pad (paved) + lawn overlay
@@ -824,6 +837,25 @@ function buildVenue(ctx, M, K, group) {
   const LW = { s0: VENUE.s + 27, s1: LOT.s1 - 1.5, l0: 20, l1: LOT.l1 - 1.5 };
   const lawn = new THREE.Mesh(ribbon(ctx, range(LW.s0, LW.s1, 3), range(LW.l0, LW.l1, 3), () => PY + 0.04, (s, l) => [s / 8, l / 8]), M.lawn);
   lawn.receiveShadow = true; lawn.name = 'venue:lawn'; group.add(lawn);
+
+  // 17b. frontage: past the dam abutment the parapet stops. A flush paved apron runs from the road
+  //      edge to the boundary wall along the whole lot; the car turns in across it at the gate.
+  //      A raised footpath with painted kerb resumes only after the gate throat.
+  const Yr = s => path.roadY(s), FW = LOT.l0 - 0.4;
+  const apron = new THREE.Mesh(ribbon(ctx, range(CREST_BR - 0.5, LOT.s1, 2), range(3.45, FW, 0.9),
+    (s, l) => Yr(s) + 0.025 + (PY - Yr(s) - 0.005) * smoothstep(3.45, FW, l), (s, l) => [s / 10, l / 10]), M.pave);
+  apron.receiveShadow = true; apron.name = 'venue:apron'; group.add(apron);
+  { // skirt under the apron's valley edge so the drop never shows a gap below it
+    const lats = range(3.45, FW, 1.5);
+    out.conc.push(tint(wallAcross(ctx, CREST_BR - 0.4, lats, l => Yr(CREST_BR) + 0.02, l => Math.min(H(CREST_BR, l), Yr(CREST_BR)) - 1.5, 0.3), 0xcfc6b6));
+  }
+  const fpS = range(GATE_C + 7, LOT.s1, 2);
+  out.path.push(sweep(ctx, fpS, s => [[3.6, Yr(s) + 0.15], [6.2, Yr(s) + 0.15], [6.2, Yr(s) + 0.02]], 2, 2));
+  out.kerb.push(sweep(ctx, fpS, s => [[3.6, Yr(s) - 0.05], [3.6, Yr(s) + 0.15], [3.75, Yr(s) + 0.16]], 2, 0.3, true));
+  // tapered kerb ramp where the footpath starts (a dropped kerb, not a step)
+  out.kerb.push(place(ctx, new THREE.BoxGeometry(2.6, 0.1, 1.6).toNonIndexed().translate(1.3, 0, 0), GATE_C + 6.2, 3.6, Yr(GATE_C + 6) + 0.06));
+  // painted edge line + a stop line across the apron mouth
+  out.conc.push(tint(sweep(ctx, range(CREST_BR, LOT.s1, 2), s => [[3.5, Yr(s) + 0.035], [3.62, Yr(s) + 0.035]], 4, 4), 0xe8e2d4));
 
   // 18. boundary wall with coping; its sides also retain the pad where the ground falls away
   const top = PY + 1.9, low = (s, l) => Math.min(H(s, l), PY) - 0.8;
@@ -834,7 +866,7 @@ function buildVenue(ctx, M, K, group) {
     out.conc.push(tint(sweep(ctx, ss, () => [[l - 0.24, top], [l - 0.24, top + 0.1], [l + 0.24, top + 0.1], [l + 0.24, top]], 6, 6), 0x8a3b2e));
     for (let s = a + 3; s < b - 1; s += 3) out.plaster.push(tint(place(ctx, box(0.5, top - PY + 0.3, 0.5, 2), s, l, (top + PY) / 2 + 0.05), 0xe4d6bc));
   };
-  const G0 = VENUE.s - 29, G1 = VENUE.s - 21;          // gate opening facing the road
+  const G0 = GATE_C - 5, G1 = GATE_C + 5;              // 10 m gate opening facing the pull-over apron
   wallS(LOT.s0, G0 - 0.7, LOT.l0 - 0.4); wallS(G1 + 0.7, LOT.s1, LOT.l0 - 0.4); wallS(LOT.s0, LOT.s1, LOT.l1 + 0.1);
 
   // 19. entrance gate: pillars with lamp globes, arch board, open steel leaves
@@ -934,7 +966,7 @@ function buildVenue(ctx, M, K, group) {
   for (let k = 0; k < 3; k++) HB(1.1 + 0.9 * (2 - k), 0.235 * (k + 1), 15, HS, fl - 0.55 - (1.1 + 0.9 * (2 - k)) / 2, PY + 0.235 * (k + 1) / 2, 0xd8ccb8, 2);
   // wall lanterns flanking the flank bays
   for (const ds of [-20.5, -9, 9, 20.5]) LED(0.25, 0.4, 0.25, HS + ds, fl - 0.25, G + 3.9, 0xffd08a);
-  return { out, PY, LW, HS, HL, fl };
+  return { out, PY, LW, HS, HL, HW, fl };
 }
 
 /* 21–23: parking, lawn with string lights + mandap, palms */
@@ -946,9 +978,10 @@ function dressVenue(ctx, M, K, group, V) {
   const R = makeRng('cars');
   let n = 0;
   for (let s = LOT.s0 + 4; s < LOT.s1 - 20 && n < 6; s += 2.5) {
-    if (s > VENUE.s - 32 && s < VENUE.s - 18) continue;  // keep the gate throat clear
+    if (s > GATE_C - 9 && s < GATE_C + 9) continue;      // keep the gate throat clear
+    if (s > V.HS - V.HW / 2 - 3) break;                  // stop before the hall's side
     if (R() < 0.45) continue;
-    out.steel.push(place(ctx, car(cols[n % cols.length]), s + 1.25, 10.7, PY, Math.PI + (R() - 0.5) * 0.06));
+    out.steel.push(place(ctx, car(cols[n % cols.length]), s + 1.25, LOT.l0 + 2.8, PY, Math.PI + (R() - 0.5) * 0.06));
     n++;
   }
   // second row nose-in to the hall, right of the porch
@@ -1029,8 +1062,8 @@ export default {
     group.add(meshOf([...B.conc, ...S.out.conc, ...F.out.conc, ...V.out.conc], M.conc, 'dam:concrete'));
     group.add(meshOf(B.riprap, M.riprap, 'dam:riprap', false));
     group.add(meshOf(B.parapet, M.parapet, 'dam:parapet'));
-    group.add(meshOf(B.kerb, M.kerb, 'dam:kerb', false));
-    group.add(meshOf(B.path, M.path, 'dam:footpath', false));
+    group.add(meshOf([...B.kerb, ...V.out.kerb], M.kerb, 'dam:kerb', false));
+    group.add(meshOf([...B.path, ...V.out.path], M.path, 'dam:footpath', false));
     group.add(meshOf([...B.steel, ...S.out.steel, ...F.out.steel, ...V.out.steel], M.steel, 'dam:steel'));
     group.add(meshOf(V.out.plaster, M.plaster, 'venue:hall'));
     group.add(meshOf(V.out.glass, M.glass, 'venue:glass', false));

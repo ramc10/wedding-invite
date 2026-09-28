@@ -313,6 +313,7 @@ let ATLAS = null;
 const NB4 = [4, -4, AS * 4, -AS * 4];
 function atlas() {
   if (ATLAS) return ATLAS;
+  const tA = performance.now();
   const cv = document.createElement('canvas'); cv.width = cv.height = AS;
   const g = cv.getContext('2d', { willReadFrequently: true });
   for (const [i, fn] of PAINT) {
@@ -368,7 +369,9 @@ function atlas() {
     t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
     t.anisotropy = 4; t.needsUpdate = true; return t;
   };
-  return (ATLAS = { map: mk(col, true), data: mk(dat, false) });
+  ATLAS = { map: mk(col, true), data: mk(dat, false) };
+  const bt = globalThis.__v2 && globalThis.__v2.buildTimes; if (bt) bt.atlas = Math.round(performance.now() - tA);
+  return ATLAS;
 }
 
 /* ---------- indexed geometry builder ---------- */

@@ -138,7 +138,7 @@ function buildCar(root) {
     // layout, not an unwrap, so any normal map (flake, orange peel) sheared
     // into wavy "dents" across the doors and bonnet.
     clearcoat: 1, clearcoatRoughness: 0.03,
-    specularIntensity: 0.6, specularColor: new THREE.Color(0xff9a8a),
+    specularIntensity: 0.5, specularColor: new THREE.Color(0xffe2dc),
     envMapIntensity: 1.25
   });
   // privacy-tinted glass: almost no transmission, strong clean reflections
@@ -157,7 +157,7 @@ function buildCar(root) {
   if (byName.mesh_0_7) {
     const g = byName.mesh_0_7.geometry;
     boxUV(g);
-    add(g, paint, 'paint').receiveShadow = true;
+    add(creased(g, 0.6), paint, 'paint').receiveShadow = true;
     footprint.setFromBufferAttribute(g.attributes.position);
   }
   if (byName.mesh_0_1) add(byName.mesh_0_1.geometry, glass, 'glass').renderOrder = 2;
@@ -182,14 +182,17 @@ function buildCar(root) {
   const mat0 = pal ? pal.material : null;
   const std = (o) => { const m = new THREE.MeshPhysicalMaterial({ map: mat0 && mat0.map, ...o }); envMats.push(m); return m; };
   const MATS = {
-    trim: std({ roughness: 0.62, metalness: 0, envMapIntensity: 0.55 }),              // satin black plastic
-    chrome: std({ color: 0xb8bcc2, roughness: 0.22, metalness: 1.0, envMapIntensity: 1.0 }),
+    // textured black PP plastic (bumper lower, cladding, grille mesh): matte and
+    // dark so the model's facets don't catch speculars
+    trim: std({ map: null, color: 0x1d1d1f, roughness: 0.86, metalness: 0, envMapIntensity: 0.35 }),
+    chrome: std({ map: null, color: 0xaeb2b8, roughness: 0.38, metalness: 1.0, envMapIntensity: 1.0 }),
     interior: std({ color: 0x2a2a2c, roughness: 0.92, metalness: 0, envMapIntensity: 0.15 }),
     tyre: std({ map: null, color: 0x161616, roughness: 0.9, metalness: 0, envMapIntensity: 0.35,
       normalMap: tyreNormal(), normalScale: new THREE.Vector2(1.1, 1.1) }),
-    rim: std({ map: null, color: 0xa9adb2, roughness: 0.3, metalness: 1, envMapIntensity: 1.15,
-      clearcoat: 0.6, clearcoatRoughness: 0.08 }),                                     // painted-silver alloy, lacquered
+    rim: std({ map: null, color: 0xb9bcc0, roughness: 0.4, metalness: 0.75, envMapIntensity: 0.7,
+      clearcoat: 0.3, clearcoatRoughness: 0.25 }),                                     // painted-silver alloy, satin lacquer
     // clear polycarbonate lamp covers: the lit reflector behind shows through
+    plate: new THREE.MeshStandardMaterial({ map: plateTexture('TS 09 EC 2026'), roughness: 0.45, metalness: 0 }),
     lens: std({ map: null, color: 0xffffff, roughness: 0.04, metalness: 0, envMapIntensity: 1.0,
       clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.28, depthWrite: false })
   };
@@ -218,10 +221,25 @@ function buildCar(root) {
   if (pal) {
     const g = pal.geometry, P = g.attributes.position, UV = g.attributes.uv, I = g.index;
     const groups = new Map();
+    // number plates live in an unlisted palette block: find it by shape (a
+    // narrow, centred block present at both ends of the car)
+    const bbs = new Map(), vv = new THREE.Vector3();
+    for (let t = 0; t < I.count; t++) {
+      const blk = Math.floor(UV.getX(I.getX(t)) * 32);
+      if (BLOCK[blk]) continue;
+      if (!bbs.has(blk)) bbs.set(blk, new THREE.Box3());
+      bbs.get(blk).expandByPoint(vv.fromBufferAttribute(P, I.getX(t)));
+    }
+    const plateBlk = new Set();
+    for (const [blk, b] of bbs) {
+      const sz = b.getSize(vv);
+      const cz = Math.abs((b.min.z + b.max.z) / 2), cx = Math.abs((b.min.x + b.max.x) / 2);
+      if (sz.x < 0.8 && sz.x > 0.3 && cx < 0.15 && ((sz.z > LENGTH * 0.7 && sz.y < 0.9) || (cz > LENGTH * 0.4 && sz.y < 0.35 && sz.z < 0.3))) plateBlk.add(blk);
+    }
     for (let t = 0; t < I.count; t += 3) {
       const a = I.getX(t), b = I.getX(t + 1), cc = I.getX(t + 2);
       const blk = Math.floor(UV.getX(a) * 32);
-      const kind = BLOCK[blk] || 'trim';
+      const kind = BLOCK[blk] || (plateBlk.has(blk) ? 'plate' : 'trim');
       if (WHEEL_BLOCKS.has(blk)) {
         const w = inWheel(P, a, b, cc);
         if (w >= 0) {
@@ -239,7 +257,10 @@ function buildCar(root) {
       if (!groups.has(kind)) groups.set(kind, []);
       groups.get(kind).push(a, b, cc);
     }
-    for (const [kind, idx] of groups) { const m = add(subGeo(g, idx), MATS[kind], kind, kind !== 'lens'); if (kind === 'lens') m.renderOrder = 2; }
+    for (const [kind, idx] of groups) {
+      let geo = kind === 'trim' || kind === 'chrome' ? creased(subGeo(g, idx), 0.5) : subGeo(g, idx);
+      if (kind === 'plate') { geo = compactGeo(g, idx); plateUV(geo); }
+      const m = add(geo, MATS[kind], kind, kind !== 'lens'); if (kind === 'lens') m.renderOrder = 2; }
     wheelParts.forEach((m, w) => {
       for (const [kind, idx] of m) {
         const geo = compactGeo(g, idx);
@@ -285,6 +306,13 @@ function buildCar(root) {
   // calipers, plates: as they come, just lit properly
   for (const n of ['mesh_0_4', 'mesh_0_2', 'mesh_0_3']) {
     const m = byName[n]; if (!m) continue;
+    const bb = new THREE.Box3().setFromBufferAttribute(m.geometry.attributes.position);
+    // the plates: narrow (centred) and at both ends of the car
+    if (bb.max.x - bb.min.x < 0.9 && bb.max.z - bb.min.z > LENGTH * 0.7) {
+      plateUV(m.geometry);
+      add(m.geometry, new THREE.MeshStandardMaterial({ map: plateTexture('TS 09 EC 2026'), roughness: 0.45, metalness: 0 }), 'plates');
+      continue;
+    }
     m.material.roughness = 0.6;
     add(m.geometry, m.material, n);
   }
@@ -357,6 +385,65 @@ function compactGeo(g, idx) {
   n.setIndex(index);
   n.computeBoundingSphere();
   return n;
+}
+
+// Crease-angle normals: a new non-indexed geometry whose corners average the
+// normals of faces sharing that position only when within `angle` radians,
+// so panels shade smoothly but hard edges stay crisp (no lumpy "dents").
+function creased(g, angle = 0.6) {
+  const src = g.index ? g.toNonIndexed() : g.clone();
+  const P = src.attributes.position, n = P.count, cos = Math.cos(angle);
+  const F = new Float32Array(n * 3), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let i = 0; i < n; i += 3) {
+    a.fromBufferAttribute(P, i); b.fromBufferAttribute(P, i + 1); c.fromBufferAttribute(P, i + 2);
+    c.sub(b); a.sub(b); c.cross(a);          // area-weighted face normal
+    for (let k = 0; k < 3; k++) F.set([c.x, c.y, c.z], (i + k) * 3);
+  }
+  const key = i => `${Math.round(P.getX(i) * 1e4)},${Math.round(P.getY(i) * 1e4)},${Math.round(P.getZ(i) * 1e4)}`;
+  const buckets = new Map();
+  for (let i = 0; i < n; i++) { const k = key(i); let l = buckets.get(k); if (!l) buckets.set(k, l = []); l.push(i); }
+  const N = new Float32Array(n * 3), u = new THREE.Vector3(), v = new THREE.Vector3();
+  for (const l of buckets.values()) for (const i of l) {
+    u.fromArray(F, i * 3).normalize(); let sx = 0, sy = 0, sz = 0;
+    for (const j of l) {
+      v.fromArray(F, j * 3); const len = v.length(); if (!len) continue;
+      if (u.dot(v) / len >= cos) { sx += v.x; sy += v.y; sz += v.z; }
+    }
+    v.set(sx, sy, sz).normalize(); if (!v.lengthSq()) v.copy(u);
+    N[i * 3] = v.x; N[i * 3 + 1] = v.y; N[i * 3 + 2] = v.z;
+  }
+  src.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  src.computeBoundingSphere();
+  return src;
+}
+
+// Indian number plate: white field, thin black border, black characters.
+function plateTexture(text) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 112;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, 512, 112);
+  g.strokeStyle = '#111'; g.lineWidth = 6; g.strokeRect(6, 6, 500, 100);
+  g.fillStyle = '#121212'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = 'bold 76px "Arial Narrow", "Helvetica Neue", Arial, sans-serif';
+  g.save(); g.translate(256, 60); g.scale(0.86, 1); g.fillText(text, 0, 0); g.restore();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
+// Planar UVs over each end's plate (front z>0 / rear z<0), facing outwards.
+function plateUV(g) {
+  const P = g.attributes.position, uv = new Float32Array(P.count * 2);
+  const bb = [new THREE.Box3(), new THREE.Box3()], v = new THREE.Vector3();
+  for (let i = 0; i < P.count; i++) bb[P.getZ(i) > 0 ? 0 : 1].expandByPoint(v.fromBufferAttribute(P, i));
+  for (let i = 0; i < P.count; i++) {
+    const f = P.getZ(i) > 0, B = bb[f ? 0 : 1];
+    const w = Math.max(1e-4, B.max.x - B.min.x), h = Math.max(1e-4, B.max.y - B.min.y);
+    const x = (P.getX(i) - B.min.x) / w;
+    uv[i * 2] = f ? x : 1 - x;
+    uv[i * 2 + 1] = (P.getY(i) - B.min.y) / h;
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
 }
 
 // Box-projected UVs in metres, by each vertex's dominant normal axis.
@@ -504,8 +591,8 @@ function contactShadow() {
     g.restore();
   };
   const hw = bw / 2, hl = bl / 2;
-  blob(0, cz, hw * 1.08, hl * 1.04, 0.5, 0.45);   // soft penumbra, ends inside the plane
-  blob(0, cz, hw * 0.78, hl * 0.8, 0.45, 0.5);    // denser core under the floor
+  blob(0, cz, hw * 1.1, hl * 1.05, 0.6, 0.5);   // soft penumbra, ends inside the plane
+  blob(0, cz, hw * 0.85, hl * 0.85, 0.7, 0.6);    // denser core under the floor
   const R = axleInfo.r;
   for (const A of axleInfo.list) {
     const tx = Math.sign(A.x) * (axleInfo.tx || hw - 0.14);
@@ -522,7 +609,7 @@ function contactShadow() {
   tex.colorSpace = THREE.NoColorSpace;
   const mat = new THREE.MeshBasicMaterial({
     color: 0x000000, map: tex, transparent: true, depthWrite: false,
-    opacity: tier === 'high' ? 0.75 : 0.9, fog: true,
+    opacity: tier === 'high' ? 0.92 : 0.95, fog: true,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
   });
   const m = new THREE.Mesh(new THREE.PlaneGeometry(W, L), mat);

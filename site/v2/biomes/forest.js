@@ -695,10 +695,10 @@ export default {
     const tall = (s, lat) => nearCar(s, lat, 14) || (s < 52 && lat < 0 && lat > -18);
     const logT = pl => { for (const p of pl.pts) trees.push({ s: p.s, lat: p.lateral }); return pl; };
     // main canopy: rain tree / honge umbrellas (broadleaf), 9–14 m, crowns touching
-    const canopy = logT(grove('fo-can', { s0: F0, s1: F1, near: [7.5, 11], far: 46, step: 6.2 * q, keep: 0.92, scale: [0.95, 1.65], avoid: tall }));
+    const canopy = logT(grove('fo-can', { s0: F0, s1: F1, near: [7.5, 11], far: 46, step: 8 * q, keep: 0.92, scale: [0.95, 1.65], avoid: tall }));
     group.add(plant(ctx, { kind: 'broadleaf', count: canopy.count, place: canopy, seed: 'fo-can' }));
     // deep forest behind: bigger, coarser, fills the view to the fog
-    const deep = grove('fo-deep', { s0: F0 - 20, s1: F1 + 10, near: [44, 48], far: 110, step: 11 * q, keep: 0.8, scale: [1.3, 2.0], depthGrow: 0.2, glade: 0.3 });
+    const deep = grove('fo-deep', { s0: F0 - 20, s1: F1 + 10, near: [44, 48], far: 110, step: 16 * q, keep: 0.8, scale: [1.3, 2.0], depthGrow: 0.2, glade: 0.3 });
     group.add(plant(ctx, { kind: 'broadleaf', count: deep.count, place: deep, seed: 'fo-deep' }));
     // sparse flowering trees mixed into the edge: pink tabebuia, orange gulmohar/amaltas
     const bloom = logT(grove('fo-bloom', { s0: F0, s1: F1, near: [8, 12], far: 26, step: 14 * q, keep: 0.35, scale: [0.8, 1.2], glade: 0.9, avoid: tall }));
@@ -707,10 +707,10 @@ export default {
     group.add(plant(ctx, { kind: 'marigold', count: Math.ceil(bloom.count * 0.25), place: (r, i) => bloom.pts[i * 4 + 1] || null, seed: 'fo-mg',
       colors: [0xb8602e, 0xa86a36, 0x8a8a40, 0x6f8a3a] }));
     // mid-layer saplings 2–4 m between the trunks
-    const sap = grove('fo-sap', { s0: F0, s1: F1, near: [6.8, 9], far: 30, step: 5.2 * q, keep: 0.6, scale: [0.28, 0.5], glade: 0.6, avoid: (s, l) => nearCar(s, l, 12) });
+    const sap = grove('fo-sap', { s0: F0, s1: F1, near: [6.8, 9], far: 30, step: 7.5 * q, keep: 0.6, scale: [0.28, 0.5], glade: 0.6, avoid: (s, l) => nearCar(s, l, 12) });
     group.add(plant(ctx, { kind: 'broadleaf', count: sap.count, place: sap, seed: 'fo-sap', colors: [0x5a7f30, 0x6b8a36, 0x4e7430, 0x7d8e3c] }));
     // understorey: lantana / scrub 1–3 m, densest at the edge where light gets in
-    const scrub = grove('fo-scrub', { s0: F0 - 6, s1: F1, near: [6.9, 8.2], far: 28, step: 3.3 * q, keep: 0.9, scale: [0.8, 1.9], depthGrow: 0.5, glade: 0.5, avoid: (s, l) => nearCar(s, l, 12) });
+    const scrub = grove('fo-scrub', { s0: F0 - 6, s1: F1, near: [6.9, 8.2], far: 28, step: 4.4 * q, keep: 0.9, scale: [0.8, 1.9], depthGrow: 0.5, glade: 0.5, avoid: (s, l) => nearCar(s, l, 12) });
     group.add(plant(ctx, { kind: 'bush', count: scrub.count, place: scrub, seed: 'fo-scrub',
       colors: [0x4f7030, 0x5e7d34, 0x46662c, 0x6d8038, 0x7b7c3a, 0x587a3a] }));
 

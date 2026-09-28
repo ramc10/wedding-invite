@@ -187,7 +187,7 @@ function normalFrom(Hf, W, H, mx, my, wrapX) {
 
 /* Ground detail, tileable 512²: R relief (bump), G broad mottling,
  * B grass strokes, A pebbles/clods. */
-function detailTexture() {
+function detailPixels() {
   const N = 512, pn = makePN('gdetail'), R = makeRng('detail');
   const strokes = new Float32Array(N * N).fill(0.45), peb = new Float32Array(N * N).fill(0.5);
   for (let i = 0; i < 9000; i++) {          // fine grass strokes, wrapped
@@ -213,16 +213,15 @@ function detailTexture() {
     data[i + 2] = strokes[j] * 255;
     data[i + 3] = peb[j] * 255;
   }
-  const t = canvasTex(N, N, data, false);
-  t.anisotropy = 8;
-  return t;
+  return data;
 }
+function detailTexture() { const t = canvasTex(512, 512, new Uint8ClampedArray(512 * 512 * 4), false); t.anisotropy = 8; return t; }
 
 /* Asphalt aggregate, tileable 512² over 1.1 m (≈2 mm/px): R albedo, G height.
  * Angular grey chips 3–12 mm (granite, a few quartz and dark basalt) packed in
  * bitumen binder with fine sand between. Tiled in world metres by the road shader. */
 let AGG = null;
-function aggregateTexture() {
+function aggregatePixels() {
   const N = 512, R = makeRng('aggregate'), pn = makePN('agg-n');
   const alb = new Float32Array(N * N), hgt = new Float32Array(N * N);
   for (let i = 0; i < N * N; i++) { const x = i % N, y = (i / N) | 0; alb[i] = 0.2 + 0.1 * pn(x / N, y / N, 128, 128) + 0.06 * hash(x, y); hgt[i] = 0.1 * hash(x + 7, y); }
@@ -241,8 +240,9 @@ function aggregateTexture() {
   }
   const data = new Uint8ClampedArray(N * N * 4);
   for (let i = 0; i < N * N; i++) { data[i * 4] = alb[i] * 255; data[i * 4 + 1] = hgt[i] * 255; data[i * 4 + 2] = 0; data[i * 4 + 3] = 255; }
-  return canvasTex(N, N, data, false);
+  return data;
 }
+function aggregateTexture() { return canvasTex(512, 512, new Uint8ClampedArray(512 * 512 * 4), false); }
 
 /* ---------- asphalt sheet: 1024 px across the carriageway, 30 m along ---------- */
 const RL = HW + 0.35;   // road strip half-width (asphalt breaks up over the shoulder)
@@ -312,7 +312,7 @@ function asphaltSheet(tier) {
 
 /* Pixel pass: albedo (alpha = ragged asphalt edge), height → normal, and
  * roughness (G) + paint-wear mask (R). */
-function asphaltTextures(tier) {
+function asphaltPixels(tier) {
   const A = asphaltSheet(tier), { W, H, mx, my, pn, Hf, crack, patchM, stain, seal, patchT } = A;
   const alb = new Uint8ClampedArray(W * H * 4), rgh = new Uint8ClampedArray(W * H * 4);
   const wheel = d => Math.exp(-Math.pow((d - 1.02) / 0.28, 2)) + Math.exp(-Math.pow((d - 2.58) / 0.3, 2));
@@ -355,8 +355,37 @@ function asphaltTextures(tier) {
     }
   }
   const nrm = normalFrom(Hf, W, H, mx, my, false);
-  const map = canvasTex(W, H, alb, true), normalMap = canvasTex(W, H, nrm, false), roughMap = canvasTex(W, H, rgh, false);
-  for (const t of [map, normalMap, roughMap]) { t.wrapS = THREE.ClampToEdgeWrapping; t.anisotropy = 16; }
+  return { W, H, alb, nrm, rgh };
+}
+
+/* The asphalt sheet is ~2 M pixels of noise: generate it in a worker (same
+ * functions, same seeds → identical bytes) while the first leg builds on the
+ * main thread. The textures exist at once (right size, so the program is the
+ * same); their pixels land before ready (terrain.ready). */
+let ROADJOB = null;
+function asphaltJob(tier) {
+  const noiseURL = new URL('../core/noise.js', import.meta.url).href;
+  const src = `import { rng as makeRng, smoothstep } from '${noiseURL}';
+const HW = ${HW}, RL = ${RL}, REPEAT = ${REPEAT};
+${hash}\n${makePN}\n${normalFrom}\n${asphaltSheet}\n${asphaltPixels}\n${aggregatePixels}\n${detailPixels}
+onmessage = e => { const r = asphaltPixels(e.data); r.agg = aggregatePixels(); r.det = detailPixels(); postMessage(r, [r.alb.buffer, r.nrm.buffer, r.rgh.buffer, r.agg.buffer, r.det.buffer]); };`;
+  return new Promise((res, rej) => {
+    let w;
+    try { w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })), { type: 'module' }); }
+    catch (e) { rej(e); return; }
+    w.onmessage = e => { res(e.data); w.terminate(); };
+    w.onerror = e => { rej(e); w.terminate(); };
+    w.postMessage(tier);
+  }).catch(() => Object.assign(asphaltPixels(tier), { agg: aggregatePixels(), det: detailPixels() }));   // no module workers: do it here
+}
+function asphaltTextures(tier) {
+  const W = tier === 'low' ? 512 : 1024, H = W * 2;
+  const mk = srgb => { const t = canvasTex(W, H, new Uint8ClampedArray(W * H * 4), srgb); t.wrapS = THREE.ClampToEdgeWrapping; t.anisotropy = 16; return t; };
+  const map = mk(true), normalMap = mk(false), roughMap = mk(false);
+  ROADJOB = asphaltJob(tier).then(r => {
+    AGG = AGG || aggregateTexture(); DETAIL = DETAIL || detailTexture();
+    for (const [t, d] of [[map, r.alb], [normalMap, r.nrm], [roughMap, r.rgh], [AGG, r.agg], [DETAIL, r.det]]) { t.image.data.set(new Uint8Array(d.buffer)); t.needsUpdate = true; }
+  });
   return { map, normalMap, roughMap };
 }
 
@@ -416,11 +445,12 @@ function groundMaterial() {
 
 const BUMP_UV = 0.37;   // ground uv = world xz × this (bump map scale matches d0)
 
-function buildGround(ctx) {
-  const mat = groundMaterial();
+let GMAT = null;
+function buildGround(ctx, from = 0, to = path.length) {
+  const mat = GMAT || (GMAT = groundMaterial());
   const tmp = new THREE.Vector3(), cols = LAT.length, o = { tint: new THREE.Color() };
   const A = new THREE.Vector3(), B = new THREE.Vector3(), Nn = new THREE.Vector3();
-  for (let s0 = 0; s0 < path.length; s0 += CHUNK) {
+  for (let s0 = from; s0 < Math.min(to, path.length); s0 += CHUNK) {
     const s1 = Math.min(path.length, s0 + CHUNK);
     const rows = Math.ceil((s1 - s0) / DS) + 1;
     const rowS = r => r < 0 ? s0 + r * DS : r >= rows ? s1 + (r - rows + 1) * DS : Math.min(s1, s0 + r * DS);
@@ -759,12 +789,23 @@ function buildAprons(ctx) {
 
 /* ---------- lifecycle ---------- */
 function init(ctx) {
-  buildGround(ctx);
-  buildRoad(ctx);
-  buildGrass(ctx);
-  buildAprons(ctx);
+  const T = ctx.buildTimes || {}, t = f => { const t0 = performance.now(); f(ctx); T['t:' + f.name] = Math.round(performance.now() - t0); };
+  t(function buildGroundNear(c) { buildGround(c, 0, NEAR); }); t(buildRoad); t(buildGrass); t(buildAprons);
+}
+
+/* Ground chunks past the first NEAR metres: built after ready, one chunk per
+ * task so the title keeps animating. Called by main before the other legs. */
+const NEAR = CHUNK * 5;
+async function initRest(ctx) {
+  for (let s0 = NEAR; s0 < path.length; s0 += CHUNK) {
+    buildGround(ctx, s0, s0 + CHUNK);
+    await new Promise(r => setTimeout(r));
+  }
 }
 
 function update(dt, s) { updateGrass(s); }
 
-export const terrain = { init, update, ground, road, LAT, groundColor };
+/** Resolves once the worker-made road textures are filled in. */
+const ready = () => ROADJOB || Promise.resolve();
+
+export const terrain = { init, initRest, update, ready, ground, road, LAT, groundColor };

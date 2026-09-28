@@ -62,7 +62,7 @@ export function weightsAt(s) {
 }
 
 /** Visibility window a zone's group should be shown in (camera s). */
-export const VIS_MARGIN = 320;
+export const VIS_MARGIN = 220;   // beyond this the fog has most of it; drawing it cost millions of triangles
 export const visible = (z, s) => s > z.s0 - VIS_MARGIN && s < z.s1 + VIS_MARGIN;
 
 /** Time-of-day keyframes sit at zone centres; this interpolates between them. */

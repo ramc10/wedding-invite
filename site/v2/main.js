@@ -73,6 +73,9 @@ async function boot() {
   progress(0.6);
 
   tb = performance.now();
+  await terrain.ready();
+  buildTimes.roadTex = Math.round(performance.now() - tb);
+  tb = performance.now();
   await carReady; progress(0.8);
   buildTimes.car = Math.round(performance.now() - tb);
   cam.init(ctx);
@@ -82,7 +85,9 @@ async function boot() {
   ui.init(ctx);
   progress(0.9);
 
+  tb = performance.now();
   try { await renderer.compileAsync(scene, camera); } catch (e) { /* older drivers: compile lazily */ }
+  buildTimes.compile = Math.round(performance.now() - tb);
   tb = performance.now();
   await warmUp();
   buildTimes.warmUp = Math.round(performance.now() - tb);
@@ -112,6 +117,9 @@ async function buildBiome(b) {
  * so the title keeps animating, and compile each one's shaders off the main
  * render so its first appearance doesn't hitch. */
 async function buildRest() {
+  let tb = performance.now();
+  await terrain.initRest(ctx);
+  buildTimes.terrainRest = Math.round(performance.now() - tb);
   for (const b of BIOMES.slice(1)) {
     await new Promise(r => setTimeout(r, 120));
     const g = await buildBiome(b);
@@ -136,7 +144,7 @@ async function warmUp() {
   const n = built.length;
   for (let i = 0; i < n; i++) {
     const z = built[i];
-    for (const u of [0.25, 0.75]) {
+    for (const u of [0.25]) {   // one frame per built zone: uploads + shadow/post programs
       const s = z.s0 + (z.s1 - z.s0) * u;
       path.sample(s, S);
       camera.position.copy(S.pos).addScaledVector(S.fwd, -8); camera.position.y += 3.5;
@@ -144,7 +152,9 @@ async function warmUp() {
       camera.lookAt(look);
       terrain.update(0, s, camera);
       for (const g of zoneGroups) { g.group.visible = zones.visible(g.zone, s); if (g.group.visible && g.update) g.update(0, s, camera); }
+      const tr = performance.now();
       post.render(renderer, scene, camera, 0);
+      buildTimes['warm' + u] = Math.round(performance.now() - tr);
     }
     progress(0.9 + 0.1 * (i + 1) / n);
     await new Promise(r => setTimeout(r));
