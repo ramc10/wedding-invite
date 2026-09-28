@@ -6,7 +6,7 @@
  *   h     eye height above the car
  *   lookH / lookF  aim point: height above, metres ahead of the car
  *
- *   title  (s ≈ 0–40)   parked car, slow orbit + push-in from the front-left
+ *   title  (s ≈ 0–40)   parked car, slow sway + push-in from the rear-left three-quarter
  *                        three-quarter, aimed high so the car sits in the
  *                        lower third and the title owns the top.
  *   chase                behind, left and high; pulls back and widens a
@@ -35,7 +35,10 @@ import { scroll } from '../core/scroll.js';
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
 
 const CHASE = { yaw: 0.2, dist: 7.6, h: 2.7, lookH: 1.05, lookF: 7 };
-const TITLE = { yaw: 2.6, dist: 8.6, h: 1.25, lookH: 2.35, lookF: 0 };
+// rear three-quarter, looking down the road ahead: the first frame is the
+// car and the tree-lined road it's about to drive, never the empty ground
+// behind where the road begins
+const TITLE = { yaw: 0.62, dist: 8.4, h: 1.7, lookH: 1.9, lookF: 9 };
 const END = { yaw: 0.55, dist: 15, h: 13, lookH: 26, lookF: 60 };
 const FOV = 46;
 
@@ -110,8 +113,11 @@ function update(dt) {
   // bounded orbit: a slow sway round the three-quarter, never wandering off
   // into the trees however long the title sits
   const orbit = rm ? 0 : Math.sin(time * 0.045) * 0.3 + Math.sin(time * 0.017 + 1.1) * 0.08;
-  const tYaw = TITLE.yaw + orbit - (1 - pe) * 0.35;
-  const tDist = lerp(TITLE.dist + 3.4, TITLE.dist, pe);
+  // portrait phones: a narrow frame can't hold a wide three-quarter, so come
+  // round closer to straight behind and stand further back
+  const port = clamp((1 - camera.aspect) / 0.55, 0, 1);
+  const tYaw = (TITLE.yaw + orbit - (1 - pe) * 0.35) * (1 - 0.6 * port);
+  const tDist = lerp(TITLE.dist + 3.4, TITLE.dist, pe) * (1 + 0.45 * port);
 
   const drift = rm || idle < 3.5 ? 0 : Math.sin(time * 0.21) * 0.05;
   const driftH = rm || idle < 3.5 ? 0 : Math.sin(time * 0.17 + 1) * 0.12;

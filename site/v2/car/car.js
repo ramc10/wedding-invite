@@ -83,11 +83,19 @@ async function init(ctx) {
   ctx.scene.add(object);
   window.__carObject = object;   // debug handle for close-up QA shots
   try {
+    const T = ctx.buildTimes || {}, t0 = performance.now();
     const gltf = await ctx.loadGLTF(new URL('../../models/ecosport/scene-compressed.glb', import.meta.url).href);
+    const t1 = performance.now();
     buildCar(gltf.scene);
+    const t2 = performance.now();
     object.add(contactShadow());
-    buildEnv();
-    envMats.forEach(m => { m.envMap = envTarget.texture; });
+    Object.assign(T, { carLoad: Math.round(t1 - t0), carBuild: Math.round(t2 - t1) });
+    // The reflection environment (a PMREM prefilter) costs seconds on first
+    // use; build it just after the page shows rather than behind the loader.
+    addEventListener('v2:ready', () => setTimeout(() => {
+      buildEnv();
+      envMats.forEach(m => { m.envMap = envTarget.texture; m.needsUpdate = true; });
+    }, 800), { once: true });
     if (tier === 'high') buildLampLights();
   } catch (e) {
     console.error('[v2] car model failed to load', e);
@@ -303,7 +311,7 @@ function buildCar(root) {
       add(subGeo(g, ix), mat, head ? 'headlamp' : 'taillamp');
       const centre = bb[q].getCenter(new THREE.Vector3());
       const glow = glowSprite(head ? 0xfff1d6 : 0xff2a1a, head ? 0.42 : 0.26);
-      glow.position.copy(centre).add(new THREE.Vector3(0, 0, head ? 0.06 : -0.06));
+      glow.position.copy(centre).add(new THREE.Vector3(0, 0, head ? 0.16 : -0.08));   // proud of the lens
       body.add(glow);
       (head ? lamps.head : lamps.tail).push({ mat, side: q % 2 === 0 ? 1 : -1, glow, head });
     });
@@ -473,29 +481,44 @@ function contactShadow() {
   const bw = footprint.isEmpty() ? 1.78 : footprint.max.x - footprint.min.x;
   const bl = footprint.isEmpty() ? LENGTH : footprint.max.z - footprint.min.z;
   const cz = footprint.isEmpty() ? 0 : (footprint.max.z + footprint.min.z) / 2;
-  const W = bw + 1.2, L = bl + 1.2, CW = 128, CH = 256;
+  // plane ~1.25x the body; every layer is a radial falloff that reaches 0
+  // well inside the plane's edge, so no edge of the card can ever show
+  const W = bw * 1.25, L = bl * 1.18, CW = 128, CH = 256;
   const c = document.createElement('canvas'); c.width = CW; c.height = CH;
   const g = c.getContext('2d');
   const X = x => (x + W / 2) * CW / W, Z = z => (z - cz + L / 2) * CH / L, M = CW / W;
-  const blurred = (blur, alpha, draw) => {
+  // elliptical radial blob: centre (x,z), radii (rx,rz) in metres
+  const blob = (x, z, rx, rz, alpha, core = 0.35) => {
     g.save();
-    g.shadowColor = `rgba(0,0,0,${alpha})`; g.shadowBlur = blur; g.shadowOffsetX = 1000;
-    g.translate(-1000, 0); g.fillStyle = '#000'; g.beginPath(); draw(); g.fill();
+    g.translate(X(x), Z(z)); g.scale(rx * M, rz * M);
+    const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+    gr.addColorStop(0, `rgba(0,0,0,${alpha})`);
+    gr.addColorStop(core, `rgba(0,0,0,${alpha * 0.85})`);
+    gr.addColorStop(0.7, `rgba(0,0,0,${alpha * 0.3})`);
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 1, 0, Math.PI * 2); g.fill();
     g.restore();
   };
-  const rr = (x0, z0, x1, z1, r) => g.roundRect(X(x0), Z(z0), (x1 - x0) * M, (z1 - z0) * M, r * M);
   const hw = bw / 2, hl = bl / 2;
-  blurred(22, 0.55, () => rr(-hw * 0.96, cz - hl * 0.95, hw * 0.96, cz + hl * 0.95, 0.5));
-  blurred(10, 0.6, () => rr(-hw * 0.8, cz - hl * 0.8, hw * 0.8, cz + hl * 0.8, 0.3));
+  blob(0, cz, hw * 1.08, hl * 1.04, 0.5, 0.45);   // soft penumbra, ends inside the plane
+  blob(0, cz, hw * 0.78, hl * 0.8, 0.45, 0.5);    // denser core under the floor
   const R = axleInfo.r;
   for (const A of axleInfo.list) {
     const tx = Math.sign(A.x) * (axleInfo.tx || hw - 0.14);
-    blurred(4, 0.95, () => g.ellipse(X(tx), Z(A.z), 0.11 * M, R * 0.55 * M, 0, 0, Math.PI * 2));
-    blurred(14, 0.5, () => g.ellipse(X(tx), Z(A.z), 0.2 * M, R * 1.1 * M, 0, 0, Math.PI * 2));
+    blob(tx, A.z, 0.16, R * 0.75, 0.85, 0.3);     // tyre contact patch
   }
+  // hard guarantee: zero alpha on the outer border
+  g.globalCompositeOperation = 'destination-in';
+  const e = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+  e.addColorStop(0.8, '#000'); e.addColorStop(0.97, 'rgba(0,0,0,0)');
+  g.setTransform(CW / 2, 0, 0, CH / 2, CW / 2, CH / 2);
+  g.fillStyle = e; g.fillRect(-1, -1, 2, 2);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over';
   const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.NoColorSpace;
   const mat = new THREE.MeshBasicMaterial({
-    map: tex, transparent: true, depthWrite: false, opacity: tier === 'high' ? 0.8 : 0.92,
+    color: 0x000000, map: tex, transparent: true, depthWrite: false,
+    opacity: tier === 'high' ? 0.75 : 0.9, fog: true,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
   });
   const m = new THREE.Mesh(new THREE.PlaneGeometry(W, L), mat);
@@ -559,7 +582,7 @@ function refreshEnv(force) {
   const next = pmrem.fromScene(envScene, 0.015, 0.1, 100);
   // the sky dims at dusk faster than the dome gradient suggests: keep the
   // car's reflections in step with the scene so it doesn't look self-lit
-  const dim = 1 - 0.65 * U.uDusk.value;
+  const dim = 1 - 0.85 * U.uDusk.value;
   envMats.forEach(m => {
     if (m.userData.env0 == null) m.userData.env0 = m.envMapIntensity;
     m.envMap = next.texture; m.envMapIntensity = m.userData.env0 * dim;
@@ -596,14 +619,19 @@ function glowSprite(color, size) {
 // every material in the scene).
 function buildLampLights() {
   for (const side of [1, -1]) {
-    const sp = new THREE.SpotLight(0xfff0d8, 0, 48, 0.4, 0.65, 1.3);   // halogen low beam
-    sp.position.set(0.55 * side, lampPos.head.y, lampPos.head.z);
-    sp.target.position.set(0.7 * side + 0.5, 0, lampPos.head.z + 18);   // dipped toward the kerb (left)
+    // halogen low beam: ~35° cone, 40 m reach, aimed straight down the lane
+    // (+Z forward) with a slight downward pitch. The target is a child of the
+    // body, so it moves and steers with the car.
+    const sp = new THREE.SpotLight(0xfff0d8, 0, 40, THREE.MathUtils.degToRad(17.5), 0.5, 1.2);
+    sp.position.set(0.55 * side, lampPos.head.y, lampPos.head.z + 0.05);
+    sp.target.position.set(0.55 * side - 1.4, 0, lampPos.head.z + 22);   // ~2° down, a little toward the lane centre (-X)
     body.add(sp, sp.target);
     spots.push(sp);
   }
-  tailLight = new THREE.PointLight(0xff2a14, 0, 5, 2);
-  tailLight.position.copy(lampPos.tail).add(new THREE.Vector3(0, 0, -0.4));
+  tailLight = new THREE.PointLight(0xff2a14, 0, 3.5, 2);
+  // low and well behind the bumper: it should tint the road behind the car,
+  // not hot-spot the spare-wheel cover it would otherwise sit against
+  tailLight.position.set(0, 0.35, lampPos.tail.z - 1.6);
   body.add(tailLight);
 }
 
@@ -626,8 +654,8 @@ function updateLamps(dt) {
       l.glow.material.opacity = Math.min(l.head ? 0.7 : 0.8, base * 0.3);
     }
   }
-  spots.forEach(sp => { sp.intensity = on * 55; });
-  if (tailLight) tailLight.intensity = on * 1.5;
+  spots.forEach(sp => { sp.intensity = on * 70; });
+  if (tailLight) tailLight.intensity = on * 0.3;
 }
 
 /* ------------------------------------------------------------ update */
@@ -645,7 +673,13 @@ function groundY(s, lat) {
 
 const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 
+// The car waits here through the title: far enough down the road that the
+// rear three-quarter title camera has road and ground behind it (s < 0 is
+// nothing). The first metres of scroll swing the camera round; then it drives.
+const PARK_S = 36;
+
 function update(dt, s) {
+  s = Math.max(s, PARK_S);
   if (detour.carS != null) s = detour.carS;
   const prevS = state.s;
   state.s = s;
@@ -665,7 +699,11 @@ function update(dt, s) {
   // steer: point the car along its actual track, so a lane change or pull-over
   // turns the nose instead of sliding the car sideways
   const dLat = state.lateral - prevLat;
-  const yawT = Math.abs(ds) > 1e-3 ? clamp(-Math.atan2(dLat, ds), -0.45, 0.45) : state.yaw * 0.9;
+  // atan (not atan2) of the track slope, and only when the car is actually
+  // moving sideways: atan2(0, ds<0) is π, which used to swing the car 26°
+  // sideways every time the page was scrolled back up.
+  const yawT = detour.carYaw != null ? clamp(detour.carYaw, -0.35, 0.35)
+    : Math.abs(ds) > 0.02 && Math.abs(dLat) > 1e-4 ? clamp(-Math.atan(dLat / ds), -0.35, 0.35) : 0;
   state.yaw += (yawT - state.yaw) * damp(8, dt);
 
   path.sample(s, S);
@@ -706,9 +744,9 @@ function update(dt, s) {
   // under braking, squat under power, small road-texture bob.
   if (RM) { body.position.y = 0; body.rotation.set(0, 0, 0); }
   else {
-    const v = state.vs;
-    const rollT = clamp(v * v * state.turn * 0.008, -0.045, 0.045);
-    const pitchT = clamp(-state.acc * 0.0035, -0.03, 0.03);
+    const v = clamp(state.vs, -25, 25);   // a scroll fling is not a 200 km/h car
+    const rollT = clamp(v * v * state.turn * 0.005, -0.022, 0.022);
+    const pitchT = clamp(-state.acc * 0.0025, -0.018, 0.018);
     // critically-ish damped spring, so the body settles with a small overshoot
     state.rollV = (state.rollV || 0) + ((rollT - state.roll) * 60 - (state.rollV || 0) * 11) * Math.min(dt, 0.05);
     state.roll += state.rollV * Math.min(dt, 0.05);

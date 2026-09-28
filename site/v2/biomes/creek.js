@@ -147,7 +147,8 @@ export default {
     const ext = extFrame(ctx);
 
     buildFlora(ctx, group, s0, s1, n, ext);
-    buildCreek(ctx, group, Math.max(z.s0 - 20, CREEK_S0), s1);
+    const segs = buildCreek(ctx, group, Math.max(z.s0 - 20, CREEK_S0), s1);
+    buildChannel(ctx, group, segs, Math.max(z.s0 - 20, CREEK_S0), s1);
     buildBanks(ctx, group, Math.max(z.s0 - 20, CREEK_S0), Math.min(s1, path.length), n);
     const lamps = buildLamps(ctx, group, z.s0 + 10, z.s1 - 4);
     const flies = buildFireflies(ctx, group, z.s0, z.s1, lamps.spots);
@@ -228,9 +229,6 @@ function buildFlora(ctx, group, s0, s1, n, ext) {
   add(plant(ctx, { kind: 'pine', count: n(90), seed: 'cr-pine',
     place: noCam(ctx, clear, 11 * 2.2, 2.6 * 2.2, clustered(s0, s1, 22, 140, { side: 'left', freq: 0.035, thresh: 0.12, bias: 0.9, seed: 21 })),
     scale: [1.3, 2.2], colors: [0x2c4630, 0x34503a, 0x2a3f2e] }));
-  add(plant(ctx, { kind: 'blossom', count: n(16), seed: 'cr-bs-l',
-    place: BL(1.25, offCreek(clustered(s0, s1, 7, 26, { side: 'both', freq: 0.05, thresh: 0.2, seed: 9 }))),
-    scale: [0.9, 1.25], colors: [0xd9a0b0, 0xc98fa2, 0xe0b4c0] }));
   // right: lone trees in the meadow, mango-grove clumps beyond the field
   add(plant(ctx, { kind: 'broadleaf', count: n(90), seed: 'cr-bl-r',
     place: BL(2.1, offCreek(clustered(s0, s1, 9, 150, { side: 'right', freq: 0.03, thresh: 0.12, bias: 1.1, seed: 13 }))),
@@ -259,25 +257,64 @@ function buildFlora(ctx, group, s0, s1, n, ext) {
     if (!clear(V.x, V.z, 8.5 * 2.6, 3.5 * 2.6)) { if (++miss > 4000) break; continue; }
     spots.push({ d, lat });
   }
-  const extTrees = plant(ctx, { kind: 'broadleaf', count: spots.length, seed: 'cr-ext-t',
-    place: (R, i) => ({ s: L - 0.5, lateral: spots[i].lat < 0 ? -20 : 20 }),
-    scale: [1.5, 2.6], colors: [0x2f4a32, 0x3a5636, 0x46603c, 0x283f2c], allowRoad: true });
-  seatOnExt(extTrees, ext, spots, 0.2);
+  // two tree populations (big canopy trees, smaller scrub trees) so the horizon isn't one clone
+  const big = spots.filter((_, i) => i % 3 !== 2), small = spots.filter((_, i) => i % 3 === 2);
+  const extTrees = plant(ctx, { kind: 'broadleaf', count: big.length, seed: 'cr-ext-t',
+    place: (R, i) => ({ s: L - 0.5, lateral: big[i].lat < 0 ? -20 : 20 }),
+    scale: [1.3, 3.0], colors: [0x2f4a32, 0x3a5636, 0x46603c, 0x283f2c, 0x4a5a34], allowRoad: true });
+  seatOnExt(extTrees, ext, big, 0.2);
   add(extTrees);
-  // and the verges past the end: shrub clumps and tall grass so the meadow isn't bare
+  const extScrub = plant(ctx, { kind: 'bush', count: small.length, seed: 'cr-ext-s',
+    place: (R, i) => ({ s: L - 0.5, lateral: small[i].lat < 0 ? -20 : 20 }),
+    scale: [1.8, 3.4], colors: [0x3c5234, 0x4c5a36, 0x34482e, 0x505a34], allowRoad: true });
+  seatOnExt(extScrub, ext, small, 0.2);
+  add(extScrub);
+  // lone palmyra palms standing out of the fields: the Telangana skyline
+  const palms = [];
+  const Rp = makeRng('cr-palmyra');
+  while (palms.length < n(26)) {
+    const d = 25 + Rp() * 380, sg = Rp() < 0.6 ? 1 : -1, lat = sg * (14 + Rp() * 130);
+    ext.toWorld(d, lat, V);
+    if (!clear(V.x, V.z, 14, 2.5)) { if (++miss > 8000) break; continue; }
+    palms.push({ d, lat });
+    if (Rp() < 0.35) palms.push({ d: d + 3 + Rp() * 5, lat: lat + (Rp() - 0.5) * 8 });   // pairs
+  }
+  const extPalm = plant(ctx, { kind: 'palm', count: palms.length, seed: 'cr-ext-p',
+    place: () => ({ s: L - 0.5, lateral: 20 }),
+    scale: [1.2, 1.8], colors: [0xb8c090, 0xa0a878], allowRoad: true });
+  seatOnExt(extPalm, ext, palms, 0.2);
+  add(extPalm);
+  // hedgerows along the field bunds: shrubs in broken lines, not a scatter
   const low = [];
   const Rl = makeRng('cr-ext-low');
-  while (low.length < n(110)) {
-    const d = Math.pow(Rl(), 1.2) * 300, sg = Rl() < 0.5 ? -1 : 1;
-    const lat = sg * (5.5 + Math.pow(Rl(), 2.6) * 60);                // hugging the verges and hedgerows
-    if (fbm(d * 0.06 + 7, lat * 0.08, 2) < 0.12) continue;           // in clumps, open meadow between
-    low.push({ d, lat });
+  const HEDGE = [-46, -17, 13, 37, 78];
+  while (low.length < n(70)) {
+    const d = 8 + Math.pow(Rl(), 1.1) * 300, h = HEDGE[Math.floor(Rl() * HEDGE.length)];
+    if (fbm(d * 0.05 + h, h * 0.1, 2) < 0.0) continue;                // gaps in the hedge
+    low.push({ d, lat: h + (Rl() - 0.5) * 2.5 });
   }
   const extLow = plant(ctx, { kind: 'bush', count: low.length, seed: 'cr-ext-b',
     place: (R, i) => ({ s: L - 0.5, lateral: low[i].lat < 0 ? -20 : 20 }),
-    scale: [0.55, 1.2], colors: [0x4a6440, 0x566e42, 0x3e5a3a, 0x5a6a3a], allowRoad: true });
+    scale: [0.5, 1.5], colors: [0x4a6440, 0x566e42, 0x3e5a3a, 0x5a6a3a, 0x6a6a40], allowRoad: true });
   seatOnExt(extLow, ext, low, 0.12);
   add(extLow);
+  // paddy / millet rows between the hedges, running with the road
+  const crop = [];
+  const Rc = makeRng('cr-ext-crop');
+  const PLOTS = [[13, 37, 10, 230, 1.0], [-46, -17, 30, 200, 1.2], [37, 78, 40, 260, 1.4]];
+  while (crop.length < n(2400)) {
+    const [a, b, d0, d1, gap] = PLOTS[Math.floor(Rc() * PLOTS.length)];
+    const rowsN = Math.floor((b - a - 2) / gap), lat = a + 1 + Math.floor(Rc() * rowsN) * gap + (Rc() - 0.5) * 0.15;
+    const d = d0 + Rc() * (d1 - d0);
+    if (fbm(d * 0.02 + a, lat * 0.02, 2) < -0.35) continue;         // a fallow patch
+    crop.push({ d, lat });
+  }
+  const extCrop = plant(ctx, { kind: 'grass', count: crop.length, seed: 'cr-ext-c',
+    place: () => ({ s: L - 0.5, lateral: 20 }),
+    scale: [0.9, 1.5], colors: [0x8e9a4c, 0x9a9a52, 0x7e8c44, 0xa89a58], allowRoad: true });
+  seatOnExt(extCrop, ext, crop, 0.02);
+  add(extCrop);
+  buildHamlet(ctx, group, ext, HEDGE);
   // the open field: rows of ripening crop parallel to the stream
   add(plant(ctx, { kind: 'grass', count: n(2600), seed: 'cr-field',
     place: R => {
@@ -292,11 +329,58 @@ function buildFlora(ctx, group, s0, s1, n, ext) {
     place: clustered(s0, s1, 6.2, 40, { side: 'left', freq: 0.06, thresh: -0.2, bias: 1.6 }),
     scale: [0.7, 1.3], colors: [0x4e7040, 0x5a7a44, 0x3f6238] }));
   add(plant(ctx, { kind: 'bush', count: n(120), seed: 'cr-bush',
-    place: offCreek(clustered(s0, s1, 6.4, 60, { freq: 0.05, thresh: -0.1, bias: 1.7 })),
-    scale: [0.6, 1.2], colors: [0x4a6440, 0x566e42, 0x3e5a3a] }));
+    place: offCreek((R, i) => { const p = clustered(s0, s1, 6.4, 60, { freq: 0.05, thresh: -0.1, bias: 1.7 })(R, i);
+      return p && p.s > L - 90 && R() < 0.7 ? null : p; }),
+    scale: [0.4, 1.4], colors: [0x4a6440, 0x566e42, 0x3e5a3a] }));
   add(plant(ctx, { kind: 'flowers', count: n(110), seed: 'cr-fl',
     place: offCreek(clustered(s0, s1, 6.2, 34, { side: 'right', freq: 0.08, thresh: 0.05, bias: 1.4, seed: 17 })),
     colors: [0xf6cad4, 0xfff0d0, 0xd8a8e0, 0xffd070] }));
+}
+
+
+/* a far hamlet: a few dark huts with warm lit windows and a temple lamp on the horizon */
+function buildHamlet(ctx, group, ext, HEDGE) {
+  const R = makeRng('cr-hamlet'), v = new THREE.Vector3();
+  const walls = [], lights = [];
+  const box = (arr, cx, cy, cz, sx, sy, sz, yaw) => {
+    const g = new THREE.BoxGeometry(sx, sy, sz);
+    g.rotateY(yaw); g.translate(cx, cy, cz); arr.push(g);
+  };
+  const SITES = [[300, 58, 5], [335, -70, 4], [380, 120, 3]];
+  for (const [d0, lat0, k] of SITES) {
+    for (let i = 0; i < k; i++) {
+      const d = d0 + (R() - 0.5) * 30, lat = lat0 + (R() - 0.5) * 30;
+      ext.toWorld(d, lat, v);
+      const y = ext.height(d, lat), w = 4 + R() * 3, h = 2.6 + R() * 1.2, yaw = R() * Math.PI;
+      box(walls, v.x, y + h / 2 - 0.2, v.z, w, h, 3.5 + R() * 2, yaw);
+      box(walls, v.x, y + h + 0.3, v.z, w + 0.6, 0.6, 4.5, yaw);           // flat roof slab / parapet
+      if (R() < 0.75) box(lights, v.x + Math.cos(yaw) * 0.4, y + 1.3, v.z - Math.sin(yaw) * 0.4, 0.9, 0.8, 4.6 + R(), yaw);
+    }
+  }
+  // temple lamp on a low rise
+  ext.toWorld(410, -38, v);
+  const ty = ext.height(410, -38);
+  box(walls, v.x, ty + 4, v.z, 3, 8, 3, 0.3);
+  box(lights, v.x, ty + 8.6, v.z, 0.7, 0.7, 0.7, 0.3);
+  const merge = arr => { const g = mergeGeoms(arr); arr.forEach(a => a.dispose()); return g; };
+  const wm = new THREE.Mesh(merge(walls), new THREE.MeshStandardMaterial({ color: 0x3a3430, roughness: 0.95 }));
+  wm.name = 'creek-hamlet';
+  const lm = new THREE.Mesh(merge(lights), new THREE.MeshBasicMaterial({ color: 0xffb35a, fog: false }));
+  lm.name = 'creek-hamlet-lights';
+  group.add(wm, lm);
+}
+function mergeGeoms(arr) {
+  const P = [], N = [], I = [];
+  for (const g of arr) {
+    const b = P.length / 3, p = g.attributes.position, n = g.attributes.normal;
+    for (let i = 0; i < p.count; i++) { P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(n.getX(i), n.getY(i), n.getZ(i)); }
+    for (const i of g.index.array) I.push(i + b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  g.setIndex(I); g.computeBoundingSphere();
+  return g;
 }
 
 /* ---------- the stream: short segments, each sitting just above its lowest ground,
@@ -305,8 +389,8 @@ function buildCreek(ctx, group, s0, s1) {
   const { world, path } = ctx;
   s1 = Math.min(s1, path.length);
   const SEG = 14;
-  const P = [], D = [], I = [];
-  let mat = null, mid = (s0 + s1) / 2;
+  const P = [], D = [], F = [], I = [];
+  const Y = [];
   const v = new THREE.Vector3();
   for (let a = s0; a < s1 - 1; a += SEG) {
     const b = Math.min(s1, a + SEG + 1.5); // overlap hides seams
@@ -328,31 +412,157 @@ function buildCreek(ctx, group, s0, s1) {
       // read the stream as deeper than the flat meadow under it: darker body, foam only at the lips
       const edge = Math.min(1, Math.abs(lat - creekLat(q.s)) / hwAt(q.s));
       D.push(Math.max(y - world.heightSL(q.s, lat), 0) + 0.9 * (1 - edge * edge));
+      F.push(q.s, (lat - creekLat(q.s)) / hwAt(q.s));
     }
+    Y.push({ a, b, y });
     const idx = w.geometry.index.array;
     for (let i = 0; i < idx.length; i++) I.push(idx[i] + base);
-    if (!mat || Math.abs((a + b) / 2 - mid) < SEG / 2) { mat?.dispose(); mat = w.material; } else w.material.dispose();
+    w.material.dispose();
     w.geometry.dispose();
   }
-  // a darker, tea-coloured dusk stream: low foam, nearly opaque
-  const u = mat.uniforms;
-  u.uDeep.value.setHex(0x0c1c1e); u.uShallow.value.setHex(0x3b554a);
-  u.uFoam.value = 0.12; u.uAlphaShallow.value = 0.88; u.uAmp.value = 0.35;
-  // a narrow stream under trees mirrors its dark banks more than the open sky: tone the
-  // grazing sky reflection down (this material instance only), so it never reads as a white strip
-  const REF = 'vec3 col = mix(body, sky, fres);';
-  if (mat.fragmentShader.includes(REF)) {
-    mat.fragmentShader = mat.fragmentShader.replace(REF,
-      'vec3 col = mix(body, mix(body * 1.4, sky, 0.45) * 0.8, fres * 0.75);');
-    mat.needsUpdate = true;
-  }
+  const mat = streamMaterial(ctx);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
   g.setAttribute('aDepth', new THREE.Float32BufferAttribute(D, 1));
+  g.setAttribute('aFlow', new THREE.Float32BufferAttribute(F, 2));
   g.setIndex(I);
   g.computeBoundingSphere(); g.computeBoundingBox();
   const m = new THREE.Mesh(g, mat);
   m.name = 'water-creek'; m.renderOrder = 1;
+  group.add(m);
+  return Y;
+}
+
+/* the stream's own surface: a near-black body that mirrors the dusk sky and the dark
+ * treeline, broken by ripples flowing downstream (aFlow = s, normalised offset) */
+function streamMaterial(ctx) {
+  const U = ctx.world.U;
+  return new THREE.ShaderMaterial({
+    fog: true,
+    uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+      uTime: U.uTime, uSkyTop: U.uSkyTop, uSkyHor: U.uSkyHor, uSunCol: U.uSunCol, uDusk: U.uDusk },
+    vertexShader: /* glsl */`
+attribute vec2 aFlow;
+varying vec2 vFlow; varying vec3 vW;
+#include <fog_pars_vertex>
+void main() {
+  vFlow = aFlow;
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vW = wp.xyz;
+  vec4 mvPosition = viewMatrix * wp;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`,
+    fragmentShader: /* glsl */`
+uniform float uTime, uDusk;
+uniform vec3 uSkyTop, uSkyHor, uSunCol;
+varying vec2 vFlow; varying vec3 vW;
+#include <fog_pars_fragment>
+float hsh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hsh(i), hsh(i + vec2(1, 0)), f.x), mix(hsh(i + vec2(0, 1)), hsh(i + vec2(1, 1)), f.x), f.y); }
+float ht(vec2 p, float t) {
+  vec2 q = vec2(p.x - t * 0.55, p.y * 2.2);
+  return vn(q * 1.3) * 0.5 + vn(q * 3.1 + 7.0) * 0.3 + vn(vec2(q.x * 6.0 - t, q.y * 5.0)) * 0.2
+       + 0.25 * sin(q.x * 4.0 + q.y * 3.0 - t * 2.0) * (0.4 + 0.6 * abs(vFlow.y));
+}
+void main() {
+  float t = uTime;
+  vec2 p = vFlow;
+  float dist = length(cameraPosition - vW);
+  float e = 0.06, h0 = ht(p, t);
+  vec2 g = vec2(ht(p + vec2(e, 0.0), t) - h0, ht(p + vec2(0.0, e), t) - h0) / e;
+  float k = 0.07 / (1.0 + dist * 0.035);
+  vec3 N = normalize(vec3(-g.x * k, 1.0, -g.y * k));
+  vec3 V = normalize(cameraPosition - vW);
+  vec3 R = reflect(-V, N);
+  float ry = clamp(R.y, 0.0, 1.0);
+  vec3 sky = mix(uSkyHor, uSkyTop, pow(ry, 0.45));
+  // the far bank and treeline mirrored just above the horizon: a dark, ragged band
+  float tl = 0.10 + 0.05 * vn(vec2(vW.x * 0.08 + vW.z * 0.05, 3.0));
+  sky = mix(vec3(0.025, 0.035, 0.03), sky, smoothstep(tl - 0.03, tl + 0.04, ry));
+  float fres = 0.02 + 0.98 * pow(1.0 - clamp(dot(V, N), 0.0, 1.0), 5.0);
+  vec3 body = vec3(0.018, 0.03, 0.03);
+  vec3 col = mix(body, sky * 0.62, clamp(fres * 0.9 + 0.08, 0.0, 0.85));
+  // silty shallows and a wet dark lip at the edges
+  float ed = smoothstep(0.7, 1.0, abs(vFlow.y));
+  col = mix(col, vec3(0.05, 0.045, 0.035), ed * 0.55);
+  // riffle glints where the ripple crests catch the last light
+  float gl = smoothstep(0.72, 0.9, h0) * (1.0 - smoothstep(20.0, 60.0, dist));
+  col += (uSunCol * 0.3 + vec3(0.25, 0.2, 0.28)) * gl * 0.18;
+  gl_FragColor = vec4(col, 1.0);
+  #include <fog_fragment>
+}`
+  });
+}
+
+/* the banked channel: sloped mud lips each side, wet and dark at the water, drying into the meadow */
+function bankTex() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d'), R = makeRng('cr-mud'), img = g.createImageData(256, 64);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 256; x++) {
+    const n = 0.5 + 0.35 * fbm(x * 0.05, y * 0.12, 3) + 0.15 * (R() - 0.5);
+    const i = (y * 256 + x) * 4, v = Math.max(0, Math.min(255, 150 + n * 105));
+    img.data[i] = v; img.data[i + 1] = v * 0.97; img.data[i + 2] = v * 0.9; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  for (let k = 0; k < 260; k++) {                                     // grit and pebble specks
+    g.fillStyle = `rgba(${R() < 0.5 ? '255,245,225' : '40,34,28'},${0.25 + R() * 0.4})`;
+    g.beginPath(); g.ellipse(R() * 256, R() * 64, 0.6 + R() * 1.6, 0.5 + R(), R() * 3, 0, 7); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function buildChannel(ctx, group, segs, s0, s1) {
+  const { world, path } = ctx;
+  s1 = Math.min(s1, path.length);
+  const wy = s => {                                                   // water level, blended between segments
+    let best = segs[0], i = 0;
+    for (; i < segs.length; i++) if (s < (segs[i].a + segs[i].b) / 2) break;
+    const A = segs[Math.max(0, i - 1)], B = segs[Math.min(segs.length - 1, i)];
+    const ca = (A.a + A.b) / 2, cb = (B.a + B.b) / 2;
+    return best && cb > ca ? A.y + (B.y - A.y) * THREE.MathUtils.smoothstep(s, ca, cb) : A.y;
+  };
+  // [offset past the water edge (m), rise over the water (m) or null = ground, wetness]
+  const COLS = [[-0.7, -0.3, 1], [-0.15, 0.0, 1], [0.25, 0.14, 0.9], [0.8, 0.28, 0.55], [1.6, 0.22, 0.2], [2.7, null, 0]];
+  const pos = [], clr = [], uv = [], idx = [], v = new THREE.Vector3(), col = new THREE.Color(), gc = new THREE.Color();
+  const WET = new THREE.Color(0x14110d), MUD = new THREE.Color(0x33291e);
+  const nc = COLS.length;
+  let base = 0;
+  for (const sg of [-1, 1]) {
+    let rows = 0;
+    for (let s = s0; s <= s1; s += 1.5, rows++) {
+      const y = wy(s), cl = creekLat(s), hw = hwAt(s);
+      COLS.forEach(([o, rise, wet], c) => {
+        const wob = c > 0 && c < nc - 1 ? 0.25 * fbm(s * 0.15 + sg * 5, c, 2) : 0;
+        const lat = cl + sg * (hw + o + wob);
+        path.toWorld(s, lat, v);
+        const gy = world.heightSL(s, lat);
+        const yy = rise === null ? gy - 0.06 : Math.max(y + rise, rise > 0 ? gy + rise * 0.5 : -1e9);
+        pos.push(v.x, yy, v.z);
+        uv.push(s / 5, c / (nc - 1));
+        if (terrain.groundColor) terrain.groundColor(s, lat, gy, 0.1, gc); else gc.setHex(0x2c3a26);
+        col.copy(gc).lerp(MUD, Math.min(1, wet * 1.6)).lerp(WET, Math.max(0, wet - 0.5) * 2);
+        clr.push(col.r, col.g, col.b);
+      });
+    }
+    for (let r = 1; r < rows; r++) for (let c = 0; c < nc - 1; c++) {
+      const a = base + (r - 1) * nc + c, b = a + 1, d = a + nc, e = d + 1;
+      if (sg > 0) idx.push(a, d, b, b, d, e); else idx.push(a, b, d, b, e, d);
+    }
+    base += rows * nc;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(clr, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals(); g.computeBoundingSphere();
+  const tex = bankTex();
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, map: tex, bumpMap: tex, bumpScale: 2, roughness: 0.62, side: THREE.DoubleSide }));
+  m.receiveShadow = true; m.name = 'creek-banks';
   group.add(m);
 }
 
@@ -377,13 +587,13 @@ function buildBanks(ctx, group, s0, s1, n) {
     },
     scale: [0.05, 0.14], sink: 0.2, colors: [0x9a938a, 0x8a847c, 0xa8a094, 0x6f6a63, 0xb2a894] }));
   // reeds: tall dark clumps in stands along the lips, thinning out between stands
-  group.add(plant(ctx, { kind: 'grass', count: n(900), seed: 'cr-reed',
+  group.add(plant(ctx, { kind: 'grass', count: n(1400), seed: 'cr-reed',
     place: R => {
       const s = s0 + R() * (s1 - s0);
       if (fbm(s * 0.05 + 11, 1, 2) < -0.05) return null;
       return clearBridge(s, lip(s, side(R), -0.25 + Math.pow(R(), 1.8) * 1.4));
     },
-    scale: [1.8, 3.0], colors: [0x5a6a36, 0x4e5e30, 0x6a7040, 0x5e5a34] }));
+    scale: [0.8, 1.5], colors: [0x5a6a36, 0x4e5e30, 0x6a7040, 0x5e5a34, 0x7a7448] }));
 }
 
 /* ---------- built things: one textured mesh (wood/stone/iron/clay), one glow mesh, one pool mesh ---------- */

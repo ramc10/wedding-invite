@@ -213,7 +213,7 @@ function layout(s0, s1, arches, fountainS) {
       const n = span > 20 ? 2 : 1, len = (span - (n - 1) * 1.8) / n;
       for (let j = 0; j < n; j++) {
         const s = cA + GAP / 2 + 1 + len / 2 + j * (len + 1.8);
-        beds.push({ s, sg, row, len, kind: (k++ + row) % 3 === 1 ? 'rose' : 'marigold' });
+        beds.push({ s, sg, row, len, kind: ['marigold', 'salvia', 'marigold', 'rose'][(k++ + row * 3) % 4] });
       }
     }
   }
@@ -312,8 +312,13 @@ function hedges(ctx, L, s0, s1, group, K) {
   for (const c of L.cross) for (const sg of [-1, 1]) for (const e of [-1, 1]) {
     topM.push(roadFrame(ctx, c + e * (GAP / 2 + 0.25), sg * HEDGE, 0, 0.62).multiply(new THREE.Matrix4().makeTranslation(0, 0.5, 0)));
   }
-  const top = new THREE.InstancedMesh(blobGeometry(3, 4, 0.06), mat, topM.length);
-  topM.forEach((m, i) => { top.setMatrixAt(i, m); top.setColorAt(i, new THREE.Color(0xf0fff0)); });
+  // no vertexColors here: blobGeometry has no colour attribute (it read as (0,0,0) = black balls)
+  const topMat = new THREE.MeshStandardMaterial({ map: lt.map, bumpMap: lt.bump, bumpScale: 2.5, roughness: 0.9 });
+  const tg = blobGeometry(3, 4, 0.05);
+  tg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(tg.attributes.position.count * 3).fill(1), 3));
+  const top = new THREE.InstancedMesh(tg, topMat, topM.length);
+  const tR = ctx.rng('g-topi');
+  topM.forEach((m, i) => { top.setMatrixAt(i, m); top.setColorAt(i, new THREE.Color(0xffffff).multiplyScalar(0.95 + tR() * 0.15).offsetHSL((tR() - 0.5) * 0.02, 0, 0)); });
   top.name = 'topiary'; top.castShadow = true; top.computeBoundingSphere();
   group.add(top);
 
@@ -343,8 +348,8 @@ function rrect(hw, hl, rc, n = 6) {        // rounded-rect loop in local (x, z),
 
 function beds(ctx, L, group, K) {
   const { path, world } = ctx;
-  const frame = new Builder(), fol = { marigold: new Builder(), rose: new Builder() };
-  const heads = { marigold: [], rose: [] };
+  const frame = new Builder(), fol = { marigold: new Builder(), rose: new Builder(), salvia: new Builder() };
+  const heads = { marigold: [], rose: [], salvia: [] };
   const R = ctx.rng('g-beds');
   const stoneC = new THREE.Color(0xcfc8bb), soilC = new THREE.Color(0x7a4630), soilD = new THREE.Color(0x5a3222);
   const smp = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), right: new THREE.Vector3() };
@@ -392,16 +397,18 @@ function beds(ctx, L, group, K) {
       B.idx.push(a, b, a + 1, b, b + 1, a + 1);
     }
     // flower heads on the mound
-    const sp = (bd.kind === 'rose' ? 0.5 : 0.3) * (bd.row ? 1.4 : 1) / Math.sqrt(K);
-    for (let z = -ihl + 0.1; z < ihl - 0.1; z += sp) for (let x = -ihw + 0.1; x < ihw - 0.1; x += sp) {
-      const jx = x + (R() - 0.5) * sp * 0.8, jz = z + (R() - 0.5) * sp * 0.8;
+    // massed planting: heads almost touching, hex-offset rows (Lalbagh carpet beds)
+    const sp = { rose: 0.24, salvia: 0.11, marigold: 0.14 }[bd.kind] / Math.sqrt(K);
+    let rowI = 0;
+    for (let z = -ihl + 0.08; z < ihl - 0.06; z += sp * 0.87, rowI++) for (let x = -ihw + 0.08 + (rowI & 1) * sp * 0.5; x < ihw - 0.06; x += sp) {
+      const jx = x + (R() - 0.5) * sp * 0.5, jz = z + (R() - 0.5) * sp * 0.5;
       const e = Math.min(ihw - Math.abs(jx), ihl - Math.abs(jz));
       if (e < 0.05) continue;
       const cx = ihw - irc, cz = ihl - irc;
       if (Math.abs(jx) > cx && Math.abs(jz) > cz && Math.hypot(Math.abs(jx) - cx, Math.abs(jz) - cz) > irc - 0.05) continue;
       const y = gAt(jx, jz) + 0.05 + (bd.kind === 'rose' ? 0.42 : 0.26) * smooth(0, 0.8, e) + 0.04 * fbm(jx * 1.7 + bd.s, jz * 1.7, 2);
-      W(jx, jz, _v); _v.y = y + (bd.kind === 'rose' ? 0.06 + R() * 0.12 : 0.01 + R() * 0.05);
-      heads[bd.kind].push([_v.clone(), R(), R(), R()]);
+      W(jx, jz, _v); _v.y = y + (bd.kind === 'rose' ? 0.06 + R() * 0.12 : bd.kind === 'salvia' ? 0.02 + R() * 0.06 : 0.02 + R() * 0.04);
+      heads[bd.kind].push([_v.clone(), R(), R(), R(), e]);
     }
   }
   const fm = new THREE.Mesh(frame.geometry(), new THREE.MeshStandardMaterial({ map: stoneTexture(8), vertexColors: true, roughness: 0.9 }));
@@ -409,9 +416,11 @@ function beds(ctx, L, group, K) {
   group.add(fm);
   const tex = {
     marigold: leafTextures(0x3f6e2a, 41, { n: 1400, cols: ['#f28c12', '#ffb300', '#e86a10', '#ffc93a'] }),
-    rose: leafTextures(0x2c4f22, 43, { n: 260, cols: ['#b3122e', '#d8325a', '#f3c2cc', '#8e0c22'] })
+    rose: leafTextures(0x2c4f22, 43, { n: 700, cols: ['#b3122e', '#d8325a', '#f3c2cc', '#8e0c22'] }),
+    salvia: leafTextures(0x2f5a24, 47, { n: 3200, cols: ['#c8141c', '#e0262a', '#a80e18', '#d83a2e'] })
   };
-  for (const k of ['marigold', 'rose']) {
+  tex.marigold = leafTextures(0x3f6e2a, 41, { n: 3600, cols: ['#f28c12', '#ffb300', '#e86a10', '#ffc93a'] });
+  for (const k of ['marigold', 'rose', 'salvia']) {
     if (!fol[k].n) continue;
     const m = new THREE.Mesh(fol[k].geometry(), new THREE.MeshStandardMaterial({ map: tex[k].map, bumpMap: tex[k].bump, bumpScale: 3, roughness: 0.88 }));
     m.name = 'bed-' + k + '-foliage'; m.receiveShadow = m.castShadow = true;
@@ -421,6 +430,24 @@ function beds(ctx, L, group, K) {
 }
 
 /* ---------- flower heads ---------- */
+function salviaGeometry() {                   // scarlet sage: a tapering 16 cm raceme of bracts + 2 leaves
+  const p = [];
+  for (let i = 0; i < 4; i++) {
+    const y = 0.03 + i * 0.03, r = 0.034 - i * 0.006;
+    p.push(new THREE.ConeGeometry(r, 0.055, 5, 1, true).rotateY(i * 0.8).translate(0, y, 0));
+  }
+  const g = new THREE.BufferGeometry();
+  const all = p.map(x => x.toNonIndexed());
+  let n = 0; for (const x of all) n += x.attributes.position.count;
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3).fill(1); let o = 0;
+  for (const x of all) { pos.set(x.attributes.position.array, o); o += x.attributes.position.array.length; }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
 let _petalTex = null;
 function petalTex() {                         // ruffled petal frills, white-ish (instance colour tints)
   if (_petalTex) return _petalTex;
@@ -437,8 +464,8 @@ function petalTex() {                         // ruffled petal frills, white-ish
   return _petalTex;
 }
 
-function marigoldGeometry() {                 // ruffled pom-pom, ~7 cm across
-  const g = new THREE.IcosahedronGeometry(1, 1);
+function marigoldGeometry(detail = 1) {       // ruffled pom-pom, ~7 cm across
+  const g = new THREE.IcosahedronGeometry(1, detail);
   const p = g.attributes.position, col = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) {
     _v.fromBufferAttribute(p, i);
@@ -473,18 +500,22 @@ function roseGeometry() {                     // cupped bloom on a short green c
 function flowerHeads(ctx, heads, group) {
   const specs = {
     marigold: { geo: marigoldGeometry(), r: [0.035, 0.05], cols: [0xff8c0a, 0xffa412, 0xffc21a, 0xf06a0c, 0xffb000] },
-    rose: { geo: roseGeometry(), r: [0.045, 0.06], cols: [0xc0102c, 0xd81e3e, 0xa00c24, 0xf06a8a, 0xf6d6dc, 0xe03050] }
+    rose: { geo: roseGeometry(), r: [0.05, 0.065], cols: [0xc0102c, 0xd81e3e, 0xa00c24, 0xf06a8a, 0xf6d6dc, 0xe03050] },
+    salvia: { geo: salviaGeometry(), r: [0.9, 1.15], cols: [0xd0141a, 0xe0221e, 0xb80e16, 0xe83424] }
   };
+  specs.marigold.geo = marigoldGeometry(0); specs.marigold.r = [0.05, 0.068];
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), e = new THREE.Euler(), c = new THREE.Color();
-  for (const k of ['marigold', 'rose']) {
+  for (const k of ['marigold', 'rose', 'salvia']) {
     const H = heads[k], S = specs[k];
     if (!H.length) continue;
     const im = new THREE.InstancedMesh(S.geo, new THREE.MeshStandardMaterial({ map: petalTex(), vertexColors: true, roughness: 0.75 }), H.length);
-    H.forEach(([p, a, b, d], i) => {
+    H.forEach(([p, a, b, d, edge], i) => {
       const r = S.r[0] + (S.r[1] - S.r[0]) * a;
       q.setFromEuler(e.set((b - 0.5) * 0.6, d * 6.28, (a - 0.5) * 0.6));
       im.setMatrixAt(i, m.compose(p, q, sc.setScalar(r)));
-      im.setColorAt(i, c.setHex(S.cols[Math.floor(b * S.cols.length) % S.cols.length]).multiplyScalar(0.9 + d * 0.2));
+      if (k === 'marigold') c.setHex(edge < 0.32 ? (b < 0.5 ? 0xe8580a : 0xf06a0c) : edge < 0.62 ? 0xff8c0a : (b < 0.6 ? 0xffb300 : 0xffc21a));   // banded border -> gold centre
+      else c.setHex(S.cols[Math.floor(b * S.cols.length) % S.cols.length]);
+      im.setColorAt(i, c.multiplyScalar(0.88 + d * 0.22));
     });
     im.name = k + '-heads'; im.castShadow = false; im.computeBoundingSphere();
     group.add(im);
@@ -619,34 +650,42 @@ function fountain(ctx, s, lat, group) {
 const PX = 5.45, BEAM_Y = 5.7, ARCH_B = 4.35, ARCH_T = 5.3;       // post x, beam height, arch springing/crown
 const archY = x => ARCH_B + (ARCH_T - ARCH_B) * Math.sqrt(Math.max(0, 1 - (x / (PX - 0.1)) ** 2));
 
-function bananaGeometry(side, seed) {           // pseudostem + arching leaves, stands at x = 0
-  const R = lcg(seed), p = [];
-  const stem = new THREE.CylinderGeometry(0.075, 0.13, 3.3, 9, 4).translate(0, 1.65, 0);
-  p.push(vc(stem, 0x8fa050, 0.12));
-  for (let k = 0; k < 7; k++) {
-    const a = k * 2.4 + R() * 0.5, len = 1.4 + R() * 0.6, wid = 0.36 + R() * 0.1, rise = 0.6 + R() * 0.5;
-    const pos = [], idx = [], N = 8;
-    for (let i = 0; i <= N; i++) {
-      const t = i / N, r = t * len, w = wid * Math.sin(Math.min(1, t * 1.15) * Math.PI) * (t < 0.1 ? 0.2 : 1);
-      const y = 3.2 + rise * Math.sin(t * Math.PI * 0.8) - t * t * 1.2;
-      for (const [u, h] of [[-1, 0.02], [0, 0.06], [1, 0.02]]) {
-        const lx = r, lz = u * w;
-        pos.push(Math.cos(a) * lx - Math.sin(a) * lz, y + h - Math.abs(u) * 0.05 * t, Math.sin(a) * lx + Math.cos(a) * lz);
-      }
-    }
-    for (let i = 0; i < N; i++) for (let j = 0; j < 2; j++) { const q = i * 3 + j; idx.push(q, q + 3, q + 1, q + 1, q + 3, q + 4); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
-    p.push(vc(g, k % 3 ? 0x5f9a38 : 0x7aa844, 0.1));
+const POST_TOP = BEAM_Y + 0.24;
+function kalashGeometry() {                       // hammered brass pot on a turned stand, sits at y = 0
+  const prof = [[0, 0], [0.13, 0], [0.13, 0.03], [0.08, 0.06], [0.07, 0.1], [0.16, 0.16], [0.21, 0.26], [0.22, 0.33],
+    [0.19, 0.42], [0.1, 0.49], [0.08, 0.53], [0.1, 0.57], [0.13, 0.59], [0.12, 0.61], [0.07, 0.6]];
+  const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 28);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {             // faint hammer dimples
+    _v.fromBufferAttribute(p, i);
+    const k = 1 + 0.012 * Math.sin(Math.atan2(_v.z, _v.x) * 17 + _v.y * 40) * Math.sin(_v.y * 31);
+    p.setXYZ(i, _v.x * k, _v.y, _v.z * k);
   }
-  return mergeVC(p.map(g => g.translate(side * 0.34, 0, 0)));
+  g.computeVertexNormals();
+  return g;
+}
+function coconutGeometry() {                      // husked coconut with its fibre tuft, on the kalash mouth
+  const g = new THREE.SphereGeometry(0.11, 14, 10);
+  const p = g.attributes.position, col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    _v.fromBufferAttribute(p, i);
+    const t = _v.y / 0.11; _v.y *= 1.25; if (t > 0.6) { _v.x *= 0.8; _v.z *= 0.8; }
+    p.setXYZ(i, _v.x, _v.y + 0.66, _v.z);
+    const k = 0.8 + 0.2 * Math.sin(Math.atan2(_v.z, _v.x) * 23 + t * 9);
+    col.set([0.46 * k, 0.3 * k, 0.16 * k], i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  return g;
 }
 
 function gateFrame() {
   const wood = 0x6a4028, p = [];
   for (const sg of [-1, 1]) {
     p.push(vc(T(new THREE.BoxGeometry(0.7, 0.45, 0.7), sg * PX, 0.1, 0), 0xa8a296));
-    p.push(vc(T(new THREE.BoxGeometry(0.3, BEAM_Y + 0.1, 0.3), sg * PX, (BEAM_Y + 0.1) / 2, 0), wood, 0.1));
-    p.push(bananaGeometry(sg, sg > 0 ? 7 : 3).translate(sg * PX, 0, 0.0));
+    p.push(vc(T(new THREE.CylinderGeometry(0.15, 0.17, BEAM_Y + 0.1, 14), sg * PX, (BEAM_Y + 0.1) / 2, 0), wood, 0.1));
+    p.push(vc(T(new THREE.CylinderGeometry(0.2, 0.22, 0.12, 16), sg * PX, POST_TOP + 0.06, 0), 0xd8d0c0));   // turned cap plate
+    p.push(vc(T(coconutGeometry(), sg * PX, POST_TOP + 0.12, 0), 0x7a522c, 0.18));                           // husked coconut
     p.push(vc(T(new THREE.TorusGeometry(0.2, 0.03, 4, 10).rotateX(Math.PI / 2), sg * PX, 1.6, 0), 0xc8b070));   // jute lashing
     p.push(vc(T(new THREE.TorusGeometry(0.2, 0.03, 4, 10).rotateX(Math.PI / 2), sg * PX, 2.8, 0), 0xc8b070));
   }
@@ -679,6 +718,13 @@ function gateLayout() {
     const x0 = -PX + i * (2 * PX / 6), x1 = x0 + 2 * PX / 6;
     for (let t = 0; t <= 1; t += 0.03) for (const dy of [0, 0.065]) F.push([x0 + (x1 - x0) * t, BEAM_Y + 0.08 - dy - Math.sin(t * Math.PI) * 0.45, z, dy ? D : Y, 0.04]);
     F.push([x0, BEAM_Y - 0.05, z, RED, 0.07]);
+  }
+  // marigold collar round each kalash neck and a dense pom-pom ring on the post cap
+  for (const sg of [-1, 1]) {
+    for (let a = 0; a < 6.28; a += 0.42) F.push([sg * PX + Math.cos(a) * 0.12, POST_TOP + 0.12 + 0.52, Math.sin(a) * 0.12, a % 0.84 < 0.42 ? O : Y, 0.03]);
+    for (let a = 0; a < 6.28; a += 0.26) for (const dy of [0.02, 0.08]) F.push([sg * PX + Math.cos(a) * 0.24, POST_TOP + dy, Math.sin(a) * 0.24, dy > 0.05 ? RED : O, 0.045]);
+    // mango leaves fanning from the kalash mouth
+    for (let a = 0; a < 6.28; a += 0.7) Lv.push([sg * PX + Math.cos(a) * 0.1, POST_TOP + 0.12 + 0.62, Math.sin(a) * 0.1, -a + Math.PI / 2, 0.8, true]);
   }
   // mango-leaf toran along the beam, both faces
   for (const z of [-0.17, 0.17]) for (let x = -PX - 0.3; x <= PX + 0.3; x += 0.13) Lv.push([x, BEAM_Y - 0.02, z, (R() - 0.5) * 0.3, 0.9 + R() * 0.3]);
@@ -715,15 +761,20 @@ function gates(ctx, sList, group) {
       fl.setMatrixAt(fi, m.compose(p.set(x, y, z), q, sc.setScalar(r * (0.9 + R() * 0.25))).premultiply(base));
       fl.setColorAt(fi++, c.setHex(col).multiplyScalar(0.88 + R() * 0.2));
     }
-    for (const [x, y, z, yaw, s] of lay.Lv) {
-      q.setFromEuler(e.set(z > 0 ? 0.12 : -0.12, yaw, (R() - 0.5) * 0.25));
+    for (const [x, y, z, yaw, s, fan] of lay.Lv) {
+      if (fan) q.setFromEuler(e.set(-2.2 - R() * 0.4, yaw, 0, 'YXZ'));   // tip up and outward over the pot lip
+      else q.setFromEuler(e.set(z > 0 ? 0.12 : -0.12, yaw, (R() - 0.5) * 0.25));
       lv.setMatrixAt(li, m.compose(p.set(x, y, z), q, sc.set(s, s, s)).premultiply(base));
       lv.setColorAt(li++, c.setHex(0xffffff).multiplyScalar(0.75 + R() * 0.45).offsetHSL((R() - 0.5) * 0.04, 0, 0));
     }
   });
-  for (const x of [frame, fl, lv]) { x.castShadow = true; x.computeBoundingSphere(); }
-  frame.name = 'gate-frame'; fl.name = 'gate-marigolds'; lv.name = 'gate-mango-leaves';
-  group.add(frame, fl, lv);
+  // brass kalash finials on both posts
+  const brass = new THREE.MeshStandardMaterial({ color: 0xe8b85a, metalness: 0.6, roughness: 0.3, emissive: 0x2a1c06, map: stoneTexture(44) });
+  const kal = new THREE.InstancedMesh(kalashGeometry(), brass, bases.length * 2);
+  bases.forEach((base, k) => { for (const sg of [-1, 1]) kal.setMatrixAt(k * 2 + (sg > 0), m.makeTranslation(sg * PX, POST_TOP + 0.12, 0).premultiply(base)); });
+  for (const x of [frame, fl, lv, kal]) { x.castShadow = true; x.computeBoundingSphere(); }
+  frame.name = 'gate-frame'; fl.name = 'gate-marigolds'; lv.name = 'gate-mango-leaves'; kal.name = 'gate-kalash';
+  group.add(frame, fl, lv, kal);
 
 }
 

@@ -60,20 +60,55 @@ function blendTo(target, seconds) {
 }
 
 /** Drive the car itself from (sA, latA) to (sB, latB) over T seconds.
- *  mode 'in' decelerates to a stop, 'out' pulls away from rest. The lateral
- *  move happens in the middle of the run, so the car.js steering turns the
- *  nose onto the shoulder and back rather than sliding it. */
+ *  Distance follows smootherstep (pulls away gently, rolls to a stop — no
+ *  lurch from a standstill); the lane change happens in the back half of the
+ *  run. The car's yaw is the analytic slope of that planned track, so the
+ *  nose turns onto the shoulder and back smoothly instead of jittering with
+ *  frame timing. */
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const dss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return 6 * t * (1 - t) / (b - a); };
 function drive(sA, sB, latA, latB, T, mode) {
+  const [la, lb] = mode === 'in' ? [0.3, 0.95] : [0.05, 0.7];
   return new Promise(res => {
     const t0 = performance.now();
     const step = now => {
       const u = clamp((now - t0) / 1000 / T, 0, 1);
-      const e = mode === 'in' ? 1 - (1 - u) * (1 - u) : u * u;
+      const e = u * u * u * (u * (u * 6 - 15) + 10);           // smootherstep
       detour.carS = sA + (sB - sA) * e;
-      detour.carLatExact = latA + (latB - latA) * smoothstep(0.2, 0.85, e);
-      if (u < 1) requestAnimationFrame(step); else res();
+      detour.carLatExact = latA + (latB - latA) * ss(la, lb, e);
+      const dLatDs = (latB - latA) * dss(la, lb, e) / Math.max(1e-3, sB - sA);
+      detour.carYaw = -Math.atan(dLatDs);
+      if (u < 1) requestAnimationFrame(step); else { detour.carYaw = 0; res(); }
     };
     requestAnimationFrame(step);
+  });
+}
+
+/* The detour camera follows the car the whole time, from behind and set in
+ * toward the road centre (the normal chase sits behind-left, which on a
+ * left-hand pull-over put it inside the hedge and compound wall). As the car
+ * slows, its aim drifts from the road ahead to the venue, so arrival reads as
+ * one continuous move rather than a swing. */
+let cur = null;                         // { stop, lookK }
+const A = new THREE.Vector3(), L = new THREE.Vector3();
+function follow() {
+  const st = cur.stop, s = car.s, S = path.sample(s);
+  const inward = -Math.sign(st.pullover.lateral) || 1;
+  shot.pos.copy(car.pos).addScaledVector(S.fwd, -10.5).addScaledVector(S.right, inward * 4.4);
+  shot.pos.y = path.roadY(s) + 3.3;
+  const g = world.heightAt(shot.pos.x, shot.pos.z) + 1.3;
+  if (shot.pos.y < g) shot.pos.y = g;
+  A.copy(car.pos).addScaledVector(S.fwd, 12); A.y = path.roadY(s) + 1.4;
+  path.toWorld(st.venue.s, st.venue.lateral, V);
+  V.y = world.heightSL(st.venue.s, st.venue.lateral);
+  L.copy(car.pos).lerp(V, 0.3); L.y = path.roadY(s) + clamp(1.6 + (V.y - path.roadY(s)) * 0.5, 1.2, 6);
+  shot.look.copy(A).lerp(L, smoothstep(0, 1, cur.lookK));
+}
+function animate(obj, key, to, seconds) {
+  const from = obj[key], t0 = performance.now();
+  return new Promise(res => {
+    const f = now => { const u = clamp((now - t0) / 1000 / seconds, 0, 1); obj[key] = from + (to - from) * u; u < 1 ? requestAnimationFrame(f) : res(); };
+    requestAnimationFrame(f);
   });
 }
 
@@ -93,28 +128,35 @@ async function go(stop) {
     const sPark = Math.max(stop.park ? stop.park.s : stop.s, s0 + 28);
     const latPark = stop.pullover.lateral;
     detour.carS = s0; detour.carLatExact = lat0;
-
-    // indicate, roll on and pull onto the shoulder, stop
-    car.indicate && car.indicate(stop.pullover.side);
-    compose(stop, sPark);
+    cur = { stop, lookK: 0 };
+    follow();
     detour.camShot = shot;
-    const T = clamp((sPark - s0) / 8, 3, 6);
-    await Promise.all([drive(s0, sPark, lat0, latPark, T, 'in'), wait(T * 550).then(() => blendTo(1, T * 0.65))]);
-    await blendTo(1, 0.5);
+
+    // indicate, roll on and pull onto the shoulder, stop — camera eases onto
+    // the follow line at once and turns toward the venue as the car slows
+    car.indicate && car.indicate(stop.pullover.side);
+    const T = clamp((sPark - s0) / 6, 4, 7);
+    blendTo(1, 1.1);
+    wait(T * 450).then(() => animate(cur, 'lookK', 1, T * 0.55 + 0.8));
+    await drive(s0, sPark, lat0, latPark, T, 'in');
+    await wait(900);
     car.indicate && car.indicate(null);
 
     await ui.openSheet(stop.sheet);
 
-    // indicate back, pull away into the lane
+    // indicate back, pull away into the lane, hand back to the chase camera
     car.indicate && car.indicate(stop.pullover.side === 'left' ? 'right' : 'left');
     await wait(400);
     const sOut = sPark + 30;
-    await Promise.all([blendTo(0, 2.2), drive(sPark, sOut, latPark, car.LANE, 3.4, 'out')]);
+    animate(cur, 'lookK', 0, 1.6);
+    await drive(sPark, sOut, latPark, car.LANE, 4.2, 'out');
     car.indicate && car.indicate(null);
     scroll.place(sOut);
+    await blendTo(0, 1.4);
   } finally {
+    cur = null;
     detour.camShot = null; shot.w = 0; p = pTarget = 0;
-    detour.carS = null; detour.carLatExact = null; detour.carLateral = null;
+    detour.carS = null; detour.carLatExact = null; detour.carLateral = null; detour.carYaw = null;
     scroll.unlock();
     detour.active = false;
     busy = false;
@@ -127,10 +169,11 @@ function update(dt) {
     p = Math.abs(pTarget - p) <= step ? pTarget : p + Math.sign(pTarget - p) * step;
   }
   shot.w = smoothstep(0, 1, p);
+  if (cur) follow();
 }
 
 export const detour = {
-  active: false, carLateral: null, camShot: null, carS: null, carLatExact: null,
+  active: false, carLateral: null, camShot: null, carS: null, carLatExact: null, carYaw: null,
   init() {},
   update,
   go

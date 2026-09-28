@@ -871,7 +871,7 @@ const DEF = {
   flowers: { make: () => flowers({}), sink: 0.03, scale: [0.7, 1.4], colors: [0xfff0f4, 0xffd23a, 0xff8fb0, 0xf4f0ff, 0xff9a3a] },
   fern: { make: () => fern({}), sink: 0.05, scale: [0.7, 1.3], colors: [0xffffff, 0xd8e8b0, 0xc8d8a0] },
   grass: { make: () => grass({}), sink: 0.02, scale: [0.7, 1.3], colors: [0xffffff] },
-  palm: { make: () => palm({}), sink: 0.2, scale: [0.85, 1.25], ...TREE, colors: [0xffffff, 0xe8f0c8] }
+  palm: { make: () => palm({}), sink: 0.2, scale: [0.75, 1.3], ...TREE, colors: [0xffffff, 0xe8f0c8] }
 };
 export const KINDS = Object.keys(DEF);
 const geoCache = {};
@@ -918,9 +918,11 @@ export function plant(ctx, opts) {
     _p.y = y - sink * sc;
     _q.setFromAxisAngle(_up, at.yaw ?? R() * Math.PI * 2);
     // small random lean (not for tall trunks), so clumps and rocks don't all stand bolt upright
-    const tilt = kind === 'boulder' ? 0.25 : kind === 'bush' || kind === 'fern' || kind === 'flowers' ? 0.12 : 0.03;
-    _ax.set(R() - 0.5, 0, R() - 0.5).normalize(); _q.premultiply(_tl.setFromAxisAngle(_ax, tilt * R()));
+    // coconut palms lean hard and every which way (5–22°), which is most of what stops a row of them reading as clones
+    const tilt = kind === 'boulder' ? 0.25 : kind === 'bush' || kind === 'fern' || kind === 'flowers' ? 0.12 : kind === 'palm' ? 0.09 + 0.3 * R() : 0.03;
+    _ax.set(R() - 0.5, 0, R() - 0.5).normalize(); _q.premultiply(_tl.setFromAxisAngle(_ax, kind === 'palm' ? tilt : tilt * R()));
     _sc.setScalar(sc);
+    if (kind === 'palm') _sc.y *= 0.7 + 0.75 * R();     // 7–18 m trunks from one 10 m model
     if (kind === 'boulder') _sc.set(sc * (0.8 + 0.4 * R()), sc * (0.7 + 0.5 * R()), sc * (0.8 + 0.4 * R()));
     mats.push(_m.compose(_p, _q, _sc).clone());
     tints.push(at.tint !== undefined ? new THREE.Color(at.tint) : colors[Math.floor(R() * colors.length)].clone()

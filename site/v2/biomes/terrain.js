@@ -78,8 +78,11 @@ function splat(s, lat, y, slope, o) {
     lush += w[k] * (prof === 'hill' ? 0.2 : prof === 'drop' ? 0.4 : 1);
   }
   const rel = y - path.roadY(s);
-  tint.lerp(DRY, smoothstep(8, 30, rel) * 0.35);
-  tint.multiplyScalar(0.9 + 0.18 * fine);
+  // dry upper slopes, but the line wanders with macro noise instead of a contour band
+  const macro = fbm(s * 0.011 + 31, lat * 0.013 + 5, 3), rj = rel + 14 * macro + 6 * fine;
+  tint.lerp(DRY, smoothstep(4, 40, rj) * (0.22 + 0.2 * smoothstep(-0.3, 0.4, macro)));
+  tint.lerp(DIRT, 0.12 * smoothstep(0.1, 0.6, -macro) * smoothstep(12, 40, d));   // 20–80 m earthy swathes
+  tint.multiplyScalar(0.86 + 0.24 * fine + 0.08 * macro);
   o.lush = lush;
   // soil: dry patches in the field + the worn verge beside the shoulder
   const vergeEdge = world.VERGE + 0.8 + 1.4 * noise2(s * 0.3, lat > 0 ? 3 : 9);
@@ -215,6 +218,32 @@ function detailTexture() {
   return t;
 }
 
+/* Asphalt aggregate, tileable 512² over 1.1 m (≈2 mm/px): R albedo, G height.
+ * Angular grey chips 3–12 mm (granite, a few quartz and dark basalt) packed in
+ * bitumen binder with fine sand between. Tiled in world metres by the road shader. */
+let AGG = null;
+function aggregateTexture() {
+  const N = 512, R = makeRng('aggregate'), pn = makePN('agg-n');
+  const alb = new Float32Array(N * N), hgt = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) { const x = i % N, y = (i / N) | 0; alb[i] = 0.2 + 0.1 * pn(x / N, y / N, 128, 128) + 0.06 * hash(x, y); hgt[i] = 0.1 * hash(x + 7, y); }
+  for (let k = 0; k < 7000; k++) {
+    const cx = R() * N, cy = R() * N, r = 1.2 + Math.pow(R(), 2.2) * 5, t = R();
+    const tone = t < 0.08 ? 0.85 + R() * 0.15 : t < 0.2 ? 0.28 + R() * 0.1 : 0.45 + R() * 0.3;
+    const sides = 4 + Math.floor(R() * 4), rot = R() * 6.28, sq = 0.6 + R() * 0.5, sh = R() * 0.3;
+    for (let y = Math.floor(cy - r - 1); y <= cy + r + 1; y++) for (let x = Math.floor(cx - r - 1); x <= cx + r + 1; x++) {
+      const dx = x - cx, dy = (y - cy) / sq, a = Math.atan2(dy, dx) + rot;
+      const poly = Math.cos(Math.PI / sides) / Math.cos(((a % (2 * Math.PI / sides)) + 2 * Math.PI / sides) % (2 * Math.PI / sides) - Math.PI / sides);
+      const q = Math.hypot(dx, dy) / (r * poly); if (q > 1) continue;
+      const j = (((y % N) + N) % N) * N + (((x % N) + N) % N), hv = 0.35 + 0.65 * Math.sqrt(1 - q * q);
+      if (hv < hgt[j]) continue;
+      hgt[j] = hv; alb[j] = tone * (1 - 0.25 * q) + sh * (dx / r) * 0.15 + 0.04 * hash(x, y + 3);
+    }
+  }
+  const data = new Uint8ClampedArray(N * N * 4);
+  for (let i = 0; i < N * N; i++) { data[i * 4] = alb[i] * 255; data[i * 4 + 1] = hgt[i] * 255; data[i * 4 + 2] = 0; data[i * 4 + 3] = 255; }
+  return canvasTex(N, N, data, false);
+}
+
 /* ---------- asphalt sheet: 1024 px across the carriageway, 30 m along ---------- */
 const RL = HW + 0.35;   // road strip half-width (asphalt breaks up over the shoulder)
 const REPEAT = 30;      // metres of road per sheet
@@ -233,43 +262,58 @@ function asphaltSheet(tier) {
       M[j] = max ? Math.max(M[j], a) : M[j] + a;
     }
   };
-  const crackLine = (lat, s, dirLat, dirS, len, wpx) => {        // wandering hairline crack, metres
-    let x = X(lat), y = Y(s), ang = Math.atan2(dirS / my, dirLat / mx);
+  const seal = new Float32Array(N), patchT = new Float32Array(N);
+  // wandering crack, metres: ragged width that swells and pinches, a faint ravelled
+  // shoulder either side, and some sealed with a wide soft band of tar
+  const crackLine = (lat, s, dirLat, dirS, len, wpx, sealed = R() < 0.3) => {
+    let x = X(lat), y = Y(s), ang = Math.atan2(dirS / my, dirLat / mx), wv = 1;
     const steps = len / Math.min(mx, my);
     for (let t = 0; t < steps; t++) {
-      ang += (R() - 0.5) * 0.25;
+      ang += (R() - 0.5) * 0.3;
+      wv = Math.max(0.35, Math.min(2.4, wv + (R() - 0.5) * 0.35));
       x += Math.cos(ang); y += Math.sin(ang);
-      stamp(crack, x, y, wpx * (0.6 + 0.6 * R()), 1);
-      if (R() < 0.004) crackLine((x * mx) - RL, y * my, Math.cos(ang + 1.3), Math.sin(ang + 1.3), len * 0.3 * R(), wpx * 0.7);
+      const w = wpx * wv * (0.7 + 0.5 * R());
+      stamp(crack, x, y, w, 1);
+      stamp(crack, x, y, w * 3.2 + 1, 0.22);
+      if (sealed) stamp(seal, x, y, (0.035 + 0.02 * wv) / mx, 0.85);
+      if (R() < 0.006) crackLine((x * mx) - RL, y * my, Math.cos(ang + 1.3), Math.sin(ang + 1.3), len * 0.3 * R(), wpx * 0.7, false);
     }
   };
   // longitudinal cracks: lane joint at the centre and near each edge; transverse ones
-  crackLine(0.08, 2, 0, 1, 9, 1.1); crackLine(-0.05, 17, 0, 1, 6, 1.0);
-  crackLine(-HW + 0.55, 5, 0.05, 1, 12, 1.2); crackLine(HW - 0.6, 20, -0.04, 1, 8, 1.1);
-  for (let k = 0; k < 4; k++) crackLine(-HW + 0.3 + R() * 2.4, R() * REPEAT, 1, (R() - 0.5) * 0.2, 1 + R() * 2.5, 1.0);
+  crackLine(0.08, 2, 0, 1, 9, 0.9, true); crackLine(-0.05, 17, 0, 1, 6, 0.8);
+  crackLine(-HW + 0.55, 5, 0.05, 1, 12, 1.0); crackLine(HW - 0.6, 20, -0.04, 1, 8, 0.9);
+  for (let k = 0; k < 5; k++) crackLine(-HW + 0.3 + R() * 2.4, R() * REPEAT, 1, (R() - 0.5) * 0.2, 1 + R() * 2.5, 0.8);
   // alligator cracking in the left outer wheel path
-  for (let k = 0; k < 16; k++) crackLine(-2.6 + R() * 0.7, 24 + R() * 3.5, R() - 0.5, R() - 0.5, 0.3 + R() * 0.6, 0.9);
-  // sealed patches (lat0, s0, w, l)
-  const patches = [[-2.9, 8, 1.3, 2.2], [0.6, 22.5, 1.9, 3.4], [1.9, 3.5, 0.8, 0.9], [-1.4, 14, 0.6, 0.7]];
-  for (const [l0, s0, w, l] of patches) {
-    const x0 = X(l0), x1 = X(l0 + w), y0 = Y(s0), y1 = Y(s0 + l);
-    for (let y = Math.floor(y0); y < y1; y++) for (let x = Math.max(0, Math.floor(x0)); x < Math.min(W, x1); x++) {
-      const edge = Math.min(x - x0, x1 - x, y - y0, y1 - y) * Math.min(mx, my);   // metres from patch edge
-      patchM[((y % H + H) % H) * W + x] = edge < 0.035 ? 2 : 1;                      // 2 = sealant border
+  for (let k = 0; k < 16; k++) crackLine(-2.6 + R() * 0.7, 24 + R() * 3.5, R() - 0.5, R() - 0.5, 0.3 + R() * 0.6, 0.6, false);
+  // patches: irregular blobs of every size, from pothole fills to utility cuts;
+  // noisy superellipse outline, soft edge, each its own age (fresh black or grey)
+  for (let k = 0; k < 11; k++) {
+    const big = R() < 0.35, a = (big ? 0.7 + R() * 1.1 : 0.18 + R() * 0.45), b = a * (0.6 + R() * 1.4) * (big ? 1.4 : 1);
+    const cl = -HW + a + R() * (2 * HW - 2 * a), cs = R() * REPEAT, rot = (R() - 0.5) * 0.5, ex = R() < 0.4 ? 4 + R() * 3 : 2;
+    const tone = R() < 0.45 ? 1 + R() * 0.3 : 2.2 + R() * 0.8, seed = R() * 50, ca = Math.cos(rot), sa = Math.sin(rot);
+    const rx = (a + b) * 1.3 / mx, ry = (a + b) * 1.3 / my;
+    for (let y = Math.floor(Y(cs) - ry); y <= Y(cs) + ry; y++) for (let x = Math.max(0, Math.floor(X(cl) - rx)); x <= Math.min(W - 1, X(cl) + rx); x++) {
+      const dl = x * mx - RL - cl, ds = y * my - cs, pl = (dl * ca - ds * sa) / a, ps = (dl * sa + ds * ca) / b;
+      const th = Math.atan2(ps, pl) / (2 * Math.PI) + 0.5;
+      const rad = 1 + 0.18 * (pn(th, seed / 50, 7, 7) - 0.5) * 2 + 0.07 * (pn(th, 0.5 + seed / 100, 29, 29) - 0.5) * 2;
+      const q = Math.pow(Math.pow(Math.abs(pl), ex) + Math.pow(Math.abs(ps), ex), 1 / ex) / rad;
+      const m = smoothstep(1.0, 0.86, q); if (m <= 0) continue;
+      const j = (((y % H) + H) % H) * W + x;
+      if (m > patchM[j]) { patchM[j] = m; patchT[j] = tone; }
     }
   }
-  // oil stains: in the lane centres
-  for (let k = 0; k < 9; k++) {
-    const lat = (R() < 0.5 ? -1.8 : 1.8) + (R() - 0.5) * 0.7, s = R() * REPEAT;
-    for (let q = 0; q < 6; q++) stamp(stain, X(lat + (R() - 0.5) * 0.3), Y(s + (R() - 0.5) * 0.5), (0.08 + R() * 0.22) / mx, 0.35 + R() * 0.4, false);
+  // oil stains: in the lane centres; each a different drip cluster
+  for (let k = 0; k < 10; k++) {
+    const lat = (R() < 0.5 ? -1.8 : 1.8) + (R() - 0.5) * 0.9, s = R() * REPEAT, n = 2 + Math.floor(R() * 9), sp = 0.1 + R() * 0.6, el = 0.3 + R() * 1.6;
+    for (let q = 0; q < n; q++) stamp(stain, X(lat + (R() - 0.5) * sp * 0.5), Y(s + (R() - 0.5) * sp * el), (0.04 + Math.pow(R(), 2) * 0.24) / mx, 0.2 + R() * 0.45, false);
   }
-  return { W, H, mx, my, pn, Hf, crack, patchM, stain };
+  return { W, H, mx, my, pn, Hf, crack, patchM, stain, seal, patchT };
 }
 
 /* Pixel pass: albedo (alpha = ragged asphalt edge), height → normal, and
  * roughness (G) + paint-wear mask (R). */
 function asphaltTextures(tier) {
-  const A = asphaltSheet(tier), { W, H, mx, my, pn, Hf, crack, patchM, stain } = A;
+  const A = asphaltSheet(tier), { W, H, mx, my, pn, Hf, crack, patchM, stain, seal, patchT } = A;
   const alb = new Uint8ClampedArray(W * H * 4), rgh = new Uint8ClampedArray(W * H * 4);
   const wheel = d => Math.exp(-Math.pow((d - 1.02) / 0.28, 2)) + Math.exp(-Math.pow((d - 2.58) / 0.3, 2));
   for (let y = 0; y < H; y++) {
@@ -285,22 +329,25 @@ function asphaltTextures(tier) {
       const crumb = d > edge - 0.18 ? smoothstep(0.55, 0.8, pn(u, v, 400, 800)) : 0;  // crumbling lip
       const wp = wheel(d), dust = smoothstep(HW - 1.1, HW + 0.1, d);
       const oil = Math.exp(-Math.pow((d - 1.8) / 0.32, 2)) * smoothstep(0.35, 0.7, pn(u, v, 8, 80));
-      const pm = patchM[j], ck = crack[j], st = Math.min(1, stain[j]);
+      const pm = patchM[j], pt = patchT[j], ck = crack[j], st = Math.min(1, stain[j]), sl = seal[j];
       // albedo (sRGB bytes): aged grey asphalt, a touch warm
-      let L = 96 + 30 * (mott - 0.5) + 14 * (g2 - 0.5) + 44 * chip * (1 - 0.55 * wp) - 34 * pit;
+      // fine aggregate comes from a world-scale tile in the shader; the sheet carries tone
+      let L = 98 + 30 * (mott - 0.5) + 4 * (g2 - 0.5) + 14 * chip * (1 - 0.55 * wp) - 12 * pit;
       L -= 9 * wp + 16 * oil;
-      if (pm) L = pm === 2 ? 30 : 70 + 12 * (mott - 0.5) + 10 * (g2 - 0.5) + 20 * chip;
-      L = L * (1 - 0.62 * ck) * (1 - 0.5 * st);
+      if (pm > 0) { const PL = (pt < 2 ? 52 + 14 * (pt - 1) : 76 + 12 * (pt - 2.2)) + 10 * (mott - 0.5) + 8 * chip; L += (PL - L) * pm; L *= 1 - 0.12 * pm * (1 - pm) * 4; }
+      L += (36 + 8 * mott - L) * sl * 0.8;                          // tar-sealed crack band
+      L += (40 + 10 * mott - L) * ck * 0.8;                          // crack: dark grey, not black
+      L *= 1 - 0.5 * st;
       let r = L + 3, g = L + 2, b = L;
-      if (!pm) { const k = dust * 0.55; r += (158 - r) * k; g += (142 - g) * k; b += (118 - b) * k; }  // dust at the edge
+      { const k = dust * 0.55 * (1 - pm); r += (158 - r) * k; g += (142 - g) * k; b += (118 - b) * k; }  // dust at the edge
       alb[i] = r; alb[i + 1] = g; alb[i + 2] = b;
       alb[i + 3] = d < edge && crumb < 0.5 ? 255 : 0;
       // height, metres
-      Hf[j] = 0.004 * chip * (1 - 0.6 * wp) - 0.003 * pit + 0.0015 * g2 - 0.006 * ck + (pm === 1 ? 0.002 : 0)
+      Hf[j] = 0.004 * chip * (1 - 0.6 * wp) - 0.003 * pit + 0.0015 * g2 - 0.004 * ck * (1 - 0.7 * sl) + 0.0012 * sl + 0.0025 * pm
         - 0.01 * smoothstep(edge - 0.25, edge, d);
       // roughness 0..1 in G; paint-wear mask in R
       let ro = 0.9 - 0.28 * wp - 0.2 * oil - 0.25 * st + 0.06 * dust + 0.05 * (g2 - 0.5);
-      if (pm) ro = pm === 2 ? 0.45 : 0.82;
+      ro += ((pt < 2 ? 0.7 : 0.86) - ro) * pm; ro += (0.5 - ro) * sl * 0.8;
       rgh[i + 1] = Math.max(0.25, Math.min(1, ro)) * 255;
       const wear = 0.55 + 0.45 * (2 * pn(u, v, 48, 300) - 0.5) - 0.5 * pit - 0.4 * ck;
       rgh[i] = Math.max(0, Math.min(1, wear * (g2 > 0.1 ? 1 : 0.3))) * 255;
@@ -348,6 +395,7 @@ function groundMaterial() {
           soil = mix(soil, soil * 0.55, smoothstep(0.36, 0.2, d0.a) * nearF);
           vec3 grav = vec3(0.27, 0.24, 0.2) * (0.78 + 0.44 * micro) * (0.9 + 0.2 * d1.g);
           grav *= mix(1.0, 0.5 + 1.0 * d0.a, nearF * 0.9);
+          grav = mix(grav, vec3(0.36, 0.21, 0.13) * (0.75 + 0.5 * micro), smoothstep(0.35, 0.65, d2.g + (d1.r - 0.5) * 0.6) * 0.7);   // red-earth murram in stretches
           vec3 sand = vec3(0.64, 0.52, 0.36) * (0.9 + 0.14 * d1.r + 0.1 * micro);
           sand *= 1.0 - 0.48 * vWet;
           float strata = sin(vGW.y * 2.3 + d1.r * 7.0) * 0.5 + 0.5;
@@ -436,36 +484,69 @@ function roadMaterial(tier) {
     map, normalMap, roughnessMap: roughMap, normalScale: new THREE.Vector2(0.9, 0.9),
     roughness: 1, metalness: 0, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4
   });
+  AGG = AGG || aggregateTexture();
+  const RLs = RL.toFixed(3);
+  // each 30 m block of road picks its own mirror and phase, so the sheet never visibly repeats
+  const G = (chunk, re, fn) => { const c = THREE.ShaderChunk[chunk]; if (!re.test(c)) console.warn('road chunk', chunk); return c.replace(re, fn); };
+  const mapF = G('map_fragment', /texture2D\(\s*map\s*,\s*vMapUv\s*\)/, () => 'textureGrad(map, gUv, dFdx(vMapUv), dFdy(vMapUv))');
+  const rghF = G('roughnessmap_fragment', /texture2D\(\s*roughnessMap\s*,\s*vRoughnessMapUv\s*\)/, () => 'textureGrad(roughnessMap, gUv, dFdx(vMapUv), dFdy(vMapUv))');
+  const nrmF = G('normal_fragment_maps', /texture2D\(\s*normalMap\s*,\s*vNormalMapUv\s*\)\.xyz\s*\*\s*2\.0\s*-\s*1\.0\s*;/,
+    () => 'textureGrad(normalMap, gUv, dFdx(vMapUv), dFdy(vMapUv)).xyz * 2.0 - 1.0; mapN.x *= gFlip;');
   m.onBeforeCompile = sh => {
-    sh.uniforms.uDetail = { value: DETAIL };
+    sh.uniforms.uDetail = { value: DETAIL }; sh.uniforms.uAgg = { value: AGG };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aRoad; varying vec2 vRoad;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRoad = aRoad;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec2 vRoad; uniform sampler2D uDetail; float gPaint;
+        varying vec2 vRoad; uniform sampler2D uDetail; uniform sampler2D uAgg; float gPaint, gFlip, gAggH, gNear, gJoint; vec2 gUv;
+        float rh(float n) { return fract(sin(n * 91.713) * 43758.545); }
         float band(float x, float c, float hw, float fw) { return clamp((hw - abs(x - c)) / fw + 0.5, 0.0, 1.0); }`)
-      .replace('#include <map_fragment>', `#include <map_fragment>
+      .replace('#include <map_fragment>', `{
+          float blk = floor(vRoad.y / ${REPEAT}.0), h = rh(blk);
+          gFlip = h < 0.5 ? -1.0 : 1.0;
+          gUv = vec2((gFlip * vRoad.x + ${RLs}) / ${(2 * RL).toFixed(3)}, vRoad.y / ${REPEAT}.0 + floor(rh(blk + 17.0) * 8.0) / 8.0);
+          // a transverse joint crack where blocks meet, ragged across the road
+          float jn = texture2D(uDetail, vec2(vRoad.x * 0.21, blk * 0.37)).r;
+          float jd = abs(vRoad.y - blk * ${REPEAT}.0 - 0.03 * (jn - 0.5) * 6.0);
+          jd = min(jd, abs(vRoad.y - (blk + 1.0) * ${REPEAT}.0));
+          gJoint = (1.0 - smoothstep(0.004, 0.004 + 0.012 * jn + max(fwidth(vRoad.y), 1e-4), jd)) * step(0.3, texture2D(uDetail, vec2(vRoad.x * 0.09, blk * 0.11)).g);
+        }
+        ${mapF}
         {
           float lat = vRoad.x, s = vRoad.y;
           // macro variation along the road so the 30 m sheet never reads as a repeat
           vec4 mac = texture2D(uDetail, vec2(s * 0.0047, lat * 0.011 + 0.37));
           vec4 mac2 = texture2D(uDetail, vec2(s * 0.021 + 0.5, lat * 0.05));
           diffuseColor.rgb *= (0.88 + 0.24 * mac.g) * (0.93 + 0.14 * mac2.g);
+          // world-scale aggregate: chips resolve up close, average out with distance
+          vec4 ag = texture2D(uAgg, vRoad / 1.1), ag2 = texture2D(uAgg, mat2(0.8, -0.6, 0.6, 0.8) * vRoad / 0.73 + 0.31);
+          gNear = 1.0 - smoothstep(0.004, 0.03, max(fwidth(vRoad.y), fwidth(vRoad.x)));
+          float aL = mix(ag.r, ag2.r, 0.3);
+          diffuseColor.rgb *= mix(1.0, 0.35 + 1.45 * aL, 0.8);
+          gAggH = mix(ag.g, ag2.g, 0.3);
+          diffuseColor.rgb *= 1.0 - 0.45 * gJoint;
           float fw = max(fwidth(lat), 1e-4), fs = max(fwidth(s), 1e-4);
           float edgeL = ${(HW - 0.25).toFixed(3)};
           float lines = max(band(lat, -edgeL, 0.075, fw), band(lat, edgeL, 0.075, fw));
           float ph = mod(s + 1.2, 7.5);
           float dash = clamp(ph / fs + 0.5, 0.0, 1.0) * clamp((3.0 - ph) / fs + 0.5, 0.0, 1.0);
           lines = max(lines, band(lat, 0.0, 0.075, fw) * dash);
-          float wear = texture2D(roughnessMap, vRoughnessMapUv).r;
+          float wear = textureGrad(roughnessMap, gUv, dFdx(vMapUv), dFdy(vMapUv)).r;
           float far = smoothstep(0.02, 0.3, fs);                       // far away the speckle averages out
           gPaint = lines * mix(smoothstep(0.18, 0.5, wear * (0.75 + 0.5 * mac2.r)), 0.85, far);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80, 0.78, 0.72), gPaint);
         }`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.62, gPaint);');
+      .replace('#include <roughnessmap_fragment>', rghF + '\nroughnessFactor = mix(roughnessFactor, 0.62, gPaint); roughnessFactor = mix(roughnessFactor, 0.97, gAggH * 0.3);')
+      .replace('#include <normal_fragment_maps>', nrmF + `
+        {  // aggregate bump from screen-space derivatives of the chip height
+          vec2 dH = vec2(dFdx(gAggH), dFdy(gAggH)) * 0.004 * gNear * (1.0 - gPaint);
+          vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition), R1 = cross(sY, normal), R2 = cross(normal, sX);
+          float det = dot(sX, R1) * faceDirection;
+          normal = normalize(abs(det) * normal - sign(det) * (dH.x * R1 + dH.y * R2));
+        }`);
   };
-  m.customProgramCacheKey = () => 'v2road2';
+  m.customProgramCacheKey = () => 'v2road3';
   return m;
 }
 

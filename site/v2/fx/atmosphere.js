@@ -294,7 +294,8 @@ function update(dt, s) {
   const az = THREE.MathUtils.degToRad(a.sun[1] + (b.sun[1] - a.sun[1]) * t);
   const zoneExpo = a.exposure + (b.exposure - a.exposure) * t;
   // time-of-day weights: golden below ~18°, dusk once the sun is near/below the horizon
-  const g = 1 - smooth(elDeg, 6, 22);
+  // (the late-afternoon hills at ~24° already take a warm, low-sun cast)
+  const g = 1 - smooth(elDeg, 6, 32);
   const dk = 1 - smooth(elDeg, -3, 3);
   rose = (1 - smooth(elDeg, 3, 10)) * (1 - dk);   // sun just above the horizon: rose sunset
   day.golden = g * (1 - dk) * (1 - rose);

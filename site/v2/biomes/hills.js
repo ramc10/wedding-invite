@@ -176,64 +176,56 @@ function pnoise(x, y, P, seed = 0) {
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-// layered rock: returns { map, normalMap, roughnessMap }
+// layered rock: returns { map, normalMap, rough }
 function strataTextures() {
-  // Weathered khondalite/gneiss cut: blasted blocks (jittered cells, elongated along gently dipping
-  // foliation), each with its own tilt and tone; hairline joints, rain streaks, iron staining, lichen.
-  const W = 512, GX = 6, GY = 10, R = makeRng('hi-rock-tex');
-  const pts = [];
-  for (let j = 0; j < GY; j++) for (let i = 0; i < GX; i++) {
-    const r = R(), tone = r < 0.55 ? 0 : r < 0.8 ? 1 : r < 0.93 ? 2 : 3;
-    pts.push({ x: (i + 0.15 + 0.7 * R()) / GX * W, y: (j + 0.15 + 0.7 * R()) / GY * W,
-      tx: (R() - 0.5) * 1.6, ty: (R() - 0.5) * 1.2 - 0.35, h: 0.3 + 0.4 * R(), tone, v: 0.95 + 0.1 * R() });
-  }
-  // grey-buff gneiss, rusty weathered, dark fresh, pale kaolinised
-  const TONE = [[172, 158, 138], [174, 136, 104], [138, 130, 120], [196, 182, 160]];
-  const alb = new Uint8ClampedArray(W * W * 4), hgt = new Uint8ClampedArray(W * W * 4);
-  const cw = W / GX, ch = W / GY;
-  for (let py = 0; py < W; py++) for (let px = 0; px < W; px++) {
-    // foliation: shear the lookup so blocks dip and wobble (periodic, so it tiles)
-    const qx = px, qy = py + 22 * Math.sin(px / W * Math.PI * 2) + 7 * (pnoise(px / 40, py / 40, 12.8, 1) - 0.5);
-    const ci = Math.floor(qx / cw), cj = Math.floor(qy / ch);
-    let d1 = 1e9, d2 = 1e9, best = null, bdx = 0, bdy = 0;
-    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-      const ii = ci + di, jj = cj + dj, p = pts[(((jj % GY) + GY) % GY) * GX + (((ii % GX) + GX) % GX)];
-      const fx = p.x + Math.floor(ii / GX) * W, fy = p.y + Math.floor(jj / GY) * W;
-      const dx = (qx - fx) / 1.7, dy = qy - fy, d = Math.hypot(dx, dy);  // elongated along x
-      if (d < d1) { d2 = d1; d1 = d; best = p; bdx = qx - fx; bdy = qy - fy; } else if (d < d2) d2 = d;
-    }
-    const edge = d2 - d1;                                        // distance to the joint
-    // only some joints are open cracks; the rest read through relief alone
-    const open = smoothstep(0.42, 0.6, pnoise(px / 26, py / 26, 19.69, 7));
-    const crack = edge < 1.8 ? (1 - edge / 1.8) * open : 0;
-    const fine = pnoise(px / 3, py / 3, 170.67, 2), mid = pnoise(px / 16, py / 16, 32, 3), big = pnoise(px / 64, py / 64, 8, 4);
-    const streak = pnoise(px / 5, py / 90, 102.4, 5);           // rain-wash streaks (vertical)
-    // height: tilted block faces, rounded near joints, grainy
-    let hv = best.h + (best.tx * bdx + best.ty * bdy) / 90 + 0.1 * fine + 0.12 * mid;
-    hv -= 0.35 * crack + (edge < 5 ? (1 - edge / 5) * 0.08 : 0);
-    // colour from broad weathering fields (not per block): grey-buff base drifting to pale / dark
-    const wz = pnoise(px / 90, py / 70, 5.69, 8), t = [0, 1, 2].map(k => TONE[0][k] + (TONE[3][k] - TONE[0][k]) * smoothstep(0.55, 0.85, wz)
-      + (TONE[2][k] - TONE[0][k]) * smoothstep(0.45, 0.15, wz));
-    const rust = smoothstep(0.6, 0.85, big) * 0.45 * (0.6 + 0.4 * streak);
-    let sh = best.v * (0.8 + 0.22 * fine + 0.18 * (mid - 0.5)) * (1 - 0.4 * crack) * (1 - 0.18 * smoothstep(0.5, 0.8, streak));
+  // Blasted khondalite/gneiss cut (512px = 7 m): dipping bedding layers of varied thickness, each split
+  // into blocks by near-vertical joints; drill-hole half-barrels on the blasted beds; rain-wash streaks
+  // under the ledges, iron staining, dark moss / soil in the open joints.
+  const WL = 512, W = 320, SC = WL / W, R = makeRng('hi-rock-tex');   // pattern authored at 512, baked at 320
+  const beds = []; let yb = 0;
+  while (yb < WL) { const h = 22 + R() * 46; beds.push({ y0: yb, h, tone: R(), off: R() * 90, jw: 40 + R() * 70,
+    drill: R() < 0.45, bulge: 0.25 + 0.5 * R() }); yb += h; }
+  const k = WL / yb; beds.forEach(b => { b.y0 *= k; b.h *= k; });            // tile vertically
+  const alb = new Uint8ClampedArray(W * W * 4), hgt = new Uint8ClampedArray(W * W * 4), rgh = new Uint8ClampedArray(W * W * 4);
+  const A = [158, 146, 128], B = [118, 110, 100], C = [176, 132, 96];         // buff gneiss, dark fresh rock, rusty
+  for (let iy = 0; iy < W; iy++) for (let ix = 0; ix < W; ix++) {
+    const px = ix * SC, py = iy * SC;
+    const dip = py + 10 * Math.sin(px / WL * Math.PI * 2) + 5 * (pnoise(px / 48, py / 48, 10.67, 1) - 0.5);
+    const qy = ((dip % WL) + WL) % WL;
+    let bi = 0; while (bi < beds.length - 1 && qy >= beds[bi + 1].y0) bi++;
+    const bd = beds[bi], ty = (qy - bd.y0) / bd.h;                           // 0 top … 1 bottom of the bed
+    // joints: irregular vertical spacing per bed, wobbling
+    const jx = px + bd.off + 8 * (pnoise(px / 30, py / 12, 17.07, 2) - 0.5);
+    const cell = Math.floor(jx / bd.jw), fx = jx / bd.jw - cell;
+    const jd = Math.min(fx, 1 - fx) * bd.jw;                                 // px to nearest joint
+    const bedEdge = Math.min(ty, 1 - ty) * bd.h;                             // px to bedding plane
+    const joint = Math.max(jd < 2.2 ? 1 - jd / 2.2 : 0, bedEdge < 2.6 ? 1 - bedEdge / 2.6 : 0);
+    const bn = noise2(cell * 3.1 + bi * 7.7, bi * 1.3);                      // per-block tilt / tone
+    const fine = pnoise(px / 2.5, py / 2.5, 204.8, 3), mid = pnoise(px / 14, py / 14, 36.57, 4), big = pnoise(px / 70, py / 70, 7.31, 5);
+    // block relief: pillowed, overhanging lip at the bed top, tilted per block
+    let hv = 0.45 + bd.bulge * Math.sin(Math.min(1, jd / 14) * 1.57) * Math.sin(Math.min(1, bedEdge / 10) * 1.57) * 0.5
+      + (bn - 0.5) * 0.25 * (fx - 0.5) + 0.08 * fine + 0.1 * mid + (ty < 0.25 ? 0.12 * (1 - ty / 0.25) : 0);
+    // drill-hole half-barrels: smooth vertical grooves every ~0.8 m on blasted beds
+    let drill = 0;
+    if (bd.drill) { const gx = (px + bd.off * 2) % 58, gd = Math.abs(gx - 29); if (gd < 5) drill = Math.cos(gd / 5 * 1.57); }
+    hv -= 0.28 * drill + 0.45 * joint;
+    const streak = pnoise(px / 4, py / 110, 128, 6), wash = smoothstep(0.45, 0.8, streak) * (0.4 + 0.6 * ty);
+    const tone = bd.tone * 0.6 + 0.4 * bn, rust = smoothstep(0.55, 0.85, big) * 0.6;
+    const t = [0, 1, 2].map(i => A[i] + (B[i] - A[i]) * smoothstep(0.55, 0.9, tone) + (C[i] - A[i]) * rust);
+    const sh = (0.8 + 0.25 * fine + 0.2 * (mid - 0.5)) * (1 - 0.35 * wash) * (1 - 0.12 * drill) * (0.92 + 0.16 * bn);
     let r = t[0] * sh, g = t[1] * sh, b = t[2] * sh;
-    r += (158 - r) * rust * 0.5; g += (104 - g) * rust * 0.5; b += (70 - b) * rust * 0.5;       // iron staining
-    const lichen = pnoise(px / 2, py / 2, 256, 6) > 0.8 && mid > 0.55 ? 0.6 : 0;
-    r += (196 - r) * lichen * 0.4; g += (190 - g) * lichen * 0.4; b += (160 - b) * lichen * 0.4;
-    const i = (py * W + px) * 4;
+    const moss = joint * smoothstep(0.35, 0.65, pnoise(px / 20, py / 20, 25.6, 7));
+    r += (52 - r) * (joint * 0.55 + moss * 0.3); g += (56 - g) * (joint * 0.5 + moss * 0.1); b += (36 - b) * joint * 0.55;
+    const i = (iy * W + ix) * 4;
     alb[i] = r; alb[i + 1] = g; alb[i + 2] = b; alb[i + 3] = 255;
     hgt[i] = hgt[i + 1] = hgt[i + 2] = clamp(hv, 0, 1) * 255; hgt[i + 3] = 255;
+    rgh[i] = rgh[i + 1] = rgh[i + 2] = clamp(0.78 + 0.2 * joint + 0.1 * wash - 0.12 * drill, 0, 1) * 255; rgh[i + 3] = 255;
   }
   const put = arr => (g, w, h) => g.putImageData(new ImageData(arr, w, h), 0, 0);
   const map = canvasTex(W, W, put(alb));
   const hc = canvasTex(W, W, put(hgt), { srgb: false });
-  const normalMap = normalFromHeight(hc.userData.canvas, 5);
-  // roughness: cracks and streaks rougher, block faces a touch smoother
-  const rough = canvasTex(W, W, (g, w, h) => {
-    const img = g.createImageData(w, h), o = img.data;
-    for (let i = 0; i < w * h * 4; i += 4) { const v = 255 - hgt[i] * 0.35; o[i] = o[i + 1] = o[i + 2] = v; o[i + 3] = 255; }
-    g.putImageData(img, 0, 0);
-  }, { srgb: false });
+  const normalMap = normalFromHeight(hc.userData.canvas, 4);
+  const rough = canvasTex(W, W, put(rgh), { srgb: false });
   return { map, normalMap, rough };
 }
 
@@ -259,32 +251,49 @@ function buildCuttings(env) {
   for (const c of CUTS) {
     const vOff = c.a * 0.013;
     const base0 = fP.length / 3, base1 = tP.length / 3;
+    // stepped benches (blasted lifts ~2.5–3 m high with a soil-filled tread), near-vertical lifts between
+    const nb = c.H >= 5 ? 2 : c.H >= 3 ? 1 : 0, BW = 0.8;
+    const TB = nb === 2 ? [0.36, 0.69] : nb === 1 ? [0.52] : [];
+    const rows = ROWS.map(t => ({ t, k: -1 }));
+    TB.forEach((tb, k) => rows.push({ t: tb - 0.001, k, lip: true }, { t: tb, k, back: true }));
+    rows.sort((p, q) => p.t - q.t);
+    const lean = Math.max(0.08, (c.H * BATTER - nb * BW) / c.H);
+    c.nf = rows.length + 2;
     let rowsN = 0;
     for (let s = c.a; s <= c.b + 1e-6; s += 0.7) {
       rowsN++;
-      const H = cutH(c, s), road = path.roadY(s);
-      // face: foot buried a little below the verge, leaning back, strata ledges
-      const pts = [[D0 - 0.35, -0.35]];
-      for (const t of ROWS) {
-        const yy = t * H;
-        // blocky relief: broad bulges + blast-scar hollows + small ledges (never at the buried foot)
-        const led = t === 0 ? 0 : 0.45 * fbm(s * 0.11 + c.a, yy * 0.32, 4) + 0.22 * Math.abs(fbm(s * 0.45, yy * 0.9 + 3, 2))
-          + 0.1 * Math.round(fbm(s * 0.2 + 9, yy * 1.3, 2) * 3);
-        const crumble = t > 0.9 ? 0.25 * fbm(s * 0.3, 7.7, 2) : 0;
-        pts.push([D0 + yy * BATTER + led + crumble + (t === 0 ? 0 : 0.05), yy + (t === 0 ? -0.05 : 0)]);
-      }
+      const H = cutH(c, s), road = path.roadY(s), fade = smoothstep(0.5, 3, H);
       const ground0 = world.heightSL(s, c.side * D0) - road;
-      pts[1][1] = Math.min(pts[1][1], ground0 - 0.05);
+      // scree apron at the foot: fallen spalls banked against the face (hides the crease)
+      const ap = fade * (0.55 + 0.45 * fbm(s * 0.3 + c.a, 1.7, 2));
+      const pts = [[D0 - 0.85, Math.min(-0.3, ground0 - 0.3)], [D0 - 0.35, ground0 + 0.18 * ap]];
+      const kind = [0, 0];                                         // 0 apron/rock, 1 tread, 2 under-lip
+      rows.forEach((R0, j) => {
+        const t = R0.t, yy = t * H;
+        let off = 0; TB.forEach((tb, k) => { if (t > tb || (t === tb && R0.back)) off += BW * fade * (0.8 + 0.4 * fbm(s * 0.07 + k * 9, 2.2, 2)); });
+        // blasted blocks: per-lift, per-1.8 m piecewise offsets (±0.45 m) + broad bulges; overhanging lips
+        const layer = Math.floor(yy / 1.25), bid = Math.floor(s / 1.8 + layer * 0.53);
+        const blk = t === 0 ? 0 : (noise2(bid * 1.71 + c.a, layer * 3.3) - 0.5) * 0.9 * fade;
+        const led = t === 0 ? 0 : 0.3 * fbm(s * 0.11 + c.a, yy * 0.32, 3) + 0.12 * Math.abs(fbm(s * 0.45, yy * 0.9 + 3, 2));
+        const lipOut = R0.lip ? -0.18 * fade : 0;                    // bench lip juts over the lift below
+        const crumble = t > 0.9 ? 0.3 * fbm(s * 0.3, 7.7, 2) : 0;
+        let y = yy + (R0.back ? 0.06 : 0);
+        if (t === 0) y = Math.max(ground0 + 0.3 * ap, -0.05);
+        pts.push([D0 + yy * lean + off + blk + led + lipOut + crumble + (t === 0 ? 0.05 : 0), y]);
+        kind.push(R0.back ? 1 : TB.some(tb => t < tb && t > tb - 0.14) ? 2 : 0);
+      });
       for (let j = 0; j < pts.length; j++) {
         const [d, y] = pts[j];
         path.toWorld(s, c.side * d, v);
         fP.push(v.x, road + y, v.z);
         fU.push(s / 7, (y + s * 0.02) / 7 + vOff);
-        // tone: dusty at the foot, topsoil at the brow, broad mottling
-        const t = j === 0 ? 0 : ROWS[j - 1];
         const m = 0.82 + 0.25 * fbm(s * 0.04 + c.a, y * 0.2, 3);
         col.setRGB(m, m * 0.98, m * 0.95);
-        col.lerp(dust, smoothstep(0.9, 0, y) * 0.35);
+        col.lerp(dust, smoothstep(0.9, 0, y) * (j < 2 ? 0.7 : 0.35));
+        // rain streaks: dark vertical wash below each bench lip and below the brow
+        const streak = smoothstep(0.1, 0.45, fbm(s * 0.9 + c.a, 0.5, 2));
+        if (kind[j] === 2 || y > H - 1.4) col.multiplyScalar(1 - 0.35 * streak);
+        if (kind[j] === 1) col.set(0x5a5230).lerp(soil, 0.4 * (fbm(s * 0.2, 5.5, 2) + 0.5));   // grassy soil tread
         if (H > 0.5) col.lerp(soil, smoothstep(H - 0.9, H - 0.2, y) * 0.8);
         fC.push(col.r, col.g, col.b);
       }
@@ -303,7 +312,7 @@ function buildCuttings(env) {
         tC.push(col.r, col.g, col.b);
       }
     }
-    const nf = ROWS.length + 1, nt = TOPD.length;
+    const nf = c.nf, nt = TOPD.length;
     for (let r = 0; r < rowsN - 1; r++) {
       for (let j = 0; j < nf - 1; j++) {
         const a = base0 + r * nf + j, b = a + nf;
@@ -382,22 +391,36 @@ function buildTrees(env) {
 function buildGround(env) {
   const { ctx, n, group, world, path } = env;
   const guard = fn => (R, i) => { const p = fn(R, i); return p && freeGround(env, p.s, p.lat) ? { s: p.s, lateral: p.lat } : null; };
-  // rock outcrops: clusters of half-buried boulders on the slopes
-  const rockG = groves(env, 'hi-rock-g', { count: 34, near: 9, far: 150, radius: 5, fill: 0.5 });
-  group.add(plant(ctx, { kind: 'boulder', count: n(150), seed: 'hi-rock', scale: [0.4, 2.4], sink: 0.55,
-    colors: [0xc8b8a0, 0xb8a890, 0xa89a88, 0xc0a888, 0x9c9084], place: guard(rockG) }));
-  // scrub (lantana / thorn bush) under and between groves and along the verges
-  const scrubG = groves(env, 'hi-scrub-g', { count: 60, near: 7.4, far: 80, radius: 7, fill: 0.6 });
-  group.add(plant(ctx, { kind: 'bush', count: n(320), seed: 'hi-scrub', scale: [0.5, 1.3],
-    colors: [0x7a7a38, 0x8a8438, 0x6a7434, 0x9a8a44, 0x5f6a32, 0xa08a48], place: guard(scrubG) }));
-  // golden grass: everywhere open, thickest on verges
-  const RG0 = makeRng('hi-grass-d');
-  group.add(plant(ctx, { kind: 'grass', count: n(2600), seed: 'hi-grass', scale: [1.0, 2.0],
-    colors: [0xe8c070, 0xd8b060, 0xf0cc80, 0xc8a050, 0xdcb870],
+  // macro patchiness (30–80 m): green scrub patches vs dry straw vs rocky laterite ground
+  const patch = (s, lat) => fbm(s * 0.018 + 11, lat * 0.022 - 4, 3);         // ~-0.5 … 0.5
+  const rocky = (s, lat) => fbm(s * 0.03 - 7, lat * 0.03 + 21, 2);
+  // rock outcrops: clusters of half-buried boulders, denser where the patch field says rocky
+  const rockG = groves(env, 'hi-rock-g', { count: 60, near: 9, far: 170, radius: 6, fill: 0.45 });
+  group.add(plant(ctx, { kind: 'boulder', count: n(260), seed: 'hi-rock', scale: [0.35, 2.6], sink: 0.6,
+    colors: [0xa89c8c, 0x9c9084, 0xb0a490, 0x8e8478, 0xa08c78],
+    place: (R, i) => { const p = rockG(R, i); if (!p || !freeGround(env, p.s, p.lat)) return null;
+      if (rocky(p.s, p.lat) < -0.1 && R() < 0.6) return null; return { s: p.s, lateral: p.lat }; } }));
+  // lantana / thorn scrub: big irregular patches (dense where patch > 0) up to the ridgelines
+  const scrubG = groves(env, 'hi-scrub-g', { count: 110, near: 7.4, far: 170, radius: 9, fill: 0.5 });
+  const SCRUB = [0x5a6a2c, 0x6a7434, 0x4e5e2a, 0x7a7a38, 0x66702e, 0x8a8438];
+  group.add(plant(ctx, { kind: 'bush', count: n(620), seed: 'hi-scrub', scale: [0.55, 1.6],
+    place: (R, i) => { const p = scrubG(R, i); if (!p || !freeGround(env, p.s, p.lat)) return null;
+      const f = patch(p.s, p.lat); if (f < -0.12 && R() < 0.75) return null;
+      return { s: p.s, lateral: p.lat, tint: new THREE.Color(SCRUB[Math.floor(R() * SCRUB.length)]).multiplyScalar(0.8 + 0.35 * R() + 0.3 * f) }; } }));
+  // grass: Poisson-ish clumps of 5–20 tufts; green in the scrub patches, straw on open ground
+  const RG0 = makeRng('hi-grass-c'), GC = [];
+  for (let i = 0; i < 360; i++) {
+    const sg = RG0() < 0.5 ? -1 : 1;
+    GC.push({ s: env.s0 + RG0() * (env.s1 - env.s0), lat: sg * (6.6 + Math.pow(RG0(), 1.5) * 90), r: 1.2 + RG0() * 3 });
+  }
+  const STRAW = [0xe0b868, 0xd0a858, 0xe8c478, 0xc09850], GREEN = [0x8a9448, 0x7a8a40, 0x9aa050, 0xa89c50];
+  group.add(plant(ctx, { kind: 'grass', count: n(3000), seed: 'hi-grass', scale: [0.9, 2.1],
     place: (R) => {
-      const sg = R() < 0.5 ? -1 : 1, lat = sg * (6.4 + Math.pow(R(), 1.8) * 60), s = env.s0 + R() * (env.s1 - env.s0);
-      if (fbm(s * 0.05, lat * 0.07 + 3, 2) < -0.2 || !freeGround(env, s, lat)) return null;
-      return { s, lateral: lat };
+      const g = GC[Math.floor(R() * GC.length)], a = R() * 6.28, d = g.r * Math.sqrt(R());
+      const s = g.s + Math.cos(a) * d, lat = g.lat + Math.sin(a) * d;
+      if (Math.sign(lat) !== Math.sign(g.lat) || s < env.s0 || s > env.s1 || !freeGround(env, s, lat)) return null;
+      const f = patch(g.s, g.lat), pal = f > 0.05 ? GREEN : STRAW;
+      return { s, lateral: lat, tint: new THREE.Color(pal[Math.floor(R() * pal.length)]).multiplyScalar(0.85 + 0.25 * R()) };
     } }));
 
   // on the cutting tops (raised above heightSL) and at their feet: own instances grounded on gH
@@ -407,6 +430,10 @@ function buildGround(env) {
     const brow = D0 + H * BATTER + 0.5;
     for (let q = 0; q < 3; q++) topGrass.push({ s: s + RC(), lat: c.side * (brow + 0.2 + Math.pow(RC(), 1.5) * 7),
       sc: [1.2 + RC(), 1.4 + 1.2 * RC(), 1.2 + RC()], yaw: RC() * 6.28, tint: [0xe8c070, 0xd8b060, 0xc8a050][q] });
+    const nb = c.H >= 5 ? 2 : c.H >= 3 ? 1 : 0, TB = nb === 2 ? [0.36, 0.69] : nb === 1 ? [0.52] : [];
+    const lean = Math.max(0.08, (c.H * BATTER - nb * 0.8) / c.H);
+    TB.forEach((tb, k) => { if (RC() < 0.6) topGrass.push({ s: s + RC(), lat: c.side * (D0 + tb * H * lean + 0.8 * (k + 0.35) + 0.25),
+      y: path.roadY(s) + tb * H + 0.04, sc: [0.8 + RC() * 0.6, 0.8 + RC(), 0.8 + RC() * 0.6], yaw: RC() * 6.28, tint: [0x9a9a50, 0xc8a050, 0x7a8440][Math.floor(RC() * 3)] }); });
     if (RC() < 0.35) topScrub.push({ s, lat: c.side * (brow + 0.6 + RC() * 6), sc: 0.6 + 0.6 * RC(), yaw: RC() * 6.28,
       tint: [0x7a7a38, 0x8a8438, 0x6a7434][Math.floor(RC() * 3)] });
     if (H > 1.2 && RC() < 0.55) scree.push({ s, lat: c.side * (D0 + 0.05 + RC() * 0.6), sc: [0.22 + 0.3 * RC(), 0.2 + 0.25 * RC(), 0.22 + 0.3 * RC()],
@@ -449,11 +476,12 @@ function cpart(geo, color, { u0 = 0, v0 = 0, u1 = 1, v1 = 1 } = {}) {
 }
 
 // sweep a 2D profile [[out, up], …] along the road at |lateral| = lat0 on one side
-function sweep(env, a, b, side, lat0, profile, { step = 1, colorAt = null, heightAt = null } = {}) {
+function sweep(env, a, b, side, lat0, profile, { step = 1, colorAt = null, heightAt = null, latAt = null } = {}) {
   const { path } = env, P = [], C = [], UV = [], v = new THREE.Vector3(), c = new THREE.Color(0xffffff);
   const ring = s => {
     const base = heightAt ? heightAt(s) : path.roadY(s);
-    return profile.map(([o, up]) => { path.toWorld(s, side * (lat0 + o), v); return [v.x, base + up, v.z]; });
+    const l0 = latAt ? latAt(s) : lat0;
+    return profile.map(([o, up]) => { path.toWorld(s, side * (l0 + o), v); return [v.x, base + up, v.z]; });
   };
   let r0 = ring(a);
   for (let s = a; s < b - 1e-6; s += step) {
@@ -479,17 +507,25 @@ function buildBarriers(env) {
   const grime = grimeTex();
   // W-beam: two bulges facing the road; o = metres toward the valley, up = height
   const W = [[0.0, 0.44], [-0.07, 0.49], [-0.07, 0.55], [-0.02, 0.6], [-0.07, 0.65], [-0.07, 0.71], [0.0, 0.76], [0.02, 0.76], [0.02, 0.44], [0.0, 0.44]];
-  const rails = [], posts = [], blocks = [];
+  const rails = [], posts = [], blocks = [], blocks2 = [];
   for (const B of BARRIERS) {
     const ground = s => world.heightSL(s, B.side * (BAR_LAT + 0.15));
     if (B.kind === 'beam') {
-      // flared ends ramp down to the ground over 4 m
-      const h = s => ground(s) - (1 - smoothstep(B.a, B.a + 4, s) * smoothstep(B.b, B.b - 4, s)) * 0.62;
-      rails.push(sweep(env, B.a, B.b, B.side, BAR_LAT, W, { step: 0.5, heightAt: h,
-        // painted in alternating 2 m yellow / black sections, the paint worn in places
+      // turned-down, flared terminals: over the last 8 m each end bends 0.9 m away from the road and
+      // dips until the beam is buried in the verge (MoRTH anchored end), grounded on the actual lateral
+      const e = s => 1 - smoothstep(B.a, B.a + 8, s) * smoothstep(B.b, B.b - 8, s);
+      const lat = s => BAR_LAT + 0.9 * e(s) * e(s);
+      const gAt = s => world.heightSL(s, B.side * (lat(s) + 0.05));
+      const h = s => gAt(s) - smoothstep(0.35, 1, e(s)) * 0.82;
+      const a0 = B.a - 0.6, b0 = B.b + 0.6;
+      rails.push(sweep(env, a0, b0, B.side, BAR_LAT, W, { step: 0.4, heightAt: h, latAt: lat,
         colorAt: (s, c) => c.set(Math.floor(s / 2) % 2 ? 0xd8a818 : 0x1c1c1a).multiplyScalar(0.85 + 0.25 * (fbm(s * 0.7, 3.3, 2) + 0.5)) }));
-      for (let s = B.a + 2; s <= B.b - 2; s += 2) {
-        posts.push({ s, lat: B.side * (BAR_LAT + 0.12), y: ground(s) - 0.35, sc: 1, tint: 0x9a9c98 });
+      // posts every 2 m (tighter at the ends), each with a spacer block-out between post and beam
+      for (let s = B.a + 1; s <= B.b - 1; s += (s < B.a + 8 || s > B.b - 8) ? 1.5 : 2) {
+        if (h(s) < gAt(s) - 0.3) continue;                          // beam already buried here
+        const y = h(s) + 0.6;                                      // beam centre height
+        posts.push({ s, lat: B.side * (lat(s) + 0.24), y: gAt(s) - 0.4, sc: [1, (y - gAt(s) + 0.4 + 0.14) / 1.15, 1], tint: 0x9a9c98 });
+        blocks2.push({ s, lat: B.side * (lat(s) + 0.1), y: y - 0.16, sc: 1, tint: 0x8a8c88 });
       }
     } else {
       for (let s = B.a; s <= B.b; s += 1.25) {
@@ -506,6 +542,9 @@ function buildBarriers(env) {
   }
   const post = new THREE.BoxGeometry(0.1, 1.15, 0.16); post.translate(0, 0.575, 0);
   instance(env, post, new THREE.MeshStandardMaterial({ map: grime, roughness: 0.7, metalness: 0.2 }), posts, 'barrier-posts', { headingYaw: true });
+  const spacer = new THREE.BoxGeometry(0.15, 0.32, 0.1);
+  spacer.translate(0, 0.16, 0);
+  instance(env, spacer, new THREE.MeshStandardMaterial({ map: grime, roughness: 0.6, metalness: 0.3 }), blocks2, 'blockouts', { headingYaw: true });
   const blk = new THREE.BoxGeometry(0.45, 0.62, 1.15, 1, 2, 2);
   const p = blk.attributes.position;
   for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) { p.setX(i, p.getX(i) * 0.82); } // battered sides

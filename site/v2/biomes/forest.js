@@ -488,17 +488,21 @@ function logGeometry() {
 }
 
 function moundGeometry() {
-  // lathe cone with lumpy flanks + two side spires merged
+  // laterite termite mound: fluted, lumpy main chimney + 4 leaning secondary spires and a slumped skirt
   const prof = [];
-  for (let i = 0; i <= 12; i++) { const t = i / 12; prof.push(new THREE.Vector2(Math.max(0.02, 0.9 * Math.pow(1 - t, 1.4) + 0.05), t * 2.0 - 0.2)); }
-  const main = new THREE.LatheGeometry(prof, 16);
-  const spire = (x, z, h, r) => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p.x * r, p.y * h)), 10).translate(x, 0, z);
-  const g = mergeGeometries([main, spire(0.45, 0.2, 0.6, 0.45), spire(-0.3, -0.35, 0.45, 0.4)].map(x => x.toNonIndexed()));
+  for (let i = 0; i <= 24; i++) { const t = i / 24; prof.push(new THREE.Vector2(Math.max(0.03, 0.95 * Math.pow(1 - t, 1.6) + 0.06 * (1 - t) + 0.035), t * 2.2 - 0.25)); }
+  const main = new THREE.LatheGeometry(prof, 30);
+  const spire = (x, z, h, r, lean) => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p.x * r, p.y * h)), 14)
+    .rotateZ(lean * Math.sign(x || 1)).translate(x, -0.05, z);
+  const skirt = new THREE.SphereGeometry(1, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1.25, 0.28, 1.1).translate(0, -0.12, 0);
+  const g = mergeGeometries([main, skirt, spire(0.5, 0.18, 0.62, 0.42, 0.12), spire(-0.34, -0.4, 0.48, 0.36, 0.18),
+    spire(-0.2, 0.52, 0.36, 0.3, 0.25), spire(0.3, -0.5, 0.28, 0.28, 0.3)].map(x => x.toNonIndexed()));
   const n = noise3('mound'), P = g.attributes.position;
   for (let i = 0; i < P.count; i++) {
-    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
-    const k = 1 + 0.25 * n(x * 3, y * 3, z * 3) + 0.08 * n(x * 9, y * 9, z * 9);
-    P.setXYZ(i, x * k, y + 0.05 * n(x * 5, 3, z * 5), z * k);
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i), ang = Math.atan2(z, x);
+    const flute = 0.09 * Math.pow(Math.abs(Math.sin(ang * 3.5 + y * 1.3 + 0.8 * n(x, y * 2, z))), 0.6);
+    const k = 1 - flute + 0.32 * n(x * 2.5, y * 2.5, z * 2.5) + 0.12 * n(x * 8, y * 8, z * 8) + 0.04 * n(x * 22, y * 22, z * 22);
+    P.setXYZ(i, x * k, y + 0.08 * n(x * 4, 3, z * 4) - (y < 0.1 ? 0.04 : 0), z * k);
   }
   g.computeVertexNormals();
   const uv = g.attributes.uv; for (let i = 0; i < P.count; i++) uv.setXY(i, Math.atan2(P.getZ(i), P.getX(i)) * 0.6, P.getY(i) * 1.2);
@@ -534,6 +538,40 @@ function makeClumps(R, s0, s1, n, near, far, sRad = [5, 12], lRad = [3, 8]) {
     out.push({ s: s0 + R() * (s1 - s0), lat: side * d, rs: sRad[0] + R() * (sRad[1] - sRad[0]), rl: lRad[0] + R() * (lRad[1] - lRad[0]) });
   }
   return out;
+}
+
+// low-frequency 1D value noise along s (per side), 0..1: drives grove clumping and the ragged forest edge
+function sNoise(seed) {
+  const R = rng(seed), T = []; for (let i = 0; i < 256; i++) T.push(R());
+  return x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return T[i & 255] * (1 - u) + T[(i + 1) & 255] * u; };
+}
+
+// Continuous roadside forest: jittered-stratified rows from the ragged edge (6–10 m) back to `far`,
+// thinned by a clump noise so groves and glades alternate, but never leaving the edge bare.
+// Returns a placer (R, i) => points[i]; each point carries its own scale.
+function grove(seed, { s0, s1, near = [6, 10], far, step, keep = 0.8, scale = [1, 1.5], depthGrow = 0.35, glade = 0.45, avoid = null }) {
+  const R = rng(seed), pts = [];
+  for (const side of [-1, 1]) {
+    const edgeN = sNoise(seed + side), clumpN = sNoise(seed + 'c' + side), clumpN2 = sNoise(seed + 'd' + side);
+    for (let s = s0; s < s1; s += step * (0.8 + R() * 0.4)) {
+      const e = near[0] + (near[1] - near[0]) * edgeN(s / 22);
+      for (let d = e, row = 0; d < far; row++) {
+        const st = step * (1 + depthGrow * (d - e) / 20);
+        const ps = s + (R() - 0.5) * st * 0.9, lat = side * (d + (R() - 0.5) * st * 0.6);
+        const c = 0.6 * clumpN(ps / 18 + d / 30) + 0.4 * clumpN2(ps / 7 - d / 11);
+        const p = row === 0 ? keep + (1 - keep) * c : keep * (1 - glade + glade * 2 * c);
+        if (R() < p && !(avoid && avoid(ps, lat))) {
+          const sc = scale[0] + (scale[1] - scale[0]) * Math.min(1, Math.max(0, 0.5 * R() + 0.7 * c - 0.1));
+          pts.push({ s: ps, lateral: lat, scale: sc });
+        }
+        d += st;
+      }
+    }
+  }
+  for (let i = pts.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [pts[i], pts[j]] = [pts[j], pts[i]]; }
+  const place = (_, i) => pts[i] || null;
+  place.count = pts.length; place.pts = pts;
+  return place;
 }
 
 // instanced mesh of a custom geometry, each {s, lat, scale:[x,y,z], yaw, pitch?, roll?, sink}
@@ -619,7 +657,8 @@ function backdrop(ctx, R, k) {
     return { s, lat };
   };
   add('broadleaf', Math.round(60 * k), wall(28, 120), [0x4f7a2e, 0x5d8a34, 0x46702c, 0x6b8f3a, 0x7a9440], [1.2, 1.9], 0.2);
-  add('blossom', Math.round(14 * k), wall(26, 70), [0xf4a6bf, 0xf08fb0, 0xf7c0d2], [1.0, 1.4], 0.2);
+  add('broadleaf', Math.round(55 * k), wall(110, 230), [0x4a6e30, 0x557a33, 0x5d7a38, 0x66803e], [2.2, 3.4], 0.25);   // far tree line to the horizon
+  add('blossom', Math.round(6 * k), wall(26, 70), [0xf4a6bf, 0xf08fb0, 0xf7c0d2], [1.0, 1.4], 0.2);
   add('bush', Math.round(70 * k), r => {         // understorey skirt hiding trunks and the ribbon's cut end
     const s = -(3 + Math.pow(r(), 1.2) * 45), lat = -50 + r() * 110;
     if (Math.hypot(s, lat - CAR.lateral) < 14 || Math.abs(lat) < 7) return null;
@@ -640,23 +679,45 @@ export default {
     const n = v => Math.max(1, Math.round(v * k));
     const R = rng('forest-layout');
 
-    // CANOPY: clumps, the edge ~9–16 m, the body 16–80 m; right verge behind the parked car kept open
+    // TITLE STRETCH (s < 42): the original sparse clumped layout, so the parked-car frame stays open
     const edge = makeClumps(R, s0, s1, 22, 9, 16, [4, 10], [1.5, 3]);
     const body = makeClumps(R, s0, s1, 26, 16, 80, [8, 18], [5, 12]);
     const gap = { s: 45, lat: 32 };
     const trees = [];
-    group.add(plant(ctx, { kind: 'broadleaf', count: n(110), place: clumped(body.concat(edge), { minLat: 9, rightGap: gap, log: trees }), scale: [1.0, 1.7], seed: 'fo-bl' }));
-    group.add(plant(ctx, { kind: 'blossom', count: n(38), place: clumped(edge, { minLat: 8.5, rightGap: gap, log: trees }), scale: [0.9, 1.3], seed: 'fo-bs' }));
-    group.add(plant(ctx, { kind: 'marigold', count: n(26), place: clumped(edge.concat(body.slice(0, 6)), { minLat: 9, rightGap: gap, log: trees }), scale: [0.9, 1.3], seed: 'fo-mg' }));
-    group.add(plant(ctx, { kind: 'pine', count: n(30), place: clumped(makeClumps(R, s0, s1, 8, 55, 110, [10, 20], [6, 12]), {}), scale: [1.3, 2.0], seed: 'fo-pn' }));
-
-    // UNDERSTOREY + GROUND
-    group.add(plant(ctx, { kind: 'bush', count: n(120), place: clumped(edge.concat(body), { minLat: 7, keepCar: 12 }), scale: [0.7, 1.5], seed: 'fo-bu' }));
+    const early = fn => r => { const p = fn(r); return p && p.s < 42 ? p : null; };
+    group.add(plant(ctx, { kind: 'broadleaf', count: n(110), place: early(clumped(body.concat(edge), { minLat: 9, rightGap: gap, log: trees })), scale: [1.0, 1.7], seed: 'fo-bl' }));
+    group.add(plant(ctx, { kind: 'bush', count: n(120), place: early(clumped(edge.concat(body), { minLat: 7, keepCar: 12 })), scale: [0.7, 1.5], seed: 'fo-bu' }));
     const verge = makeClumps(R, s0, s1, 30, 7, 12, [3, 7], [0.8, 2]);
-    group.add(plant(ctx, { kind: 'fern', count: n(110), place: clumped(verge.concat(edge), { minLat: 6.9, keepCar: 9 }), seed: 'fo-fe' }));
-    group.add(plant(ctx, { kind: 'flowers', count: n(170), place: clumped(verge, { minLat: 6.8, keepCar: 8 }), seed: 'fo-fl',
-      colors: [0xff9ab8, 0xffd23a, 0xfff2f6, 0xff8a3a, 0xe890ff] }));
 
+    // ROADSIDE FOREST (s 42 → zone end): continuous canopy + understorey on both sides,
+    // edge ragged 6–10 m from the road centre, groves and glades from a clump noise.
+    const F0 = 42, F1 = s1, q = 1 / Math.sqrt(k);
+    const tall = (s, lat) => nearCar(s, lat, 14) || (s < 52 && lat < 0 && lat > -18);
+    const logT = pl => { for (const p of pl.pts) trees.push({ s: p.s, lat: p.lateral }); return pl; };
+    // main canopy: rain tree / honge umbrellas (broadleaf), 9–14 m, crowns touching
+    const canopy = logT(grove('fo-can', { s0: F0, s1: F1, near: [7.5, 11], far: 46, step: 6.2 * q, keep: 0.92, scale: [0.95, 1.65], avoid: tall }));
+    group.add(plant(ctx, { kind: 'broadleaf', count: canopy.count, place: canopy, seed: 'fo-can' }));
+    // deep forest behind: bigger, coarser, fills the view to the fog
+    const deep = grove('fo-deep', { s0: F0 - 20, s1: F1 + 10, near: [44, 48], far: 110, step: 11 * q, keep: 0.8, scale: [1.3, 2.0], depthGrow: 0.2, glade: 0.3 });
+    group.add(plant(ctx, { kind: 'broadleaf', count: deep.count, place: deep, seed: 'fo-deep' }));
+    // sparse flowering trees mixed into the edge: pink tabebuia, orange gulmohar/amaltas
+    const bloom = logT(grove('fo-bloom', { s0: F0, s1: F1, near: [8, 12], far: 26, step: 14 * q, keep: 0.35, scale: [0.8, 1.2], glade: 0.9, avoid: tall }));
+    group.add(plant(ctx, { kind: 'blossom', count: Math.ceil(bloom.count * 0.4), place: (r, i) => bloom.pts[i * 2] || null, seed: 'fo-bs',
+      colors: [0xe9a0b8, 0xd98aa4, 0xc9a08a, 0x9aa060] }));
+    group.add(plant(ctx, { kind: 'marigold', count: Math.ceil(bloom.count * 0.25), place: (r, i) => bloom.pts[i * 4 + 1] || null, seed: 'fo-mg',
+      colors: [0xb8602e, 0xa86a36, 0x8a8a40, 0x6f8a3a] }));
+    // mid-layer saplings 2–4 m between the trunks
+    const sap = grove('fo-sap', { s0: F0, s1: F1, near: [6.8, 9], far: 30, step: 5.2 * q, keep: 0.6, scale: [0.28, 0.5], glade: 0.6, avoid: (s, l) => nearCar(s, l, 12) });
+    group.add(plant(ctx, { kind: 'broadleaf', count: sap.count, place: sap, seed: 'fo-sap', colors: [0x5a7f30, 0x6b8a36, 0x4e7430, 0x7d8e3c] }));
+    // understorey: lantana / scrub 1–3 m, densest at the edge where light gets in
+    const scrub = grove('fo-scrub', { s0: F0 - 6, s1: F1, near: [6.9, 8.2], far: 28, step: 3.3 * q, keep: 0.9, scale: [0.8, 1.9], depthGrow: 0.5, glade: 0.5, avoid: (s, l) => nearCar(s, l, 12) });
+    group.add(plant(ctx, { kind: 'bush', count: scrub.count, place: scrub, seed: 'fo-scrub',
+      colors: [0x4f7030, 0x5e7d34, 0x46662c, 0x6d8038, 0x7b7c3a, 0x587a3a] }));
+
+    // GROUND LAYER at the verge
+    group.add(plant(ctx, { kind: 'fern', count: n(220), place: clumped(verge.concat(edge), { minLat: 6.9, keepCar: 9 }), seed: 'fo-fe' }));
+    group.add(plant(ctx, { kind: 'flowers', count: n(140), place: clumped(verge, { minLat: 6.8, keepCar: 8 }), seed: 'fo-fl',
+      colors: [0xe87a9a, 0xe8c040, 0xf4ecd8, 0xd8743a, 0xb890d8] }));
 
     // ROCKS: granite tors in clusters of 3–6 (one big outcrop left at s≈70), sunk ~35%
     const rocks = [];
@@ -721,6 +782,29 @@ export default {
       { make: shrine, s: 186, lateral: 9.6, yaw: -Math.PI / 2 + 0.45 }
     ]));
     group.add(plant(ctx, { kind: 'broadleaf', count: 1, place: () => ({ s: 181, lateral: 13.5, scale: 2.0 }), seed: 'fo-peepal' }));
+
+    // POWER LINE: concrete poles on the right verge every ~38 m, three sagging conductors
+    const poles = [], wire = [], tops = [];
+    for (let s = 50; s < s1; s += 34 + R() * 8) {
+      const lat = 7.4 + R() * 0.6, y = world.heightSL(s, lat);
+      const S = path.sample(s), rt = S.right.clone().setY(0).normalize();
+      poles.push({ s, lat, y: y - 0.3, scale: [1, 1, 1], yaw: Math.atan2(rt.x, rt.z) + (R() - 0.5) * 0.08, roll: (R() - 0.5) * 0.04 });
+      const p = new THREE.Vector3(); path.toWorld(s, lat, p); tops.push({ p, y: y + 8.1, rt });
+    }
+    for (let i = 0; i + 1 < tops.length; i++) for (const o of [-0.7, 0, 0.7]) {
+      const A = tops[i], B = tops[i + 1];
+      for (let j = 0; j < 12; j++) for (const u of [j / 12, (j + 1) / 12]) {
+        const sag = 0.9 * 4 * u * (1 - u), p = A.p.clone().lerp(B.p, u);
+        wire.push(p.x + A.rt.x * o, A.y + (B.y - A.y) * u - sag + (o ? 0 : 0.35), p.z + A.rt.z * o);
+      }
+    }
+    const poleGeo = mergeGeometries([new THREE.CylinderGeometry(0.09, 0.14, 8.6, 8).translate(0, 4.3, 0).toNonIndexed(),
+      new THREE.BoxGeometry(0.09, 0.1, 1.7).translate(0, 8.05, 0).toNonIndexed()]);
+    const pMat = new THREE.MeshStandardMaterial({ color: 0x9c978c, roughness: 0.85, map: G.map, normalMap: G.normalMap });
+    group.add(instanced(poleGeo, pMat, poles, 'forest:poles'));
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+    const wires = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2a2826, transparent: true, opacity: 0.7 }));
+    wires.name = 'forest:wires'; group.add(wires);
 
     // TITLE BACKDROP past s = 0
     for (const m of backdrop(ctx, rng('forest-backdrop'), k)) group.add(m);

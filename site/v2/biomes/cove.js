@@ -41,7 +41,8 @@ import { rng as makeRng, smoothstep, clamp } from '../core/noise.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const BAY = 4, STOREY = 3.2;
-const BLD_DZ = -18; // building offset along the plot, hotel-local (-z = ahead of the car)
+const BLD_DZ = 5;  // building offset along the plot, hotel-local (-z = ahead): porte-cochère just past the park spot
+const BLD_DX = -6; // and set back from the road so the gate, forecourt and drive read in front of it
 
 /* ---------- geometry helpers ---------- */
 
@@ -141,9 +142,26 @@ function textures() {
   });
   TEX = {
     grain: canvasTex(grain), bump: canvasTex(bump, false), lawn: canvasTex(lawn),
-    stone: canvasTex(stoneCanvas()), rock: canvasTex(rockCanvas())
+    stone: canvasTex(stoneCanvas()), rock: canvasTex(rockCanvas()), pavers: canvasTex(paverCanvas())
   };
   return TEX;
+}
+
+/** Interlocking concrete pavers, stretcher bond, grey with a red border band feel:
+ *  512 px ≙ 2.4 m (uv = world / 2.4), 64×32 px ≈ 0.3×0.15 m. */
+function paverCanvas() {
+  const N = 512, n = fbmTile(N, 'pavers', [[8, 0.4], [32, 0.3], [128, 0.3]]), R = makeRng('paver-tone');
+  const tone = Array.from({ length: 16 * 8 * 2 }, () => R());
+  return paint(N, (x, y, i) => {
+    const row = y >> 5, off = (row & 1) * 32, col = ((x + off) & 511) >> 6;
+    const lx = (x + off) & 63, ly = y & 31;
+    const edge = Math.min(lx, 63 - lx, ly, 31 - ly);
+    const t = tone[(row * 8 + col) % tone.length], red = (row % 6 === 0) ? 1 : 0;
+    let r = 150 + 30 * t, g = 144 + 26 * t, b = 134 + 22 * t;
+    if (red) { r = 150 + 25 * t; g = 92 + 15 * t; b = 72 + 12 * t; }
+    const v = (0.8 + 0.35 * n[i]) * (edge < 1 ? 0.45 : edge < 3 ? 0.82 + 0.06 * edge : 1);
+    return [r * v, g * v, b * v];
+  });
 }
 
 /** Coursed laterite/granite blocks with recessed mortar: 256 px ≙ 4 m. */
@@ -362,7 +380,7 @@ export function buildHotel(ctx, venue) {
   const T = path.roadY(venue.s) - 0.3;                 // plot level (world y)
   const bld = new THREE.Group();
   bld.name = 'hotel-building';
-  bld.position.z = BLD_DZ;
+  bld.position.set(BLD_DX, 0, BLD_DZ);
   hotel.add(bld);
 
   const { MX, MW, ML, NS, TW, TL, TS } = DIM;
@@ -560,12 +578,18 @@ function buildSite(ctx, venue, H) {
   const seaWall = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, map: tx.stone, bumpMap: tx.stone, bumpScale: 2, roughness: 0.92, side: THREE.DoubleSide }));
   seaWall.name = 'hotel-sea-wall';
 
-  // compound wall (road side, with the gate) + sea-side parapet with a steel rail
+  // compound wall, set back behind a verge strip, splaying in to a gated entrance
+  // (tall piers, an overhead name board, open steel leaves, guard cabin) +
+  // sea-side parapet with a steel rail
   const parts = [];
-  const gate = [sMid - 4.6, sMid + 4.6];
-  const roadRun = (a, b) => { const pts = []; const n = Math.max(1, Math.round((b - a) / 3)); for (let k = 0; k <= n; k++) pts.push(W(a + (b - a) * k / n, latR - 0.3)); return pts; };
-  wallAlong(parts, roadRun(sA + 0.3, gate[0]), 1.35, 0.23, CREAM, TERRA, 1);
-  wallAlong(parts, roadRun(gate[1], sB - 0.3), 1.35, 0.23, CREAM, TERRA, 1);
+  const gw = 4.6, g0 = sMid - gw, g1 = sMid + gw, latW = latR - 2.4, latP = latW - 3.2;
+  const roadRun = (a, b, l = latW) => { const pts = []; const n = Math.max(1, Math.round((b - a) / 3)); for (let k = 0; k <= n; k++) pts.push(W(a + (b - a) * k / n, l)); return pts; };
+  // geometry built in a road frame at (s, lat): local +x = toward the road's right, -z = ahead
+  const rf = (g, s, lat, y, hex) => { const p = W(s, lat); return colored(g.rotateY(path.sample(s).heading).translate(p.x, p.y + y, p.z), hex); };
+  wallAlong(parts, roadRun(sA + 0.3, g0 - 4.2), 1.5, 0.23, CREAM, TERRA, 1);
+  wallAlong(parts, roadRun(g1 + 4.2, sB - 0.3), 1.5, 0.23, CREAM, TERRA, 1);
+  wallAlong(parts, [W(g0 - 4.2, latW), W(g0 - 0.7, latP)], 1.5, 0.23, CREAM, TERRA);
+  wallAlong(parts, [W(g1 + 4.2, latW), W(g1 + 0.7, latP)], 1.5, 0.23, CREAM, TERRA);
   const sea = inset.map(([s, lat]) => W(s, lat));
   wallAlong(parts, sea, 0.75, 0.25, CREAM, TERRA, 4);
   for (let i = 0; i < sea.length; i += 2) parts.push(box(0.05, 0.4, 0.05, sea[i].x, sea[i].y + 1.0, sea[i].z, STEEL));
@@ -573,28 +597,63 @@ function buildSite(ctx, venue, H) {
     const a = sea[i], b = sea[i + 2], len = Math.hypot(b.x - a.x, b.z - a.z);
     parts.push(colored(new THREE.BoxGeometry(0.06, 0.06, len).rotateY(Math.atan2(b.x - a.x, b.z - a.z)).translate((a.x + b.x) / 2, (a.y + b.y) / 2 + 1.2, (a.z + b.z) / 2), STEEL));
   }
-  for (const s of gate) {
-    const p = W(s, latR - 0.3);
-    parts.push(box(0.8, 2.3, 0.8, p.x, p.y + 0.95, p.z, CREAM), box(1.0, 0.12, 1.0, p.x, p.y + 2.16, p.z, TERRA));
-    parts.push(cyl(0.18, 0.12, 0.45, 10, p.x, p.y + 2.45, p.z, 0xfff2d8));
+  const PH = 4.6;                                                    // pier height
+  for (const s of [g0 - 0.7, g1 + 0.7]) {
+    parts.push(rf(new THREE.BoxGeometry(1.3, 0.7, 1.3), s, latP, 0.15, STONE));
+    parts.push(rf(new THREE.BoxGeometry(1.1, PH, 1.1), s, latP, PH / 2, CREAM));
+    for (const y of [1.6, 3.0]) parts.push(rf(new THREE.BoxGeometry(1.16, 0.06, 1.16), s, latP, y, 0xd9ccb4)); // rustication grooves
+    parts.push(rf(new THREE.BoxGeometry(1.35, 0.16, 1.35), s, latP, PH + 0.08, TERRA));
   }
-  // driveway: pavers from the asphalt edge to under the porte-cochère, with kerbs
+  // overhead name board spanning the piers (the lit sign plane is added below)
+  const span = g1 - g0 + 2.5, bs = (g0 + g1) / 2;
+  parts.push(rf(new THREE.BoxGeometry(0.55, 1.25, span), bs, latP, PH + 0.78, 0x2b2a28));
+  parts.push(rf(new THREE.BoxGeometry(0.7, 0.14, span + 0.2), bs, latP, PH + 1.47, TERRA));
+  // open gate leaves swung inward against the splay: steel frame + pickets
+  for (const [s, sg] of [[g0 - 0.2, 1], [g1 + 0.2, -1]]) {
+    const L = 4.2;
+    for (const y of [0.12, 0.9, 1.75]) parts.push(rf(new THREE.BoxGeometry(L, 0.07, 0.06), s, latP - L / 2 - 0.2, y, STEEL));
+    for (let k = 0; k <= 26; k++) parts.push(rf(new THREE.BoxGeometry(0.035, 1.75, 0.035), s, latP - 0.3 - k * (L - 0.2) / 26, 0.95, STEEL));
+    parts.push(rf(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), s, latP - L + 0.1, 0.04, 0x3a3a3a));
+  }
+  // guard cabin just inside, right of the drive
+  { const s = g1 + 3.4, l = latP - 3.2;
+    parts.push(rf(new THREE.BoxGeometry(2.4, 2.5, 2.2), s, l, 1.25, CREAM));
+    parts.push(rf(new THREE.BoxGeometry(2.9, 0.18, 2.7), s, l, 2.6, TERRA));
+    parts.push(rf(new THREE.BoxGeometry(0.04, 0.9, 1.3), s, l + 1.21, 1.5, 0x39434a));  // window toward the gate
+    parts.push(rf(new THREE.BoxGeometry(2.5, 0.25, 2.3), s, l, 0.12, STONE)); }
+  // monument sign on the verge, angled to meet traffic
+  const mS = g0 - 9, mL = latR - 1.2;
+  parts.push(rf(new THREE.BoxGeometry(0.6, 0.35, 3.8).rotateY(0.35), mS, mL, 0.17, STONE));
+  parts.push(rf(new THREE.BoxGeometry(0.4, 1.05, 3.5).rotateY(0.35), mS, mL, 0.85, 0x2b2a28));
+  // forecourt + drive: pavers from the asphalt edge, flaring at the road, to the porte-cochère
   const latE = nPC.lateral - 1.5, latRd = -path.halfWidth + 0.05;
-  const NL = 24, dpos = [];
-  for (let k = 0; k < NL; k++) for (const [s0d, s1d] of [[sMid - 3.5, sMid + 3.5]]) {
+  const NL = 30, dpos = [], duv = [];
+  const halfAt = l => { const u = clamp((latRd - l) / (latRd - latP), 0, 1); return gw + 0.4 + 6 * (1 - u) * (1 - u); };
+  for (let k = 0; k < NL; k++) {
     const l0 = latRd + (latE - latRd) * (k / NL), l1 = latRd + (latE - latRd) * ((k + 1) / NL);
-    const q = [W(s0d, l0, 0.05), W(s1d, l0, 0.05), W(s1d, l1, 0.05), W(s0d, l1, 0.05)];
-    for (const i of [0, 1, 2, 0, 2, 3]) dpos.push(q[i].x, q[i].y, q[i].z);
+    const h0 = halfAt(l0), h1 = halfAt(l1);
+    const q = [W(sMid - h0, l0, 0.05), W(sMid + h0, l0, 0.05), W(sMid + h1, l1, 0.05), W(sMid - h1, l1, 0.05)];
+    for (const i of [0, 1, 2, 0, 2, 3]) { dpos.push(q[i].x, q[i].y, q[i].z); duv.push(q[i].x / 2.4, q[i].z / 2.4); }
   }
   const dg = new THREE.BufferGeometry();
   dg.setAttribute('position', new THREE.Float32BufferAttribute(dpos, 3));
+  dg.setAttribute('uv', new THREE.Float32BufferAttribute(duv, 2));
   dg.computeVertexNormals();
   if (dg.attributes.normal.getY(0) < 0) { const a = dg.attributes.position.array; for (let i = 0; i < a.length; i += 9) for (let j = 0; j < 3; j++) [a[i + 3 + j], a[i + 6 + j]] = [a[i + 6 + j], a[i + 3 + j]]; dg.computeVertexNormals(); }
-  parts.push(colored(dg, 0x8e8579));
-  for (const s of [sMid - 3.6, sMid + 3.6]) {
-    const pts = []; for (let k = 0; k <= 8; k++) pts.push(W(s, latR - 0.6 + (latE + 1.5 - latR) * (k / 8)));
+  const pavers = new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ map: tx.pavers, bumpMap: tx.pavers, bumpScale: 1.5, roughness: 0.88 }));
+  pavers.name = 'hotel-forecourt';
+  pavers.receiveShadow = true;
+  for (const sg of [-1, 1]) {                                        // kerbs along the drive inside the gate
+    const pts = []; for (let k = 0; k <= 8; k++) { const l = latP - 0.8 + (latE + 1.5 - latP) * (k / 8); pts.push(W(sMid + sg * (halfAt(l) + 0.1), l)); }
     wallAlong(parts, pts, 0.12, 0.2, 0xd8d2c6, 0xd8d2c6);
   }
+  // lit name boards: overhead on the gate (road face) + the monument sign
+  const signGeo = (w, h, s, lat, y, yaw = 0) => { const p = W(s, lat); return new THREE.PlaneGeometry(w, h).rotateY(Math.PI / 2 + yaw).translate(0, 0, 0).rotateY(path.sample(s).heading).translate(p.x, p.y + y, p.z).toNonIndexed(); };
+  const gateSign = new THREE.Mesh(mergeGeo([
+    signGeo(span - 0.6, 1.0, bs, latP + 0.29, PH + 0.78),
+    signGeo(3.3, 0.42, mS, mL, 0.95, 0.35).translate(...(() => { const v = new THREE.Vector3(0.21, 0, 0).applyAxisAngle(UP, path.sample(mS).heading + 0.35); return [v.x, 0, v.z]; })())
+  ]), H.signMat);
+  gateSign.name = 'hotel-gate-sign';
   const site = new THREE.Mesh(boxUV(mergeGeo(parts), 3), H.shellMat);
   site.name = 'hotel-site';
 
@@ -608,14 +667,20 @@ function buildSite(ctx, venue, H) {
     return true;
   };
   const R = makeRng('plot-plants'), palms = [], bushes = [];
-  const add = (arr, s, lat, sc, tint) => { const p = W(s, lat, -0.1); if (Math.abs(s - sMid) > 5.5 && clear(p)) arr.push({ pos: p, scale: sc, tint }); };
-  for (let s = sA + 5; s < sB - 4; s += 7 + R() * 2) add(palms, s, latR - 2.6, 1.05 + R() * 0.3);
+  const add = (arr, s, lat, sc, tint) => { const p = W(s, lat, -0.1); if (Math.abs(s - sMid) > 16 - Math.min(8, Math.max(0, -lat - 14)) && clear(p)) arr.push({ pos: p, scale: sc, tint }); };
+  for (let s = sA + 5; s < sB - 4; s += 7 + R() * 2) add(palms, s, latR - 4.4, 1.05 + R() * 0.3);
   for (let s = sA + 8; s < sB - 8; s += 8 + R() * 3) add(palms, s, seaLat(s) + 3.5, 1.0 + R() * 0.45);
   for (let i = 0; i < 6; i++) add(palms, sA + 12 + R() * (sB - sA - 24), latR - 8 - R() * 10, 0.95 + R() * 0.3);
   for (let s = sA + 1.5; s < sB - 1.5; s += 1.7) add(bushes, s, latR - 1.1, 0.8 + R() * 0.3, R() < 0.22 ? 0xd8408e : 0x9fb86a);
   for (let s = sA + 3; s < sB - 3; s += 2.2) add(bushes, s, seaLat(s) + 1.2, 0.7 + R() * 0.35, R() < 0.3 ? 0xe0569a : 0xa6bf72);
-  for (const [s, lat] of [[sMid - 6, latR - 1.5], [sMid + 6, latR - 1.5], [sMid - 6.5, latR - 3], [sMid + 6.5, latR - 3]]) add(bushes, s, lat, 1.2, 0xd23c8c);
-  return { meshes: [lawn, seaWall, site], palms, bushes, sA, sB, latS };
+  for (const [s, lat] of [[sMid - 16.5, latR - 1.2], [sMid + 16.5, latR - 1.2], [sMid - 7.5, latR - 7.2], [sMid + 8, latR - 8.4]]) {
+    const p = W(s, lat, -0.1); if (clear(p)) bushes.push({ pos: p, scale: 1.25, tint: 0xd23c8c });   // bougainvillea at the gate
+  }
+  for (const sg of [-1, 1]) for (let k = 0; k < 5; k++) {                                        // palm avenue along the drive
+    const l = latR - 10 - k * 6.5, p = W(sMid + sg * 7.2, l, -0.1);
+    if (clear(p)) palms.push({ pos: p, scale: 1.15 + 0.08 * ((k * 7 + sg) % 3) });
+  }
+  return { meshes: [lawn, seaWall, site, pavers, gateSign], palms, bushes, sA, sB, latS };
 }
 
 /* ---------- flora geometry at explicit world points ---------- */

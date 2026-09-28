@@ -52,27 +52,29 @@ const ctx = {
 window.__v2 = ctx; // debugging handle
 
 const zoneGroups = [];
+const buildTimes = {};   // ms per module, for profiling boot (window.__v2.buildTimes)
+ctx.buildTimes = buildTimes;
 
 async function boot() {
+  let tb = performance.now();
+  // the car's .glb downloads and Draco-decodes (in a worker) while the
+  // terrain and first leg are generated on the main thread
+  const carReady = car.init(ctx);
   atmosphere.init(ctx); progress(0.08);
+  buildTimes.atmosphere = Math.round(performance.now() - tb); tb = performance.now();
   terrain.init(ctx); progress(0.2);
+  buildTimes.terrain = Math.round(performance.now() - tb);
 
-  const n = BIOMES.length;
-  for (let i = 0; i < n; i++) {
-    const b = BIOMES[i];
-    const z = zones.byId[b.id];
-    try {
-      const built = await b.build(ctx);
-      if (built && built.group) {
-        scene.add(built.group);
-        zoneGroups.push({ zone: z, ...built });
-      }
-    } catch (e) { console.error('[v2] biome ' + b.id + ' failed', e); }
-    progress(0.2 + 0.4 * (i + 1) / n);
-    await new Promise(r => setTimeout(r)); // let the loader paint
-  }
+  // Only the first leg is built before the page shows; the rest follow in
+  // route order after ready (buildRest), while the title is on screen. Every
+  // leg is several seconds of generation, and building all seven up front
+  // held the loader for well over a minute.
+  await buildBiome(BIOMES[0]);
+  progress(0.6);
 
-  await car.init(ctx); progress(0.8);
+  tb = performance.now();
+  await carReady; progress(0.8);
+  buildTimes.car = Math.round(performance.now() - tb);
   cam.init(ctx);
   detour.init(ctx);
   petals.init(ctx);
@@ -81,10 +83,45 @@ async function boot() {
   progress(0.9);
 
   try { await renderer.compileAsync(scene, camera); } catch (e) { /* older drivers: compile lazily */ }
+  tb = performance.now();
   await warmUp();
+  buildTimes.warmUp = Math.round(performance.now() - tb);
   progress(1);
   dispatchEvent(new CustomEvent('v2:ready'));
   requestAnimationFrame(frame);
+  buildRest();
+}
+
+async function buildBiome(b) {
+  const z = zones.byId[b.id];
+  const tb = performance.now();
+  try {
+    const built = await b.build(ctx);
+    if (built && built.group) {
+      built.group.visible = false;
+      scene.add(built.group);
+      zoneGroups.push({ zone: z, ...built });
+      return built.group;
+    }
+  } catch (e) { console.error('[v2] biome ' + b.id + ' failed', e); }
+  finally { buildTimes[b.id] = Math.round(performance.now() - tb); }
+  return null;
+}
+
+/* After ready: build the remaining legs one at a time, yielding between them
+ * so the title keeps animating, and compile each one's shaders off the main
+ * render so its first appearance doesn't hitch. */
+async function buildRest() {
+  for (const b of BIOMES.slice(1)) {
+    await new Promise(r => setTimeout(r, 120));
+    const g = await buildBiome(b);
+    if (g) {
+      g.visible = true;
+      try { await renderer.compileAsync(g, camera, scene); } catch (e) { /* compile lazily */ }
+      g.visible = false;
+    }
+  }
+  dispatchEvent(new CustomEvent('v2:complete'));
 }
 
 /* compileAsync only covers what the start camera can see. Everything else —
@@ -95,9 +132,10 @@ async function boot() {
 async function warmUp() {
   const S = path.sample(0), look = new THREE.Vector3();
   const home = camera.position.clone(), homeQ = camera.quaternion.clone();
-  const n = zones.ZONES.length;
+  const built = zones.ZONES.filter(z => zoneGroups.some(g => g.zone === z));
+  const n = built.length;
   for (let i = 0; i < n; i++) {
-    const z = zones.ZONES[i];
+    const z = built[i];
     for (const u of [0.25, 0.75]) {
       const s = z.s0 + (z.s1 - z.s0) * u;
       path.sample(s, S);

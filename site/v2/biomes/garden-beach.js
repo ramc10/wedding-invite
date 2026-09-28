@@ -164,6 +164,118 @@ export function mergeSimple(list) {
   return out;
 }
 
+
+/* Weathered sea-wall concrete, worked out in world space so the merged wall
+ * needs no UVs: mottled render, vertical rain/salt streaks running down from
+ * the coping, a salt-bloomed damp band at the foot, and a dark expansion joint
+ * roughly every 3 m. Multiplies the vertex colour (whitewash, grime, railing blue). */
+function weatheredConcrete() {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0.02 });
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWallW;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWallW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vWallW;
+float wHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float wNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+{
+  float along = vWallW.x + vWallW.z;
+  float mott = 0.82 + 0.18 * wNoise(vec2(along, vWallW.y) * 3.1) + 0.08 * wNoise(vec2(along, vWallW.y) * 17.0);
+  float streak = smoothstep(0.55, 0.95, wNoise(vec2(along * 6.0, vWallW.y * 0.35))) * 0.22;
+  float joint = 1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.02, abs(fract(along / 3.1) - 0.5) - 0.48));
+  float foot = smoothstep(0.9, 0.0, vWallW.y - 0.6);
+  diffuseColor.rgb *= mott * (1.0 - streak) * joint;
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.72, 0.74, 0.7) + vec3(0.06), foot * 0.6);
+}`);
+  };
+  return m;
+}
+
+
+/* Beach Road frontage: low-rise apartment blocks (3–6 storeys of 3.2 m) set
+ * back behind the palms on the land side, pastel render with a window/balcony
+ * facade texture in real metres, flat roofs with a water tank each — the city
+ * edge that stands along Vizag's Beach Road, instead of a bare hill. */
+function facadeTex() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 256);          // tinted by vertex colour
+  for (let fy = 0; fy < 2; fy++) for (let bx = 0; bx < 4; bx++) {
+    const x = bx * 64, y = fy * 128;
+    g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(x, y + 118, 64, 10);           // slab edge / chajja shadow
+    g.fillStyle = '#2b3440'; g.fillRect(x + 14, y + 34, 36, 58);                // window glass
+    g.fillStyle = 'rgba(160,190,210,0.35)'; g.fillRect(x + 14, y + 34, 36, 20);  // sky reflection
+    g.strokeStyle = '#e8e4dc'; g.lineWidth = 3; g.strokeRect(x + 14, y + 34, 36, 58);
+    g.fillStyle = '#d8d2c6'; g.fillRect(x + 8, y + 26, 48, 6);                  // sunshade
+    if ((bx + fy) % 2 === 0) { g.fillStyle = 'rgba(40,40,40,0.55)'; for (let k = 0; k < 7; k++) g.fillRect(x + 6 + k * 8, y + 96, 2, 22); g.fillRect(x + 6, y + 96, 50, 3); } // balcony grille
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+
+function beachBlocks(ctx, { s0, s1, seed = 'gb-blocks' }) {
+  const { path, world, rng } = ctx;
+  const R = rng(seed);
+  const pos = [], nor = [], uv = [], col = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const PAL = [0xf1ebdd, 0xe9dfc6, 0xf3e6b8, 0xdfe6e2, 0xf0d9c8, 0xe6e6e6].map(h => new THREE.Color(h));
+  const box = (w, h, d, s, lat, y, yaw, color, facade) => {
+    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
+    const U = g.attributes.uv, P = g.attributes.position;
+    for (let i = 0; i < U.count; i++) {
+      const f = Math.floor(i / 6);                       // face: 0,1 ±x · 2,3 ±y · 4,5 ±z
+      const du = f < 2 ? d : w, dv = f === 2 || f === 3 ? d : h;
+      // facade faces tile at 6 m × 6.4 m (4 bays × 2 storeys); roofs/untextured use a blank corner
+      if (facade && (f < 2 || f > 3)) U.setXY(i, U.getX(i) * du / 6, U.getY(i) * dv / 6.4);
+      else U.setXY(i, 0.02, 0.02);
+    }
+    path.toWorld(s, lat, p); p.y = y;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), path.sample(s).heading + yaw);
+    g.applyMatrix4(m.compose(p, q, one));
+    pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); uv.push(...g.attributes.uv.array);
+    for (let i = 0; i < P.count; i++) col.push(color.r, color.g, color.b);
+  };
+  for (let s = s0 + R() * 20; s < s1; s += 24 + R() * 22) {
+    const lat = 70 + R() * 45, w = 14 + R() * 12, d = 12 + R() * 8;
+    const floors = 3 + Math.floor(R() * 4), h = floors * 3.2;
+    const gy = Math.min(world.heightSL(s - d / 2, lat), world.heightSL(s + d / 2, lat), world.heightSL(s, lat - w / 2)) - 0.4;
+    const c = PAL[Math.floor(R() * PAL.length)].clone().multiplyScalar(0.92 + 0.12 * R());
+    box(w, h + 0.4, d, s, lat, gy + (h + 0.4) / 2, (R() - 0.5) * 0.1, c, true);
+    box(w + 0.3, 0.9, d + 0.3, s, lat, gy + h + 0.85, 0, c.clone().multiplyScalar(0.95), false);      // parapet
+    box(2.2, 1.6, 2.2, s + (R() - 0.5) * 4, lat + (R() - 0.5) * 4, gy + h + 1.9, 0, new THREE.Color(0x2c2f33), false); // Sintex tank
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: facadeTex(), vertexColors: true, roughness: 0.88 }));
+  mesh.castShadow = true; mesh.receiveShadow = true; mesh.name = 'beach-blocks';
+  return mesh;
+}
+
+/* Promenade street lamps: galvanised pole, single outreach arm over the road. */
+function promenadeLamps(ctx, { s0, s1, lat, every = 32 }) {
+  const { path } = ctx;
+  const parts = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const put = (g, s, l, y, yaw) => { path.toWorld(s, l, p); p.y = y; q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), path.sample(s).heading + yaw); parts.push(paint(g.applyMatrix4(m.compose(p, q, one)), 0x8d9296, 0.06)); };
+  for (let s = s0; s < s1; s += every) {
+    const y0 = path.roadY(s);
+    put(new THREE.CylinderGeometry(0.07, 0.11, 8.5, 8), s, lat, y0 + 4.25, 0);
+    put(new THREE.CylinderGeometry(0.045, 0.045, 2.2, 6).rotateZ(Math.PI / 2 - 0.12), s, lat + 1.05, y0 + 8.45, 0);
+    put(new THREE.BoxGeometry(0.62, 0.16, 0.28), s, lat + 2.15, y0 + 8.5, 0);
+  }
+  const mesh = new THREE.Mesh(mergeSimple(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.6 }));
+  mesh.castShadow = true; mesh.name = 'promenade-lamps';
+  return mesh;
+}
+
 /** Find the lateral (left side) where ground meets water level + off. */
 export function shoreLat(ctx, s, off = 0.4) {
   const w = ctx.world.waterAt(s) ?? 0;
@@ -342,7 +454,7 @@ export function seaWall(ctx, { s0, s1, lat, seed = 5 }) {
     s += SEG;
   }
   const geo = mergeSimple(parts);
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 }));
+  const mesh = new THREE.Mesh(geo, weatheredConcrete());
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.name = 'sea-wall';
   return mesh;
@@ -443,7 +555,11 @@ export default {
     // garden spilling on to the right
     group.add(plant(ctx, { kind: 'flowers', count: Math.round(260 * K), seed: 'gb-fl', place: band(s0 - 30, s0 + (s1 - s0) * 0.55, 7, 30, 'right') }));
     group.add(plant(ctx, { kind: 'bush', count: Math.round(60 * K), seed: 'gb-bush', place: band(s0, s1, 8, 45, 'right') }));
-    group.add(plant(ctx, { kind: 'blossom', count: Math.round(14 * K), seed: 'gb-blos', place: band(s0 - 30, s0 + 150, 16, 50, 'right') }));
+    // Indian almond (Terminalia) and casuarina, not sakura: what actually lines Vizag's Beach Road
+    group.add(plant(ctx, { kind: 'broadleaf', count: Math.round(22 * K), seed: 'gb-almond', scale: [0.8, 1.15],
+      colors: [0x4e6f2c, 0x5a7a30, 0x7a6a2c, 0x486a2a], place: band(s0 - 30, s1, 14, 55, 'right') }));
+    group.add(plant(ctx, { kind: 'pine', count: Math.round(26 * K), seed: 'gb-casuarina', scale: [0.55, 0.8],
+      colors: [0x5a6a45, 0x66744c, 0x4f5f40], place: band(s0, s1, 30, 90, 'right') }));
 
     // spinifex on the dunes (clumped), sparse near the wall
     group.add(duneGrass(ctx, {
@@ -457,6 +573,10 @@ export default {
       }
     }));
     group.add(duneGrass(ctx, { count: Math.round(400 * K), seed: 12, place: band(s0, s1, 6, 40, 'right') }));
+
+    // the city side of Beach Road, and its street lamps
+    group.add(beachBlocks(ctx, { s0: s0 + 20, s1: s1 - 10 }));
+    group.add(promenadeLamps(ctx, { s0: s0 + 16, s1, lat: WALL + 0.45 }));
 
     // rocks at the tide line, clustered in a couple of reefs
     group.add(coastRocks(ctx, { s0: s0 + 40, s1: s1 - 20, count: Math.round(36 * K), seed: 'gb-rocks' }));

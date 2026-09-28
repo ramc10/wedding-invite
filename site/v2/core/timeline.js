@@ -25,12 +25,12 @@ const karimS = Z.dam.s1 - 25;
 export const STOPS = [
   { id: 'vizag', s: vizagS, slow: [vizagS - 90, vizagS + 50], callout: [vizagS - 60, vizagS + 30],
     sheet: 'sheetBeach', label: 'Palm Beach Hotel',
-    venue: { s: vizagS + 25, lateral: -46 }, pullover: { side: 'left', lateral: -5.4 },
+    venue: { s: vizagS + 25, lateral: -46 }, pullover: { side: 'left', lateral: -4.9 },
     park: { s: vizagS + 12 } },
   { id: 'karimnagar', s: karimS, slow: [karimS - 90, karimS + 50], callout: [karimS - 60, karimS + 30],
     sheet: 'sheetDam', label: 'AMR Unnati Convention',
-    venue: { s: karimS + 78, lateral: 36 }, pullover: { side: 'right', lateral: 5.3 },
-    park: { s: karimS + 50 } }
+    venue: { s: karimS + 78, lateral: 36 }, pullover: { side: 'right', lateral: 4.9 },
+    park: { s: karimS + 40 } }
 ];
 
 export const OVERLAYS = [

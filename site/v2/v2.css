@@ -44,7 +44,7 @@ html.scroll-locked body { position: fixed; left: 0; right: 0; overflow: hidden; 
 
 #scene {
   position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0;
-  touch-action: pan-y; opacity: 0; transition: opacity 2.4s cubic-bezier(.3, 0, .2, 1) .15s;
+  touch-action: pan-y; opacity: 0; transition: opacity .3s linear;   /* the loader's poster does the crossfade */
 }
 html.ready #scene { opacity: 1; }
 #track { position: relative; width: 1px; pointer-events: none; }
@@ -364,9 +364,17 @@ html:not(.ready) .credit { background: none; }
 .loader {
   position: fixed; inset: 0; z-index: 10;
   display: grid; place-items: center; padding: var(--gutter);
-  background: radial-gradient(120% 90% at 50% 45%, #141a10 0%, #070806 70%);
-  transition: opacity 1.2s ease, visibility 0s linear 1.2s;
+  /* a still of the live title frame (captured from the scene itself), so the
+     invite looks finished from the first paint while the 3D builds behind it */
+  background: #0b0e09 url(assets/poster-land.webp) center / cover no-repeat;
+  transition: opacity 1.4s ease, visibility 0s linear 1.4s;
 }
+@media (max-aspect-ratio: 1/1) { .loader { background-image: url(assets/poster-port.webp); } }
+.loader::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(90% 70% at 50% 42%, rgba(8, 10, 7, .55) 0%, rgba(8, 10, 7, .25) 60%, rgba(8, 10, 7, .1) 100%);
+}
+.loader-inner { position: relative; }
 html.ready .loader { opacity: 0; visibility: hidden; pointer-events: none; }
 .loader-inner {
   display: flex; flex-direction: column; align-items: center; text-align: center;

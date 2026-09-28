@@ -689,7 +689,7 @@ function buildFurniture(ctx, M, K) {
     out.steel.push(tint(place(ctx, head, s, 0, 0), 0x6e726e));
     out.glow.push(tint(place(ctx, box(0.7, 0.05, 0.32, 1).translate(l - side * 2.5, Y + h + 0.17, 0), s, 0, 0), 0xffa347));
     spots.push({ s, lat: l - side * 2.5, y: Y + h + 0.1 });
-    const pool = new THREE.PlaneGeometry(15, 15).rotateX(-Math.PI / 2).toNonIndexed();
+    const pool = new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2).toNonIndexed();
     out.pools.push(place(ctx, pool, s, l - side * 3.2, path.roadY(s) + 0.06));
   }
 
@@ -991,10 +991,10 @@ export default {
     // sodium light pools on the road
     const pc = canvasTex(128, 128, (g, w) => {
       const rg = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
-      rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.45, 'rgba(255,255,255,0.45)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+      rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.3, 'rgba(255,255,255,0.5)'); rg.addColorStop(0.65, 'rgba(255,255,255,0.12)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = rg; g.fillRect(0, 0, w, w);
     }, false);
-    const poolMat = new THREE.MeshBasicMaterial({ map: pc, color: 0xff9a40, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+    const poolMat = new THREE.MeshBasicMaterial({ map: pc, color: 0xffb870, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
       depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     const pools = meshOf(F.out.pools, poolMat, 'dam:pools', false); pools.renderOrder = 2; group.add(pools);
 
@@ -1006,7 +1006,8 @@ export default {
         const d = U.uDusk.value;
         const k = 0.55 + 2.2 * smoothstep(0.05, 0.8, d);
         M.glow.color.copy(base).multiplyScalar(k);
-        poolMat.opacity = 0.1 + 0.55 * smoothstep(0.1, 0.8, d);
+        // a real sodium lamp pool is a soft warm patch a few metres across, not a floodlit road
+        poolMat.opacity = 0.03 + 0.19 * smoothstep(0.3, 0.9, d);
         M.glass.emissiveIntensity = 0.35 + 1.4 * d;
         M.sign.emissiveIntensity = 0.45 + 1.3 * d;
         st.offset.y -= dt * 1.1;
