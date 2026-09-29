@@ -22,6 +22,7 @@ import { car } from './car/car.js';
 import { cam } from './car/camera.js';
 import { detour } from './car/detour.js';
 import { fx as petals } from './fx/petals.js';
+import { ambience } from './fx/ambience.js';
 import { ui } from './ui/index.js';
 import { quality } from './core/quality.js';
 import { GLTFLoader } from './vendor/addons/loaders/GLTFLoader.js';
@@ -229,6 +230,7 @@ function step(dt) {
     if (vis && g.update) g.update(dt, s, camera);
   }
   petals.update(dt, s);
+  ambience.update(dt, s);
   ui.update(dt, s);
 
   post.render(renderer, scene, camera, dt);

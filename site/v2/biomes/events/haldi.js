@@ -5,19 +5,19 @@
  * jute rugs and dhurries, a marigold-draped bamboo mandap with sagging yellow and
  * mustard drapes (plus a sheer layer), marigold string curtains and a mango-leaf
  * toran, a wooden chowki for the couple with a brass urli and turmeric bowls, a U of
- * printed floor gaddis and bolsters, fringed yellow chhatris, potted banana plants,
+ * printed floor gaddis and bolsters in rows, fringed yellow chhatris, potted banana plants,
  * a flower rangoli, and a marigold arch at the deck's near end facing the court.
- * Court (core/timeline.js COURTS.haldi): a road-level forecourt of terracotta pavers
- * with a marigold-yellow sandstone border, laterite plinth down to the sand, potted
- * bananas and brass urlis on its edges, clear of the "Take me here" route.
- *
+ * Laid on one axis (core/timeline.js SITES.haldi): arch at d0 -> jute aisle -> rangoli at
+ * the aisle head -> mandap centred at stage.s; gaddi rows and chhatris mirrored about it.
+ * The compound (compound.js) builds the forecourt; this adds the island centrepiece
+ * (brass urli of marigolds on a laterite plinth, ringed by marigold pots).
  * Scene-local frame: group at the deck centre, rotation.y = heading; local -z is
  * road-forward, +x is toward the road. Deck top is local y = 0.
  * Draw calls: wood, rugs, gaddis, fabric, sheer, brass, leaves, strings, marigolds, pavers, stone = 11.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/addons/utils/BufferGeometryUtils.js';
-import { EVENTS, COURTS, STOP } from '../../core/timeline.js';
+import { EVENTS, SITES } from '../../core/timeline.js';
 import { buildCompound } from './compound.js';
 import { rng as makeRng } from '../../core/noise.js';
 
@@ -273,23 +273,23 @@ export default {
     const { path, world, quality } = ctx;
     const K = TIER[quality.tier] ?? 1;
     const R = makeRng('haldi-morning');
-    const E0 = EVENTS.haldi, s0 = E0.s, latMid = (E0.lat[0] + E0.lat[1]) / 2;
-    const HX = (E0.lat[0] - E0.lat[1]) / 2, HZ = E0.len / 2;           // 6.8 x 13 half extents
+    const E0 = EVENTS.haldi, SI = SITES.haldi, s0 = E0.s, latMid = SI.ax;       // group on the axis
+    const HX = (SI.lat[0] - SI.lat[1]) / 2, HZ = E0.len / 2;           // 6.7 x 13 half extents
     const group = new THREE.Group();
     group.name = 'event-haldi';
     const origin = path.toWorld(s0, latMid);
-    // deck top: clear of the highest ground on the footprint, never above the road
-    let gMax = -1e9;
-    for (let ds = -HZ; ds <= HZ; ds += 2) for (let l = E0.lat[0]; l >= E0.lat[1]; l -= 1.5) gMax = Math.max(gMax, world.heightSL(s0 + ds, l));
-    const Y0 = Math.min(path.roadY(s0) - 0.04, Math.max(path.roadY(s0) - 0.35, gMax + 0.07));
+    // deck top: level, a hair under the road at the arch line (SITES rule: road -0.05 .. +0.02)
+    const Y0 = path.roadY(SI.d0) - 0.02;
     group.position.set(origin.x, Y0, origin.z);
     group.rotation.y = path.sample(s0).heading;
+    const AW = Math.max(1.6, SI.aisle / 2 + 0.45);                     // arch half-width
     const ground = (x, z) => world.heightSL(s0 - z, latMid + x) - Y0;   // local ground height
     group.updateMatrixWorld(true);
-    const CO = COURTS.haldi, ROUTE = STOP.haldi.route;
+    const ROUTE = SI.route;
     // road coords -> scene-local point (y given in world units)
     const L = (s, lat, y) => { const w = path.toWorld(s, lat); w.y = y; return group.worldToLocal(w); };
-    const AX = -11 - latMid, AZ = HZ;                                   // arch: deck near end, lat -11, facing the court
+    const AX = 0, AZ = s0 - SI.d0;                                      // arch: on the axis at d0, facing the court
+    const SZ = s0 - SI.stage.s, SD = SI.stage.depth, AIS = SI.aisle;     // mandap centre (local z), depth, aisle width
 
     const WOOD = [], RUG = [], GAD = [], FAB = [], SHE = [], BR = [], LF = [], CST = [];
     const beads = [];   // [x, y, z, colourIndex, scale]
@@ -323,12 +323,12 @@ export default {
     };
     railRun(-HX + 0.05, -HZ + 0.05, -HX + 0.05, HZ - 0.05);
     railRun(-HX + 0.05, -HZ + 0.05, HX - 0.05, -HZ + 0.05);
-    railRun(-HX + 0.05, HZ - 0.05, AX - 1.55, HZ - 0.05);             // near end, open for the arch
-    railRun(AX + 1.55, HZ - 0.05, HX - 0.05, HZ - 0.05);
+    railRun(-HX + 0.05, HZ - 0.05, AX - AW - 0.15, HZ - 0.05);        // near end, open for the arch
+    railRun(AX + AW + 0.15, HZ - 0.05, HX - 0.05, HZ - 0.05);
     railRun(HX - 0.05, -HZ + 0.05, HX - 0.05, HZ - 0.05);               // road side
 
     /* ---------------- entrance: bamboo arch across the deck's near end, facing the court */
-    const AW = 1.4, archZ = AZ - 0.12, archH = 2.75, archPts = [];
+    const archZ = AZ - 0.12, archH = 2.9, archPts = [];
     for (let k = 0; k <= 16; k++) {
       const a = Math.PI * (k / 16);
       archPts.push(new THREE.Vector3(AX - Math.cos(a) * AW, archH + Math.sin(a) * 0.55, archZ));
@@ -337,7 +337,16 @@ export default {
     for (let k = 0; k < 16; k++) WOOD.push(rod(archPts[k], archPts[k + 1], 0.06, 7, C.bamboo));
 
     /* ---------------- mandap: four bamboo posts, beams, draped canopy */
-    const MX0 = -0.9, MX1 = -5.5, MZ = 2.4, MH = 3.3, MXC = (MX0 + MX1) / 2;
+    // built in a mandap frame (x toward the arch, z across the axis) then turned onto the axis
+    // at the stage centre: mandap (x, z) -> local (-z, SZ + x)
+    const snap = () => [WOOD, RUG, GAD, FAB, SHE, BR, LF, MR].map(l => l.length).concat(beads.length);
+    const toAxis = mk => {
+      const T = new THREE.Matrix4().makeRotationY(-Math.PI / 2).setPosition(0, 0, SZ);
+      [WOOD, RUG, GAD, FAB, SHE, BR, LF, MR].forEach((l, i) => { for (let k = mk[i]; k < l.length; k++) l[k].applyMatrix4(T); });
+      for (let k = mk[8]; k < beads.length; k += 5) { const x = beads[k], z = beads[k + 2]; beads[k] = -z; beads[k + 2] = SZ + x; }
+    };
+    const MR = [], mkM = snap();
+    const MX0 = SD / 2 - 0.6, MX1 = -(SD / 2 - 0.6), MZ = 2.7, MH = 3.6, MXC = 0;
     const corners = [[MX0, -MZ], [MX0, MZ], [MX1, -MZ], [MX1, MZ]];
     for (const [x, z] of corners) {
       WOOD.push(rod(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, MH + 0.15, z), 0.085, 10, C.bamboo));
@@ -422,7 +431,7 @@ export default {
     /* ---------------- marigold strings, toran, garlands */
     // strings and ropes are textured tubes (a pompom texture, tinted per piece), not beads:
     // continuous like real laris, and a string costs 12 triangles whatever its length
-    const MR = [], FL = 0.132;                            // one texture tile = two flowers
+    const FL = 0.132;                            // one texture tile = two flowers
     const ORANGE = [0xf28a12, 0xf59a1a], YELLOW = [0xf8c420, 0xfad640];
     const string = (x, z, yTop, len, k) => {
       const r = 0.03, around = 2 * Math.PI * r / FL;
@@ -480,6 +489,7 @@ export default {
       for (let y = 0.15, a = 0; y < MH; y += 0.04, a += 0.5) pts.push(new THREE.Vector3(x + Math.cos(a) * 0.12, y, z + Math.sin(a) * 0.12));
       tube(pts, 0.032, 0xf28a12);
     }
+    toAxis(mkM);
     // thick garland: an orange rope with a yellow rope wound round it
     const rope = (pts, r, cA, cB) => {
       const curve = new THREE.CatmullRomCurve3(pts), len = curve.getLength(), n = Math.round(len / 0.05), wound = [];
@@ -497,28 +507,28 @@ export default {
     archRope[2].y -= 0.03; archRope[archRope.length - 3].y -= 0.03;
     rope(archRope, 0.1, 0xee7d0c, 0xf7c21c);
     toran(AX - AW + 0.14, archZ + 0.12, AX + AW - 0.14, archZ + 0.12, archH - 0.04, 0.2, 0);
-    for (let x = -AW + 0.22, k = 0; x <= AW - 0.2; x += 0.2, k++) string(AX + x, archZ - 0.02, archH - 0.12, 0.35 + 0.35 * Math.sin(Math.PI * (x + AW) / (2 * AW)), k);
-    // festoons along the sea-side railing
+    for (let x = -AW + 0.22, k = 0; x <= AW - 0.2; x += 0.2, k++) string(AX + x, archZ - 0.02, archH - 0.1, 0.14 + 0.18 * Math.sin(Math.PI * (x + AW) / (2 * AW)), k);   // a short fringe: the aisle stays in view
+    // festoons along both side railings (mirrored)
     const fStep = 1.6 * (K < 0.5 ? 2 : 1);
-    for (let z = -HZ + 0.1; z < HZ - 1; z += fStep) {
+    for (const sx of [-1, 1]) for (let z = -HZ + 0.1; z < HZ - 1; z += fStep) {
       const z1 = Math.min(z + fStep, HZ - 0.1), pts = [];
-      for (let i = 0; i <= 8; i++) { const t = i / 8; pts.push(new THREE.Vector3(-HX + 0.12, 0.98 - 0.28 * Math.sin(Math.PI * t), z + (z1 - z) * t)); }
+      for (let i = 0; i <= 8; i++) { const t = i / 8; pts.push(new THREE.Vector3(sx * (HX - 0.12), 0.98 - 0.28 * Math.sin(Math.PI * t), z + (z1 - z) * t)); }
       tube(pts, 0.035, (z / fStep | 0) % 2 ? 0xf08a0c : 0xf6bf1a);
     }
 
-    /* ---------------- rugs and rangoli */
+    /* ---------------- rugs and rangoli (all mirrored about the axis, x = 0) */
     const rug = (w, d, x, z, cell, y = 0.006) =>
       RUG.push(part(place(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), x, y, z), 0xffffff, rugUV(cell)));
-    for (let x = 6.0; x > -0.4; x -= 1.45) rug(1.44, 1.3, x, 0, 0);                    // jute runner up the aisle
-    for (let z = AZ - 0.75; z > 5.6; z -= 1.3) rug(1.2, 1.28, AX, z, 0);               // and in from the arch
-    rug(4.2, 4.4, MXC, 0, 1, 0.009);                                                   // mandap dhurrie
-    rug(1.5, 1.5, -2.15, 0, 2, 0.016);                                                 // rangoli
-    for (const sz of [-1, 1]) {
-      for (let x = 4.3; x > -1; x -= 1.95) rug(1.9, 1.9, x, sz * 4.25, 0, 0.004);      // jute under the U arms
-      rug(1.9, 2.8, 5.3, sz * 2.45, 3, 0.008);
-    }
-
-    /* ---------------- seating: printed gaddis and bolsters in a U */
+    const MF = SZ + MX0;                                                   // mandap front edge (local z)
+    const RGZ = MF + 1.35;                                                 // rangoli at the aisle head
+    for (let z = AZ - 0.7; z > RGZ + 0.9; z -= 1.3) rug(1.44, 1.28, 0, z, 0);   // jute runner, arch to rangoli
+    rug(4.4, 4.2, 0, SZ, 1, 0.009);                                        // mandap dhurrie
+    rug(1.8, 1.8, 0, RGZ, 2, 0.016);                                       // rangoli
+    // seating: rows of gaddis facing the mandap, mirrored either side of the aisle
+    const ROWS = K >= 1 ? 5 : K >= 0.6 ? 4 : 3, rowGap = 2.1, row0 = RGZ + 3.0;
+    const seatX = [AIS / 2 + 1.25, AIS / 2 + 3.15];                       // gaddi centres off the axis
+    const blockD = (ROWS - 1) * rowGap + 1.7, blockZ = row0 + (ROWS - 1) * rowGap / 2;
+    for (const sx of [-1, 1]) rug(4.3, blockD, sx * (seatX[0] + seatX[1]) / 2, blockZ, 3, 0.004);
     const gaddi = (w, d, x, z, ry, print) => {
       const g = new THREE.BoxGeometry(w, 0.14, d, 6, 1, 3), p = g.attributes.position;
       for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) {
@@ -546,22 +556,16 @@ export default {
       g.computeVertexNormals();
       GAD.push(part(place(g, x, 0.36, z, -0.35, ry, 0), 0xffffff, printUV(print)));
     };
-    const seatP = [0, 1, 2, 1, 0, 2];
-    for (const sz of [-1, 1]) {
-      [4.3, 2.35, 0.4].forEach((x, i) => {
-        const pr = seatP[i + (sz > 0 ? 3 : 0)];
-        gaddi(1.8, 0.78, x, sz * 4.2, 0, pr);
-        bolster(1.72, 0.13, x, 0.27, sz * 4.52, 0, pr === 1 ? 2 : 1);
-        cushion(x - 0.45, sz * 4.36, sz > 0 ? Math.PI : 0, 3);
-        cushion(x + 0.45, sz * 4.36, sz > 0 ? Math.PI : 0, pr === 0 ? 1 : 0);
-      });
-      gaddi(1.8, 0.78, 5.35, sz * 2.45, Math.PI / 2, sz > 0 ? 1 : 2);
-      bolster(1.72, 0.13, 5.67, 0.27, sz * 2.45, Math.PI / 2, 0);
-      cushion(5.5, sz * 2.45, -Math.PI / 2, 3);
-    }
+    for (const sx of [-1, 1]) for (let r = 0; r < ROWS; r++) seatX.forEach((ax, i) => {
+      const x = sx * ax, z = row0 + r * rowGap, pr = [0, 1, 2][(r + i) % 3];
+      gaddi(1.8, 0.78, x, z, 0, pr);
+      bolster(1.72, 0.13, x, 0.27, z + 0.32, 0, pr === 1 ? 2 : 1);         // backrest toward the arch
+      cushion(x - 0.45, z + 0.16, Math.PI, 3);
+      cushion(x + 0.45, z + 0.16, Math.PI, pr === 0 ? 1 : 0);
+    });
 
     /* ---------------- couple's chowki with brass urli, lamp and turmeric bowls */
-    const CX = -3.75;
+    const mkC = snap(), CX = MXC - 0.55;                                  // mandap frame, turned onto the axis below
     WOOD.push(box(0.8, 0.08, 1.5, CX, 0.3, 0, C.teak, [0.4, 0.8]));
     WOOD.push(box(0.72, 0.1, 1.42, CX, 0.21, 0, 0x8a5530, [0.4, 0.8]));
     for (const [lx, lz] of [[-0.34, -0.68], [-0.34, 0.68], [0.34, -0.68], [0.34, 0.68]])
@@ -571,7 +575,7 @@ export default {
     const lathe = (prof, seg, x, y, z, color, list = BR) =>
       list.push(part(place(new THREE.LatheGeometry(prof.map(([r, h]) => new THREE.Vector2(r, h)), seg), x, y, z), color));
     // urli: wide shallow brass bowl with water and floating flowers
-    const UX = -2.7, UZ = 1.35;
+    const UX = MXC + 0.5, UZ = 1.35;
     lathe([[0, 0], [0.18, 0], [0.2, 0.03], [0.34, 0.08], [0.44, 0.15], [0.47, 0.18], [0.45, 0.185], [0.41, 0.15], [0.3, 0.09], [0, 0.06]], 28, UX, 0, UZ, C.brass);
     BR.push(part(place(new THREE.CircleGeometry(0.43, 24).rotateX(-Math.PI / 2), UX, 0.155, UZ), C.water));
     for (let i = 0; i < 16; i++) {
@@ -579,7 +583,7 @@ export default {
       bead(UX + Math.cos(a) * r, 0.165, UZ + Math.sin(a) * r, i % 3 === 0 ? 4 : i % 3 === 1 ? 2 : 0, 1.7);
     }
     // turmeric: brass thali with three small bowls of paste
-    const TX = -2.7, TZ = -1.3;
+    const TX = MXC + 0.5, TZ = -1.3;
     BR.push(cyl(0.3, 0.29, 0.025, 28, TX, 0.013, TZ, C.brass));
     for (let i = 0; i < 3; i++) {
       const bx = TX + Math.cos(i * 2.09) * 0.15, bz = TZ + Math.sin(i * 2.09) * 0.15;
@@ -591,6 +595,7 @@ export default {
       [0.16, 1.04], [0.17, 1.07], [0.03, 1.08], [0.02, 1.2], [0.05, 1.26], [0, 1.32]], 20, CX - 0.2, 0, -1.25, C.brass);
     lathe([[0, 0], [0.2, 0], [0.2, 0.03], [0.1, 0.07], [0.04, 0.12], [0.03, 0.8], [0.05, 0.84], [0.03, 0.88], [0.03, 1.0],
       [0.16, 1.04], [0.17, 1.07], [0.03, 1.08], [0.02, 1.2], [0.05, 1.26], [0, 1.32]], 20, CX - 0.2, 0, 1.25, C.brass);
+    toAxis(mkC);
     // purna kumbham at the arch foot: brass kalash, coconut and mango leaves
     for (const sz of [-1, 1]) {
       const kx = AX + sz * (AW - 0.05), kz = AZ - 0.55;
@@ -647,16 +652,19 @@ export default {
         WOOD.push(rod(new THREE.Vector3(ux, UH + 0.5, uz), new THREE.Vector3(ux + Math.cos(th) * (UR - 0.05), canopyY(UR, th) - 0.03, uz + Math.sin(th) * (UR - 0.05)), 0.012, 4, C.teak));
       }
     };
-    const umbrellas = [[5.3, 9.0], [3.9, -9.4], [-3.4, 9.8], [-3.4, -9.8]];
-    umbrellas.forEach(([ux, uz], i) => {
+    // two mirrored pairs: one inside the arch, one flanking the mandap
+    const CHX = HX - 1.95, umbrellas = [];
+    for (const uz of [AZ - 3.3, SZ + 0.4]) for (const sx of [-1, 1]) umbrellas.push([sx * CHX, uz]);
+    umbrellas.forEach(([ux, uz], j) => {
+      const i = j >> 1, sx = Math.sign(ux);
       chhatri(ux, uz);
       rug(2.8, 2.8, ux, uz, i % 2 ? 1 : 3, 0.008);
       gaddi(1.6, 0.72, ux + 0.95, uz, Math.PI / 2, i % 3);
       bolster(1.5, 0.12, ux + 1.27, 0.26, uz, Math.PI / 2, (i + 1) % 3);
       gaddi(1.6, 0.72, ux - 0.95, uz, Math.PI / 2, (i + 2) % 3);
       bolster(1.5, 0.12, ux - 1.27, 0.26, uz, Math.PI / 2, i % 3);
-      BR.push(cyl(0.26, 0.25, 0.02, 24, ux + 0.35, 0.02, uz + 0.45, C.brass));                // tray with a lota
-      lathe([[0, 0], [0.06, 0], [0.1, 0.06], [0.09, 0.12], [0.045, 0.16], [0.055, 0.2], [0, 0.2]], 14, ux + 0.35, 0.03, uz + 0.45, C.brass);
+      BR.push(cyl(0.26, 0.25, 0.02, 24, ux - sx * 0.35, 0.02, uz + 0.45, C.brass));           // tray with a lota
+      lathe([[0, 0], [0.06, 0], [0.1, 0.06], [0.09, 0.12], [0.045, 0.16], [0.055, 0.2], [0, 0.2]], 14, ux - sx * 0.35, 0.03, uz + 0.45, C.brass);
     });
 
     /* ---------------- banana plants in terracotta pots, and banana-leaf decor */
@@ -693,94 +701,57 @@ export default {
         bananaLeaf(x, y0 + h - 0.05 - R() * 0.2, z, a, bl, 0.2 + R() * 0.06, 0.9 + R() * 0.6, 1.0 + R() * 0.5, R() < 0.5 ? C.leaf : C.leafLt);
       }
     };
-    for (const [x, z] of [[-HX + 0.55, HZ - 0.55], [-HX + 0.55, -HZ + 0.55], [HX - 0.55, HZ - 0.55], [HX - 0.55, -HZ + 0.55],
-      [MX1 - 0.5, MZ + 0.6], [MX1 - 0.5, -MZ - 0.6], [-HX + 0.6, HZ - 1.6], [-HX + 0.6, -HZ + 1.6]]) banana(x, z, 1.1 + R() * 0.5);
+    for (const sx of [-1, 1]) for (const [x, z] of [[HX - 0.55, HZ - 0.55], [HX - 0.55, -HZ + 0.55], [MZ + 0.65, SZ + MX1 - 0.4]])
+      banana(sx * x, z, 1.2 + R() * 0.35);
     for (const sx of [-1, 1]) banana(AX + sx * (AW + 0.32), AZ - 0.4, 1.9, true);         // banana stems tied at the arch
-    bananaLeaf(TX - 0.4, 0.035, TZ, 0, 0.95, 0.2, 0, 0, 0xe8f0d8);                         // leaf laid under the thali
+    { const mk = snap(); bananaLeaf(TX - 0.4, 0.035, TZ, 0, 0.95, 0.2, 0, 0, 0xe8f0d8); toAxis(mk); }   // leaf under the thali
 
-    /* ---------------- the court: road-level forecourt the car drives into ("Take me here") */
-    const c0 = CO.s0, cs1 = CO.s1, SEA = CO.lat[1] ?? -16.5, cY = s => path.roadY(s) + 0.02;
-    const ss = u => u * u * (3 - 2 * u);
-    // a surface strip between two edges pa(t), pb(t) -> [s, lat], at court height + dy
-    const band = (pa, pb, n, dy, color, list, m = 2) => {
-      const pos = [], uv = [], idx = [];
-      for (let i = 0; i <= n; i++) for (const e of [pa(i / n), pb(i / n)]) {
-        const p = L(e[0], e[1], cY(e[0]) + dy); pos.push(p.x, p.y, p.z); uv.push(e[1] / m, e[0] / m);
-      }
-      for (let i = 0; i < n; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      g.setIndex(idx); g.computeVertexNormals();
-      if (g.attributes.normal.getY(0) < 0) { g.setIndex(idx.map((_, k) => idx[k - k % 3 + [0, 2, 1][k % 3]])); g.computeVertexNormals(); }
-      list.push(part(g, color));
-    };
-    // plinth face: from the paving edge down into the sand along [s, lat] points
-    const plinth = pts => {
-      const pos = [], uv = [], idx = [];
-      let run = 0;
-      pts.forEach(([s, lat], i) => {
-        if (i) run += Math.hypot(s - pts[i - 1][0], lat - pts[i - 1][1]);
-        const top = cY(s), bot = Math.min(top - 0.1, world.heightSL(s, lat) - 0.3);
-        const a = L(s, lat, top + 0.03), b = L(s, lat, bot);
-        pos.push(a.x, a.y, a.z, b.x, b.y, b.z); uv.push(run / 2, 0, run / 2, (top - bot) / 2);
-      });
-      for (let i = 0; i < pts.length - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      g.setIndex(idx); g.computeVertexNormals();
-      CST.push(part(g, C.laterite));
-    };
-    const line = (sA, latA, sB, latB, n = 12) => Array.from({ length: n + 1 }, (_, i) => [sA + (sB - sA) * i / n, latA + (latB - latA) * i / n]);
-    // the compound (compound.js) lays the lawn, drive, walls and gates; this adds the laterite
-    // plinth down to the sand, a sandstone edge at the deck end and a walk from the drop-off to the arch
-    const WALLL = -5.75;
-    plinth(line(c0, WALLL, c0, SEA, 8)); plinth(line(c0, SEA, cs1, SEA, 24)); plinth(line(cs1, SEA, cs1, WALLL, 8));
-    const BW = 0.5, gold = C.sandstone;
-    band(t => [cs1 - BW, WALLL + (SEA - WALLL) * t], t => [cs1, WALLL + (SEA - WALLL) * t], 6, 0, gold, CST);
-    band(t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, -9.3], t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, -12.7], 4, 0, C.sandPale, CST);
-    for (const bl of [-9.3, -12.7])
-      band(t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, bl - 0.12], t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, bl + 0.12], 4, 0.004, gold, CST);
-
-    /* ---------------- steps from the court down (or up) onto the deck, under the arch */
+    /* ---------------- threshold under the arch: from the forecourt (road + 0.03) onto the deck */
+    const cs1 = SI.d0 - 0.5, cY = s => path.roadY(s) + 0.03;
     {
-      const e = L(cs1, -11, cY(cs1)), yc = e.y, zc = e.z;                // court edge, local
-      const risers = Math.max(1, Math.round(Math.abs(yc) / 0.16)), T = Math.max(1, risers - 1), d = (zc - AZ) / T;
-      for (let k = 0; k < T; k++) {
-        const top = risers > 1 ? yc * (1 - (k + 1) / risers) : yc, z = zc - (k + 0.5) * d;
-        const gb = Math.min(ground(AX - AW, z), ground(AX + AW, z), top - 0.12) - 0.1;
-        CST.push(box(2 * AW + 0.9, top - gb, d + 0.02, AX, (top + gb) / 2, z, C.sandstone, [1.1, 0.3]));
-      }
+      const e = L(cs1, SI.ax, cY(cs1)), top = e.y, zc = e.z, d = zc - AZ + 0.1;
+      const gb = Math.min(ground(AX - AW, AZ), ground(AX + AW, AZ), top - 0.12) - 0.1;
+      CST.push(box(2 * AW + 0.9, top - gb, d, AX, (top + gb) / 2, AZ + d / 2 - 0.1, C.sandstone, [1.1, 0.3]));
     }
 
-    /* ---------------- court dressing: potted bananas and brass urlis, clear of the route */
+    /* ---------------- island centrepiece: brass urli of floating marigolds on a laterite plinth,
+     * ringed by marigold pots; under 1.5 m so the camera sees over it (SITES.haldi.island) */
     const segs = [ROUTE.in, ROUTE.out].flatMap(r => r.slice(1).map((p, i) => [r[i], p]));
     const dRoute = (s, lat) => Math.min(...segs.map(([a, b]) => {
       const ds = b[0] - a[0], dl = b[1] - a[1], t = Math.max(0, Math.min(1, ((s - a[0]) * ds + (lat - a[1]) * dl) / (ds * ds + dl * dl)));
       return Math.hypot(s - a[0] - ds * t, lat - a[1] - dl * t);
     }));
-    const urli = (x, y, z) => {
-      lathe([[0, 0], [0.1, 0], [0.16, 0.05], [0.14, 0.13], [0.22, 0.16], [0, 0.16]], 16, x, y, z, C.brass);   // stand
-      const U = [[0, 0], [0.18, 0], [0.2, 0.03], [0.34, 0.08], [0.44, 0.15], [0.47, 0.18], [0.45, 0.185], [0.41, 0.15], [0.3, 0.09], [0, 0.06]];
-      lathe(U.map(([r, h]) => [r * 1.45, h * 1.45]), 22, x, y + 0.16, z, C.brass);
-      BR.push(part(place(new THREE.CircleGeometry(0.6, 24).rotateX(-Math.PI / 2), x, y + 0.16 + 0.22, z), C.water));
-      for (let i = 0; i < 9; i++) {
-        const a = i * 2.4, r = 0.12 + 0.38 * Math.sqrt((i + 0.5) / 9);
-        bead(x + Math.cos(a) * r, y + 0.385, z + Math.sin(a) * r, i % 4 === 0 ? 5 : i % 2 ? 2 : 0, 1.5);
+    const clear = (s, lat, r) => dRoute(s, lat) >= 2.4 + r && Math.hypot(s - SI.stop.s, lat - SI.stop.l) >= 3.5 + r;
+    {
+      const IS = SI.island, lawn = s => path.roadY(s) + 0.012;
+      const c = L(IS.s, IS.l, lawn(IS.s)), cx = c.x, cy = c.y, cz = c.z;
+      if (clear(IS.s, IS.l, 1.1)) {
+        // plinth: laterite drum with a sandstone coping and a low step
+        CST.push(cyl(1.18, 1.22, 0.1, 32, cx, cy + 0.05, cz, C.laterite));
+        CST.push(cyl(0.98, 1.02, 0.34, 32, cx, cy + 0.27, cz, C.laterite, [3, 0.35]));
+        CST.push(cyl(1.08, 1.08, 0.07, 32, cx, cy + 0.475, cz, C.sandPale, [3, 0.1]));
+        const U = [[0, 0], [0.18, 0], [0.2, 0.03], [0.34, 0.08], [0.44, 0.15], [0.47, 0.18], [0.45, 0.185], [0.41, 0.15], [0.3, 0.09], [0, 0.06]];
+        const y1 = cy + 0.51, sc = 1.9;
+        lathe([[0, 0], [0.22, 0], [0.3, 0.05], [0.24, 0.12], [0.36, 0.16], [0, 0.16]], 24, cx, y1, cz, C.brass);   // foot
+        lathe(U.map(([r, h]) => [r * sc, h * sc]), 36, cx, y1 + 0.16, cz, C.brass);
+        const wy = y1 + 0.16 + 0.15 * sc;
+        BR.push(part(place(new THREE.CircleGeometry(0.8, 32).rotateX(-Math.PI / 2), cx, wy, cz), C.water));
+        const nF = K >= 0.6 ? 34 : 20;                                     // floating marigolds and a few rose heads
+        for (let i = 0; i < nF; i++) {
+          const a = i * 2.39996, r = 0.08 + 0.66 * Math.sqrt((i + 0.5) / nF);
+          bead(cx + Math.cos(a) * r, wy + 0.012, cz + Math.sin(a) * r, i % 7 === 0 ? 4 : i % 2 ? 1 : 0, 2.2);
+        }
+        // ring of terracotta pots with marigold mounds, on an ellipse fitted to the island
+        const nP = K >= 0.6 ? 12 : 8, ers = Math.min(IS.rs - 0.6, 2.4), erl = Math.min(IS.rl - 0.45, 1.5);
+        for (let k = 0; k < nP; k++) {
+          const a = (k + 0.5) / nP * Math.PI * 2, ps = IS.s + Math.cos(a) * ers, pl = IS.l + Math.sin(a) * erl;
+          if (!clear(ps, pl, 0.35)) continue;
+          const p = L(ps, pl, lawn(ps)), pot = 0.62;
+          lathe([[0, 0], [0.2, 0], [0.24, 0.05], [0.3, 0.42], [0.33, 0.47], [0.33, 0.52], [0.26, 0.5], [0, 0.46]].map(([r, h]) => [r * pot, h * pot]), 16, p.x, p.y, p.z, C.terracotta, WOOD);
+          const mound = new THREE.SphereGeometry(0.22, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+          MR.push(part(place(mound, p.x, p.y + 0.29, p.z, 0, R() * 6, 0, 1, 0.75, 1), k % 2 ? 0xf28a12 : 0xf8c420, [5, 2.5, R(), 0]));
+        }
       }
-    };
-    // clear of the drive (half-width up to 2.1 m + 0.8) and of the drop-off apron (compound.js)
-    const stopP = ROUTE.in[ROUTE.in.length - 1];
-    const clear = (s, lat, r) => dRoute(s, lat) >= 2.9 + r &&
-      ((s - stopP[0] - 1) / (6 + r)) ** 2 + ((lat - stopP[1] + 0.6) / (4.2 + r)) ** 2 >= 1;
-    const PROPS = [];
-    for (let k = 0; k < 6; k++) PROPS.push([c0 + 1.6 + k * 4.1, SEA + 1.35, k % 2 ? 'u' : 'b']);   // sea edge, inside the sea wall
-    for (const lat of [-10, -13.6]) PROPS.push([c0 + 1.3, lat, lat < -12 ? 'b' : 'u']);              // far end
-    for (const s of [c0 + 9, c0 + 13, c0 + 17]) PROPS.push([s, -6.9, 'u']);                          // inside the road wall
-    PROPS.push([cs1 - 1.1, -14.2, 'b'], [cs1 - 1.1, -7.9, 'b']);                                      // flanking the steps
-    for (const [s, lat, kind] of PROPS) {
-      if (!clear(s, lat, kind === 'b' ? 0.9 : 0.7)) continue;
-      const p = L(s, lat, cY(s));
-      kind === 'b' ? banana(p.x, p.z, 1.5 + R() * 0.4, true, p.y, 1.35) : urli(p.x, p.y, p.z);
     }
 
     /* ---------------- meshes: one per material, beads instanced */

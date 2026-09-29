@@ -133,7 +133,9 @@ const eventStop = (id, label, sheet) => {
     // in: off the lane through the first gate onto the axis, straight to the drop-off (parks square);
     // out: straight on, through the second gate, and a straight run in the lane (no snap at hand-back)
     route: S.route,
-    cam: { s: a - 7, lateral: 4.2, h: 6.2 }, focus: { s: S.d0 + 4, lateral: ax, h: 1.8 },
+    // the crane ends raised behind the drop-off, just road-side of the axis, looking straight down it:
+    // car → carpet → arch → aisle → stage
+    cam: { s: S.stop.s - 11, lateral: ax + 2.5, h: 4.8 }, focus: { s: S.d0 + 4, lateral: ax, h: 1.8 },
     // surface the car drives on (car/car.js): the compound drive (biomes/events/compound.js) is road + 0.03
     ground: (s, l) => path.roadY(s) + (l < -3.35 ? 0.031 : 0.02) };
 };

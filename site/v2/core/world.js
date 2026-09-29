@@ -22,7 +22,7 @@ import * as THREE from 'three';
 import { path } from './path.js';
 import { ZONES, weightsAt, zoneAt } from './zones.js';
 import { fbm, smoothstep } from './noise.js';
-import { COURTS } from './timeline.js';
+import { SITES } from './timeline.js';
 
 const VERGE = path.halfWidth + 2.2;
 
@@ -77,7 +77,8 @@ function rawOff(s, lateral, d, b, w) {
  * with aprons 7 m either side where the car leaves and rejoins the road: the
  * ground there is held just under the paving, easing back to its own shape
  * over a few metres, so no terrain pokes through where the car drives. */
-const COURT_BOX = Object.values(COURTS).map(c => ({ s0: c.s0 - 7, s1: c.s1 + 7, l0: -16.8, l1: -3.6 }));
+// the whole site: forecourt and deck (SITES), plus the aprons where the drive meets the road
+const COURT_BOX = Object.values(SITES).map(S => ({ s0: S.a - 7, s1: S.d1 + 2, l0: S.lat[1] - 0.5, l1: -3.6 }));
 function courtCap(s, lateral, b, h) {
   for (const c of COURT_BOX) {
     const ds = Math.max(0, c.s0 - s, s - c.s1), dl = Math.max(0, c.l0 - lateral, lateral - c.l1);

@@ -1,36 +1,38 @@
-/* Muhurtham (Nov 18, 8 PM, night): a Telugu wedding mandap on a raised deck by the sea.
- * Placement: core/timeline.js EVENTS.muhurtham. Built into the 'cove' zone's visibility window.
+/* Muhurtham (Nov 18, 8 PM, night): a Telugu wedding mandap on a deck by the sea.
+ * Placement: core/timeline.js SITES.muhurtham, one procession axis at lateral S.ax: the drop-off
+ * (kolam on the apron) → the island centrepiece beside it → the jasmine-and-marigold arch at d0 →
+ * the red aisle runner lined with diyas between mirrored blocks of chairs → the gold mandap
+ * centred at stage.s with the agni kund at its centre; the sea on the left.
  *
- * Scene-local frame: the group sits at the deck centre, rotation.y = heading; local -z is
- * road-forward, +x is toward the road. The deck top is local y = 0.
+ * Scene-local frame: the group sits at the deck centre on the axis, rotation.y = heading; local -z
+ * is road-forward (+s), +x is toward the road. The deck top is local y = 0. The mandap is built in
+ * its own frame (guests toward its +x) and turned so its front faces the arch (+z).
  *
  * No THREE lights: firelight is faked in the shader (litMat: warm emissive falling off from
  * the agni kund and the four brass lamps), plus one instanced additive mesh that holds every
- * flame, halo and light pool.
+ * flame, halo and light pool. The forecourt (lawn, drive, walls, carpet) is compound.js.
  *
- * The forecourt (COURTS.muhurtham) is the shared compound (compound.js: lawn, black-granite drive,
- * road wall and gates) with a kolam on the drop-off apron; the entrance arch stands at the deck's
- * near end, facing it, over steps down from the court.
- *
- * Draw calls: wood, stone, gold, runner, leaf, chairs, kolam, flowers, fx = 9, + compound 5 = 14. <80k triangles on 'high'. */
+ * Draw calls: wood, stone, gold, runner, leaf, chairs, kolam, flowers, fx = 9 (+ compound). <80k triangles on 'high'. */
 import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/addons/utils/BufferGeometryUtils.js';
-import { EVENTS, COURTS, STOP } from '../../core/timeline.js';
+import { SITES } from '../../core/timeline.js';
 import { buildCompound } from './compound.js';
 
-const E = EVENTS.muhurtham;
-const HALF_Z = E.len / 2;                       // 14
-const LAT_C = (E.lat[0] + E.lat[1]) / 2;        // -14.2: deck centre lateral
-const X_ROAD = E.lat[0] - LAT_C;                // +6.8: road-side deck edge
-const X_SEA = E.lat[1] - LAT_C;                 // -6.8: sea-side deck edge
-const CT = COURTS.muhurtham;                    // road-level forecourt, s CT.s0 … CT.s1, just before the deck
-const AX = -11 - LAT_C;                         // +3.2: the entrance arch (x) at the deck's near end (z = +HALF_Z)
+const S = SITES.muhurtham;
+const S_C = (S.d0 + S.d1) / 2;                  // deck centre (s)
+const HALF_Z = (S.d1 - S.d0) / 2;               // 14
+const LAT_C = S.ax;                             // -13.5: the axis
+const X_ROAD = S.lat[0] - LAT_C;                // +6.7: road-side deck edge
+const X_SEA = S.lat[1] - LAT_C;                 // -6.7: sea-side deck edge
+const AX = 0;                                   // the entrance arch (x), on the axis, at the deck's near end
 const AW = 1.45, AH = 1.9;                      // arch half-width, height of the springing
-const MX = -1.6;                                // mandap centre (x); z = 0
-const MZ = -3.5;                                // mandap/aisle/arch centre (z): a little up the road
+const MX = 0;                                   // mandap centre in its own frame
+const MZ = S_C - S.stage.s;                     // mandap centre (local z): stage.s on the axis
 const PH = 0.45;                                // mandap platform height
 const PIL = 2.3;                                // pillar offset from mandap centre
 const PIL_H = 3.0;                              // pillar height above the platform
+const MFRAME = new THREE.Matrix4().makeTranslation(0, 0, MZ).multiply(new THREE.Matrix4().makeRotationY(-Math.PI / 2));
+const toDeck = (x, z) => [-z, x + MZ];          // mandap frame (x toward the guests) → deck frame
 
 /* ---------- geometry bag: transformed copies with vertex colours, merged once ---------- */
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -38,11 +40,11 @@ function mat(x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
   return _m.compose(_v.set(x, y, z), _q.setFromEuler(_e.set(rx, ry, rz)), _s.set(sx, sy, sz));
 }
 class Bag {
-  constructor(uv = false) { this.list = []; this.uv = uv; this.offZ = 0; }
+  constructor(uv = false) { this.list = []; this.uv = uv; this.post = null; }
   add(geo, hex, m, jitter = 0.04, rng = Math.random) {
     let g = geo.index ? geo.toNonIndexed() : geo.clone();
     if (m) g.applyMatrix4(m);
-    if (this.offZ) g.translate(0, 0, this.offZ);
+    if (this.post) g.applyMatrix4(this.post);
     if (!this.uv) g.deleteAttribute('uv');
     else if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
     const n = g.attributes.position.count, col = new Float32Array(n * 3), c = new THREE.Color(hex);
@@ -63,8 +65,8 @@ class Bag {
 const LIT = {
   uGlow: { value: 0 },                               // 0 day … 1 night
   uFlick: { value: 1 },                              // fire flicker multiplier
-  uFire: { value: new THREE.Vector3(MX, PH + 0.5, MZ) },
-  uLamps: { value: [0, 1, 2, 3].map(i => new THREE.Vector3(MX + (i & 1 ? 1 : -1) * (PIL + 0.55), PH + 1.55, MZ + (i & 2 ? 1 : -1) * (PIL + 0.55))) },
+  uFire: { value: new THREE.Vector3(0, PH + 0.5, MZ) },
+  uLamps: { value: [0, 1, 2, 3].map(i => new THREE.Vector3((i & 1 ? 1 : -1) * (PIL + 0.55), PH + 1.55, MZ + (i & 2 ? 1 : -1) * (PIL + 0.55))) },
   uArch: { value: new THREE.Vector3(AX, 1.9, HALF_Z - 0.6) }
 };
 function litMat(params, { self = 0, amb = 0.1 } = {}) {
@@ -239,6 +241,7 @@ function buildDeck(ctx, wood, stone, groundAt) {
   wood.box(W + 0.1, 0.28, 0.08, 0x6e4a31, (X_ROAD + X_SEA) / 2, -0.15, HALF_Z + 0.02);
   wood.box(W + 0.1, 0.28, 0.08, 0x6e4a31, (X_ROAD + X_SEA) / 2, -0.15, -HALF_Z - 0.02);
   wood.box(0.08, 0.28, L, 0x6e4a31, X_SEA - 0.02, -0.15, 0);
+  wood.box(0.08, 0.28, L, 0x6e4a31, X_ROAD + 0.02, -0.15, 0);
   for (let x = X_SEA + 0.4; x < X_ROAD; x += 2.2) wood.box(0.16, 0.24, L - 0.2, 0x4a3122, x, -0.2, 0);
   // posts down to the sand (dark tarred timber), with a cross brace every other bay
   for (let x = X_SEA + 0.4; x < X_ROAD; x += 2.2) {
@@ -249,11 +252,10 @@ function buildDeck(ctx, wood, stone, groundAt) {
     }
   }
   // sea-side and end handrails: posts, top rail, mid rail (white-painted hardwood)
+  const xs = X_SEA + 0.08, xr = X_ROAD - 0.08, zf = -HALF_Z + 0.08, zn = HALF_Z - 0.08;
   const railRuns = [
-    [X_SEA + 0.08, -HALF_Z + 0.08, X_SEA + 0.08, HALF_Z - 0.08],
-    [X_SEA + 0.08, -HALF_Z + 0.08, X_ROAD - 0.3, -HALF_Z + 0.08],
-    [X_SEA + 0.08, HALF_Z - 0.08, AX - AW - 0.7, HALF_Z - 0.08],     // near end: open at the arch
-    [AX + AW + 0.7, HALF_Z - 0.08, X_ROAD - 0.3, HALF_Z - 0.08]
+    [xs, zf, xs, zn], [xr, zf, xr, zn], [xs, zf, xr, zf],
+    [xs, zn, AX - AW - 0.7, zn], [AX + AW + 0.7, zn, xr, zn]          // near end: open at the arch
   ];
   for (const [x0, z0, x1, z1] of railRuns) {
     const len = Math.hypot(x1 - x0, z1 - z0), ry = Math.atan2(x1 - x0, z1 - z0);
@@ -268,6 +270,10 @@ function buildDeck(ctx, wood, stone, groundAt) {
 
 const lathe = (pts, segs = 10, phi = 0) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), segs, phi);
 const PW = 3.0;                                  // platform half-width
+// kuthu vilakku: tall brass tiered lamp with five wicks (1.78 m)
+const LAMP_GEO = lathe([[0, 0], [0.22, 0], [0.22, 0.03], [0.16, 0.06], [0.1, 0.1], [0.04, 0.16], [0.03, 0.4], [0.06, 0.43],
+    [0.03, 0.46], [0.025, 0.85], [0.055, 0.88], [0.025, 0.92], [0.022, 1.3], [0.05, 1.33], [0.17, 1.38], [0.18, 1.43],
+    [0.05, 1.42], [0.022, 1.46], [0.022, 1.62], [0.05, 1.66], [0.02, 1.72], [0, 1.78]], 12);
 
 /* ---------- 2. platform, steps, pillars, gopuram canopy ---------- */
 function buildMandap(stone, gold, runner) {
@@ -365,9 +371,7 @@ function buildRitual(stone, gold, leaf, fx, R) {
   stone.add(new THREE.ConeGeometry(0.03, 0.08, 6), 0x6b4523, mat(kx, PH + 0.6, kz));
   for (let k = 0; k < 5; k++) leafBlade(leaf, 0x3f7a2a, kx, PH + 0.4, kz, (k / 5) * Math.PI * 2, 0.9, 0.24, 0.05);
   // kuthu vilakku: tall brass tiered lamps with five wicks and a bird finial
-  const lamp = lathe([[0, 0], [0.22, 0], [0.22, 0.03], [0.16, 0.06], [0.1, 0.1], [0.04, 0.16], [0.03, 0.4], [0.06, 0.43],
-    [0.03, 0.46], [0.025, 0.85], [0.055, 0.88], [0.025, 0.92], [0.022, 1.3], [0.05, 1.33], [0.17, 1.38], [0.18, 1.43],
-    [0.05, 1.42], [0.022, 1.46], [0.022, 1.62], [0.05, 1.66], [0.02, 1.72], [0, 1.78]], 12);
+  const lamp = LAMP_GEO;
   for (const lp of LIT.uLamps.value) {
     gold.add(lamp, 0xd9a23c, mat(lp.x, PH, lp.z - MZ), 0);
     for (let k = 0; k < 5; k++) {
@@ -428,7 +432,7 @@ function buildFlorals(leaf, stone, flowers, R, dens) {
     { n: [0, -1], spacing: 0.2, len: t => 0.9 + 0.35 * Math.abs(Math.sin(t * Math.PI * 2)) },
     { n: [-1, 0], spacing: 0.2, len: t => 1.4 }
   ];
-  const beadStep = 0.058 / dens;
+  const beadStep = 0.068 / dens;
   for (const sd of sides) {
     const off = PIL + 0.2, cnt = Math.round((2 * PIL) / sd.spacing * dens);
     for (let k = 0; k <= cnt; k++) {
@@ -440,8 +444,8 @@ function buildFlorals(leaf, stone, flowers, R, dens) {
     }
   }
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {            // tied-back drapes: gathered at 1.1 m
-    for (let k = 0; k < Math.round(6 * dens); k++) {
-      const spread = (k / 6) * 0.55, bx = MX + sx * (PIL + 0.2) - sx * (sx > 0 ? spread : 0), bz = sz * (PIL + 0.2) - sz * (sx > 0 ? 0 : spread);
+    for (let k = 0; k < Math.round(4 * dens); k++) {
+      const spread = (k / 4) * 0.55, bx = MX + sx * (PIL + 0.2) - sx * (sx > 0 ? spread : 0), bz = sz * (PIL + 0.2) - sz * (sx > 0 ? 0 : spread);
       const tieY = PH + 1.15, px = MX + sx * (PIL + 0.22), pz = sz * (PIL + 0.22);
       for (let y = Y0 - 0.02; y > PH + 0.3; y -= beadStep) {
         const u = y > tieY ? (Y0 - y) / (Y0 - tieY) : 1 - (tieY - y) / (tieY - PH) * 0.6;
@@ -455,7 +459,7 @@ function buildFlorals(leaf, stone, flowers, R, dens) {
   for (let c = 0; c < 4; c++) {
     const [ax, az] = corners[c], [bx, bz] = corners[(c + 1) % 4];
     const A = [MX + ax * (PIL + 0.12), az * (PIL + 0.12)], B = [MX + bx * (PIL + 0.12), bz * (PIL + 0.12)];
-    const n = Math.round(2 * PIL / 0.04 * dens);
+    const n = Math.round(2 * PIL / 0.055 * dens);
     for (let i = 0; i <= n; i++) {
       const t = i / n, y = Y0 - 0.18 - 0.62 * Math.sin(Math.PI * t);
       const band = Math.floor(t * 12) % 2 ? ROSE : JAS;
@@ -470,43 +474,43 @@ function buildFlorals(leaf, stone, flowers, R, dens) {
   // a jasmine-and-marigold spiral climbing each pillar
   for (const [sx, sz] of corners) {
     const x = MX + sx * PIL, z = sz * PIL;
-    for (let y = 0.3; y < PIL_H - 0.2; y += 0.016 / dens) {
+    for (let y = 0.3; y < PIL_H - 0.2; y += 0.022 / dens) {
       const a = y * 11;
       put(x + Math.cos(a) * 0.17, PH + y, z + Math.sin(a) * 0.17, Math.floor(y * 40) % 7 === 0 ? ROSE : JAS, 0.024);
     }
   }
 }
 
-/* ---------- 6. entrance arch at the deck's near end, facing the court; steps; runners ----------
- * cy = court top above the deck (local y) at its far edge z = HALF_Z + 1. Built in deck coords (no MZ). */
+/* ---------- 6. entrance arch at the deck's near end on the axis, facing the forecourt; runner ----------
+ * cy = forecourt carpet top above the deck (local y) at d0 - 0.5; the 0.5 m gap is bridged by a stair
+ * (or a flush threshold) on the axis, with low marigold planters either side. */
 function buildEntrance(stone, gold, runner, leaf, flowers, fx, R, dens, cy, groundAt) {
-  const zA = HALF_Z - 0.3, SW = 2 * AW + 1.0;           // arch line on the deck; stair width
-  // granite stair from the court down to the deck, across the 1 m gap, with cheek walls
-  const n = Math.max(1, Math.min(4, Math.round(Math.abs(cy) / 0.16) - 1));
-  const zc = HALF_Z + 1, d = 1 / n, gy = Math.min(-0.4, groundAt(AX, HALF_Z + 0.5) - 0.2);
+  const zA = HALF_Z - 0.3, SW = 2 * AW + 1.0, GAP = 0.5;   // arch line on the deck; stair width
+  const zc = HALF_Z + GAP, gy = Math.min(-0.4, groundAt(AX, HALF_Z + 0.25) - 0.2);
+  const n = cy > 0.1 ? Math.min(3, Math.max(1, Math.round(cy / 0.15))) : 0, d = GAP / Math.max(1, n);
+  if (n === 0) {                                           // flush: one granite threshold slab
+    stone.box(SW, Math.max(cy, 0) - gy, GAP + 0.02, 0x34322f, AX, (Math.max(cy, 0) + gy) / 2 - 0.002, HALF_Z + GAP / 2, 0, 0.03);
+    runner.add(new THREE.PlaneGeometry(1.3, GAP + 0.1).rotateX(-Math.PI / 2), 0xffffff, mat(AX, Math.max(cy, 0) + 0.002, HALF_Z + GAP / 2), 0);
+  }
   for (let k = 0; k < n; k++) {
-    const z1 = zc - k * d, t = cy * (n - k) / (n + 1);   // equal risers: court → treads → deck
+    const z1 = zc - k * d, t = cy * (n - k) / (n + 1);    // equal risers: court → treads → deck
     stone.box(SW, t - gy, d + 0.02, 0x34322f, AX, (t + gy) / 2, z1 - d / 2, 0, 0.03);
-    stone.box(SW + 0.02, 0.03, 0.05, 0xb9b2a4, AX, t - 0.012, z1 - d + 0.03);   // pale nosing on each tread
+    stone.box(SW + 0.02, 0.03, 0.05, 0xb9b2a4, AX, t - 0.012, z1 - d + 0.03);
     runner.add(new THREE.PlaneGeometry(1.3, d).rotateX(-Math.PI / 2), 0xffffff, mat(AX, t + 0.004, z1 - d / 2), 0);
   }
-  for (const sx of [-1, 1]) stone.box(0.3, cy + 0.45 - gy, 1.02, 0x2b2927, AX + sx * (SW / 2 + 0.15), (cy + 0.45 + gy) / 2, HALF_Z + 0.5, 0, 0.03);
-  // planters filling the rest of the gap between court and deck, clipped marigold hedge on top
-  for (const [a, b] of [[E.lat[0] - LAT_C, AX + SW / 2 + 0.3], [AX - SW / 2 - 0.3, CT.lat[1] - LAT_C]]) {
-    const w = Math.abs(a - b), xc = (a + b) / 2;
-    stone.box(w, cy + 0.35 - gy, 0.98, 0x2f2d2a, xc, (cy + 0.35 + gy) / 2, HALF_Z + 0.5, 0, 0.03);
-    leaf.box(w - 0.1, 0.22, 0.8, 0x2e5a22, xc, cy + 0.42, HALF_Z + 0.5, 0, 0.2);
-    for (let i = 0; i < w * 26 * dens; i++) flowers.push([xc + (R() - 0.5) * (w - 0.15), cy + 0.53 + R() * 0.03, HALF_Z + 0.5 + (R() - 0.5) * 0.75, R() < 0.55 ? MARI : R() < 0.6 ? MARY : JAS, 0.05]);
+  // low planters bridging the rest of the gap, clipped hedge with marigolds, mirrored about the axis
+  const top = Math.max(cy, 0);
+  for (const sx of [-1, 1]) {
+    const a = sx * (SW / 2 + 0.05), b = sx * X_ROAD, w = Math.abs(b - a), xc = (a + b) / 2;
+    stone.box(w, top + 0.22 - gy, GAP - 0.02, 0x2f2d2a, xc, (top + 0.22 + gy) / 2, HALF_Z + GAP / 2, 0, 0.03);
+    leaf.box(w - 0.1, 0.16, GAP - 0.12, 0x2e5a22, xc, top + 0.3, HALF_Z + GAP / 2, 0, 0.2);
+    for (let i = 0; i < w * 14 * dens; i++) flowers.push([xc + (R() - 0.5) * (w - 0.15), top + 0.39 + R() * 0.03, HALF_Z + GAP / 2 + (R() - 0.5) * 0.3, R() < 0.55 ? MARI : R() < 0.6 ? MARY : JAS, 0.045]);
   }
-  // runner from the arch down the side of the seating to the cross aisle, and the cross aisle
-  const z0 = zA + 0.2, z1 = MZ + 0.65, len = z0 - z1;
+  // the red runner down the aisle, from the arch to the mandap steps
+  const z0 = HALF_Z, z1 = MZ + PW + 0.95, len = z0 - z1;
   const lane = new THREE.PlaneGeometry(1.3, len).rotateX(-Math.PI / 2);
   const uv = lane.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * len / 2.6);
   runner.add(lane, 0xffffff, mat(AX, 0.006, (z0 + z1) / 2), 0);
-  const x0 = X_ROAD - 0.3, x1 = MX + PW + 1.0, cl = x0 - x1;
-  const aisle = new THREE.PlaneGeometry(1.3, cl).rotateX(-Math.PI / 2).rotateY(Math.PI / 2);
-  const uv2 = aisle.attributes.uv; for (let i = 0; i < uv2.count; i++) uv2.setY(i, uv2.getY(i) * cl / 2.6);
-  runner.add(aisle, 0xffffff, mat((x0 + x1) / 2, 0.005, MZ), 0);
   // arch: gilded plinths, a thick garland tube (marigold core) studded with blooms, in the x-y plane
   for (const sx of [-1, 1]) gold.box(0.38, 0.3, 0.38, 0xb88a2c, AX + sx * AW, 0.15, zA);
   const cpts = [];
@@ -528,7 +532,7 @@ function buildEntrance(stone, gold, runner, leaf, flowers, fx, R, dens, cy, grou
       flowers.push([AX + P.z + N.z * oo, P.y + N.y * oo, zA + od, hex, 0.038]);
     }
   }
-  // jasmine strands hanging inside the arch head, a rose at each tassel
+  // jasmine strands hanging inside the arch head, a rose at each tassel (symmetric)
   for (let k = 1; k < 14; k++) {
     const px = -AW + 2 * AW * k / 14, yTop = AH + Math.sqrt(Math.max(0, AW * AW - px * px)) - 0.12;
     const L = 0.3 + 0.4 * Math.sin(Math.PI * k / 14);
@@ -541,9 +545,23 @@ function buildEntrance(stone, gold, runner, leaf, flowers, fx, R, dens, cy, grou
     flowers.push([AX + sx * AW + Math.cos(a) * r, 0.3 + h, zA + Math.sin(a) * r, R() < 0.6 ? ROSE : JAS, 0.045]);
   }
   fx.push([1, AX, AH + 0.5, zA + 0.3, 2.6, 2.6, 0.22]);
+  // a pair of tall kuthu vilakku on granite pedestals at the head of the aisle, marigold at their feet
+  const lz = HALF_Z - 2.6, lx = S.aisle / 2 + 0.45;
+  for (const sx of [-1, 1]) {
+    const x = AX + sx * lx;
+    stone.box(0.42, 0.5, 0.42, 0x2a2826, x, 0.25, lz, 0, 0.03);
+    stone.box(0.5, 0.05, 0.5, 0x6c665d, x, 0.525, lz);
+    gold.add(LAMP_GEO, 0xd9a23c, mat(x, 0.55, lz), 0);
+    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2 + 0.3; fx.push([0, x + Math.cos(a) * 0.165, 0.55 + 1.49, lz + Math.sin(a) * 0.165, 0.075, 0.13, 1.1]); }
+    fx.push([1, x, 2.05, lz, 0.9, 0.9, 0.75], [2, x, 0.02, lz, 2.6, 2.6, 0.4]);
+    for (let k = 0; k < 40 * dens; k++) {
+      const a = R() * Math.PI * 2, r = 0.3 + R() * 0.12;
+      flowers.push([x + Math.cos(a) * r, 0.04 + R() * 0.06, lz + Math.sin(a) * r, R() < 0.7 ? MARI : JAS, 0.045]);
+    }
+  }
 }
 
-/* ---------- 4b. clay diyas along the deck edges, the aisle and the platform ---------- */
+/* ---------- 4b. clay diyas along the aisle, the deck edges and the platform front ---------- */
 function buildDiyas(stone, fx, R, dens) {
   const cup = lathe([[0, 0], [0.045, 0], [0.062, 0.04], [0, 0.03]], 6);
   const put = (x, z, y = 0) => {
@@ -554,17 +572,14 @@ function buildDiyas(stone, fx, R, dens) {
     const n = Math.max(1, Math.round(Math.hypot(x1 - x0, z1 - z0) / (step / dens)));
     for (let i = 0; i <= n; i++) put(x0 + (x1 - x0) * i / n, z0 + (z1 - z0) * i / n, y);
   };
-  run(X_ROAD - 0.2, -HALF_Z + 0.3, X_ROAD - 0.2, HALF_Z - 0.3, 0.75);        // road edge
-  run(X_SEA + 0.3, -HALF_Z + 0.3, X_SEA + 0.3, HALF_Z - 0.3, 0.75);       // along the sea rail
-  run(X_SEA + 0.3, -HALF_Z + 0.3, X_ROAD - 0.6, -HALF_Z + 0.3, 0.75);     // far end
-  run(X_SEA + 0.3, HALF_Z - 0.5, AX - AW - 0.5, HALF_Z - 0.5, 0.75);      // near end, either side of the arch
-  run(AX + AW + 0.5, HALF_Z - 0.5, X_ROAD - 0.6, HALF_Z - 0.5, 0.75);
-  const ax0 = X_ROAD - 0.5, ax1 = MX + PW + 1.1;                           // the cross aisle, both sides
-  run(ax0, MZ - 0.8, ax1, MZ - 0.8, 0.5); run(ax0, MZ + 0.8, AX + 0.8, MZ + 0.8, 0.5);
-  run(AX - 0.8, MZ + 0.8, AX - 0.8, HALF_Z - 1.0, 0.5);                  // the runner from the arch
-  run(AX + 0.8, 6.0, AX + 0.8, HALF_Z - 1.0, 0.5);
-  run(MX + PW - 0.12, MZ - PW + 0.15, MX + PW - 0.12, MZ - 1.25, 0.4, PH);        // platform front edge
-  run(MX + PW - 0.12, MZ + 1.25, MX + PW - 0.12, MZ + PW - 0.15, 0.4, PH);
+  const zs = MZ + PW + 1.15;                                        // just short of the mandap steps
+  for (const sx of [-1, 1]) {
+    run(sx * 0.88, HALF_Z - 0.9, sx * 0.88, zs, 0.6);               // both sides of the aisle
+    run(sx * (X_ROAD - 0.25), -HALF_Z + 0.3, sx * (X_ROAD - 0.25), HALF_Z - 0.4, 0.75);   // deck edges
+    run(sx * (AW + 0.6), HALF_Z - 0.4, sx * (X_ROAD - 0.6), HALF_Z - 0.4, 0.75);          // near end, either side of the arch
+    run(sx * 1.25, MZ + PW - 0.12, sx * (PW - 0.15), MZ + PW - 0.12, 0.4, PH);           // platform front edge
+  }
+  run(X_SEA + 0.3, -HALF_Z + 0.3, X_ROAD - 0.3, -HALF_Z + 0.3, 0.75);                      // far end
 }
 
 /* ---------- 5. guest chairs: ivory covers, maroon sash with a bow (instanced) ---------- */
@@ -574,7 +589,7 @@ function chairGeometry() {
   b.box(0.44, 0.44, 0.44, IV, 0, 0.22, 0);                          // covered seat, skirt to the floor
   b.box(0.45, 0.04, 0.45, 0xece4d4, 0, 0.46, 0);                    // cushion top
   b.add(new THREE.BoxGeometry(0.05, 0.56, 0.42), IV, mat(0.2, 0.74, 0, 0, 0, -0.1));  // covered back (at +x)
-  b.add(new THREE.CylinderGeometry(0.21, 0.21, 0.05, 10, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateX(Math.PI / 2).scale(1, 0.35, 1), IV, mat(0.23, 1.02, 0, 0, 0, -0.1)); // rounded top
+  b.add(new THREE.CylinderGeometry(0.21, 0.21, 0.05, 6, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateX(Math.PI / 2).scale(1, 0.35, 1), IV, mat(0.23, 1.02, 0, 0, 0, -0.1)); // rounded top
   b.add(new THREE.BoxGeometry(0.09, 0.12, 0.46), MA, mat(0.215, 0.66, 0, 0, 0, -0.08)); // sash band
   b.add(new THREE.BoxGeometry(0.03, 0.1, 0.13), MA, mat(0.27, 0.67, -0.07, 0.5, 0, 0));  // bow loops
   b.add(new THREE.BoxGeometry(0.03, 0.1, 0.13), MA, mat(0.27, 0.67, 0.07, -0.5, 0, 0));
@@ -583,88 +598,54 @@ function chairGeometry() {
   return b.merge();
 }
 function buildChairs(chairMat, dens) {
-  const spots = [];
-  const rows = [4.3, 5.1, 5.9], colStep = 0.6;           // clear of the runner from the arch (x = AX)
-  const perSide = Math.max(4, Math.round(13 * Math.min(1, dens + 0.15)));
-  for (const x of rows) for (const sz of [-1, 1]) for (let c = 0; c < perSide; c++) spots.push([x, MZ + sz * (1.15 + c * colStep + (c >= 6 ? 0.5 : 0))]);
+  // two mirrored blocks either side of the aisle, facing the mandap (-z); back rows toward the arch
+  const spots = [], cols = 7, colStep = 0.56, rowStep = 0.95;
+  const rows = Math.max(6, Math.round(12 * Math.min(1, dens + 0.2)));
+  const z0 = MZ + PW + 1.9;                              // front row, clear of the steps
+  for (let r = 0; r < rows; r++) for (const sx of [-1, 1]) for (let c = 0; c < cols; c++) {
+    spots.push([sx * (S.aisle / 2 + 0.36 + c * colStep), z0 + r * rowStep]);
+  }
   const mesh = new THREE.InstancedMesh(chairGeometry(), chairMat, spots.length);
-  spots.forEach(([x, z], i) => mesh.setMatrixAt(i, mat(x, 0, z, 0, (Math.random() - 0.5) * 0.03)));
+  spots.forEach(([x, z], i) => mesh.setMatrixAt(i, mat(x, 0, z, 0, -Math.PI / 2)));
   mesh.name = 'muhurtham:chairs';
   return mesh;
 }
 
-/* the drive as compound.js lays it: the same centripetal curve through STOP.muhurtham.route,
- * sampled every 0.3 m, and the drop-off apron (an ellipse) at the stop */
-const DRIVE = (() => {
-  const r = STOP.muhurtham.route, out = [], p = new THREE.Vector3();
-  for (const pts of [r.in, r.out]) {
-    const c = new THREE.CatmullRomCurve3(pts.map(([s, l]) => new THREE.Vector3(s, 0, l)), false, 'centripetal');
-    const n = Math.ceil(c.getLength() / 0.3);
-    for (let i = 0; i <= n; i++) { c.getPointAt(i / n, p); out.push([p.x, p.z]); }
-  }
-  return out;
-})();
-const STOP_PT = STOP.muhurtham.route.in.at(-1);
-/** clearance (m) from (s, lat) to the edge of the paved drive / apron; < 0 means on it */
-function driveClear(s, lat) {
-  let d = Infinity;
-  for (const [ds, dl] of DRIVE) d = Math.min(d, Math.hypot(s - ds, lat - dl));
-  d -= 2.1 + 2.2 * Math.max(0, Math.min(1, (lat + 6.2) / 2.6));          // half-width, bellmouth near the road
-  const es = (s - STOP_PT[0] - 1) / 5.2, el = (lat - STOP_PT[1] + 0.6) / 3.4;
-  return Math.min(d, (Math.hypot(es, el) - 1) * 3.4);
-}
-/* ---------- 7. dressing for the shared compound (compound.js: lawn, drive, walls, gates) ----------
- * Retaining skirt under the lawn's open edges, brass lamps and diyas on the lawn clear of the
- * drive, and the kolam on the apron. Built from path coordinates, taken into the deck frame (inv). */
-function buildCourt(ctx, inv, stone, gold, fx, R, dens) {
-  const { path, world } = ctx;
+/* ---------- 7. on the forecourt: the kolam on the drop-off, and the island centrepiece ----------
+ * The compound (compound.js) builds the lawn, drive, carpet, walls and gates. Built from path
+ * coordinates, taken into the deck frame (inv). Returns the kolam decals and the carpet height. */
+function buildCourt(ctx, inv, stone, gold, leaf, flowers, fx, R, dens) {
+  const { path } = ctx;
   const _p = new THREE.Vector3();
-  const L = (s, lat, dy = 0) => { path.toWorld(s, lat, _p); _p.y = path.roadY(s) + 0.012 + dy; return _p.applyMatrix4(inv).clone(); };
-  const G = (s, lat) => { path.toWorld(s, lat, _p); _p.y = world.heightSL(s, lat); return _p.applyMatrix4(inv).y; };
-  const [la, lb] = [-5.75, CT.lat[1]];
-  // retaining skirt down to the sand: sea side and both ends (dark granite, both faces)
-  const skirt = (s0, l0, s1, l1, steps) => {
-    const P = [];
-    for (let k = 0; k < steps; k++) {
-      const sa = s0 + (s1 - s0) * k / steps, sb = s0 + (s1 - s0) * (k + 1) / steps;
-      const qa = l0 + (l1 - l0) * k / steps, qb = l0 + (l1 - l0) * (k + 1) / steps;
-      const A = L(sa, qa), B = L(sb, qb), ya = Math.min(A.y - 0.05, G(sa, qa) - 0.4), yb = Math.min(B.y - 0.05, G(sb, qb) - 0.4);
-      P.push(A.x, A.y, A.z, A.x, ya, A.z, B.x, B.y, B.z, B.x, B.y, B.z, A.x, ya, A.z, B.x, yb, B.z);
-      P.push(A.x, A.y, A.z, B.x, B.y, B.z, A.x, ya, A.z, B.x, B.y, B.z, B.x, yb, B.z, A.x, ya, A.z);
+  const L = (s, lat, dy) => { path.toWorld(s, lat, _p); _p.y = path.roadY(s) + dy; return _p.applyMatrix4(inv).clone(); };
+  const kolams = [];
+  // the kolam on the drop-off, round the car
+  const K = L(S.stop.s, S.stop.l, 0.039);
+  kolams.push(new THREE.PlaneGeometry(3.6, 3.6).rotateX(-Math.PI / 2).translate(K.x, K.y, K.z));
+  // island: a granite disc with a kolam inlaid, a brass kuthu vilakku, jasmine and marigold mounds (≤ 1.5 m)
+  const I = S.island, rD = Math.min(1.35, I.rl - 0.45), C = L(I.s, I.l, 0.012), H = 0.1;
+  stone.add(new THREE.CylinderGeometry(rD, rD + 0.04, H, 40), 0x2c2a28, mat(C.x, C.y + H / 2, C.z), 0.02);
+  gold.add(new THREE.TorusGeometry(rD - 0.02, 0.018, 4, 48), 0xc99a3a, mat(C.x, C.y + H, C.z, Math.PI / 2, 0, 0), 0);
+  kolams.push(new THREE.CircleGeometry(rD - 0.06, 40).rotateX(-Math.PI / 2).translate(C.x, C.y + H + 0.003, C.z));
+  const ped = 0.1, sc = 0.7;                              // pedestal, lamp scale: top at ~1.47 m
+  gold.add(new THREE.CylinderGeometry(0.2, 0.24, ped, 16), 0xb88a2c, mat(C.x, C.y + H + ped / 2, C.z));
+  gold.add(LAMP_GEO, 0xd9a23c, mat(C.x, C.y + H + ped, C.z, 0, 0, 0, sc, sc, sc), 0);
+  const fy = C.y + H + ped + 1.49 * sc;
+  for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2 + 0.3; fx.push([0, C.x + Math.cos(a) * 0.165 * sc, fy, C.z + Math.sin(a) * 0.165 * sc, 0.06, 0.1, 1.1]); }
+  fx.push([1, C.x, fy, C.z, 0.8, 0.8, 0.7], [2, C.x, C.y + H + 0.01, C.z, 3.2, 3.2, 0.5]);
+  // six flower mounds round the lamp, marigold and jasmine alternating; a rose ring at the lamp's foot
+  for (let m = 0; m < 6; m++) {
+    const a = m / 6 * Math.PI * 2, mx = C.x + Math.cos(a) * rD * 0.62, mz = C.z + Math.sin(a) * rD * 0.62;
+    const hexA = m % 2 ? JAS : MARI, hexB = m % 2 ? BUD : MARY;
+    for (let k = 0; k < 50 * dens; k++) {
+      const b = R() * Math.PI * 2, r = Math.sqrt(R()) * 0.3, h = 0.26 * Math.sqrt(1 - (r / 0.3) ** 2) * (0.7 + R() * 0.3);
+      flowers.push([mx + Math.cos(b) * r, C.y + H + 0.02 + h, mz + Math.sin(b) * r, R() < 0.8 ? hexA : hexB, 0.045]);
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-    g.computeVertexNormals();
-    stone.add(g, 0x3c3935, null, 0.08);
-  };
-  skirt(CT.s0, la, CT.s0, lb, 4); skirt(CT.s0, lb, CT.s1, lb, 12); skirt(CT.s1, lb, CT.s1, la, 4);
-  // lamps: a brass samai on a granite pedestal; clay diyas between them; all on the lawn, off the drive
-  const lampGeo = lathe([[0, 0], [0.13, 0], [0.13, 0.03], [0.07, 0.06], [0.035, 0.12], [0.03, 0.4], [0.055, 0.43], [0.03, 0.46],
-    [0.026, 0.62], [0.05, 0.64], [0.15, 0.68], [0.16, 0.72], [0.05, 0.71], [0.025, 0.75], [0.03, 0.82], [0.012, 0.9], [0, 0.93]], 8);
-  const cup = lathe([[0, 0], [0.045, 0], [0.062, 0.04], [0, 0.03]], 6);
-  const lamp = (s, lat) => {
-    if (driveClear(s, lat) < 1.0) return;
-    const b = L(s, lat);
-    stone.box(0.34, 0.5, 0.34, 0x2a2826, b.x, b.y + 0.25, b.z, 0, 0.03);
-    stone.box(0.4, 0.05, 0.4, 0x6c665d, b.x, b.y + 0.52, b.z);
-    gold.add(lampGeo, 0xd9a23c, mat(b.x, b.y + 0.545, b.z), 0);
-    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; fx.push([0, b.x + Math.cos(a) * 0.14, b.y + 1.3, b.z + Math.sin(a) * 0.14, 0.07, 0.12, 1.1]); }
-    fx.push([1, b.x, b.y + 1.3, b.z, 0.9, 0.9, 0.7], [2, b.x, b.y + 0.01, b.z, 2.8, 2.8, 0.22]);
-  };
-  const diya = (s, lat) => {
-    if (driveClear(s, lat) < 0.8) return;
-    const b = L(s, lat);
-    stone.add(cup, 0x9c4d27, mat(b.x, b.y + 0.004, b.z, 0, R() * 3, 0), 0.15);
-    fx.push([0, b.x, b.y + 0.085, b.z, 0.042, 0.075, 1.0], [1, b.x, b.y + 0.08, b.z, 0.34, 0.34, 0.5]);
-  };
-  for (let s = CT.s0 + 2.2; s < CT.s1 - 0.5; s += 4.5) { lamp(s, lb + 0.75); lamp(s, la - 0.9); }   // sea edge, inside the road wall
-  for (const lat of [-9.5, -13]) lamp(CT.s0 + 1.1, lat);                                             // near end
-  const step = 0.55 / dens;
-  for (let s = CT.s0 + 0.8; s < CT.s1 - 0.3; s += step) { diya(s, lb + 0.95); diya(s, la - 0.55); }
-  for (let lat = la - 1.2; lat > lb + 1.2; lat -= step) diya(CT.s0 + 0.75, lat);
-  // the kolam on the drop-off apron (apron top is road + 0.031), just ahead of the car's nose
-  const K = L(STOP_PT[0] + 4.4, -11, 0.027);
-  const kolam = new THREE.PlaneGeometry(3.6, 3.6).rotateX(-Math.PI / 2).translate(K.x, K.y, K.z);
-  return { kolam, cy: L(CT.s1, AX + LAT_C, 0.008).y };
+    leafBlade(leaf, 0x3b7a2a, mx, C.y + H + 0.01, mz, a, 0.4, 0.42, 0.07, 0.15, 4);
+  }
+  for (let k = 0; k < 36 * dens; k++) { const a = k / (36 * dens) * Math.PI * 2; flowers.push([C.x + Math.cos(a) * 0.3, C.y + H + 0.03, C.z + Math.sin(a) * 0.3, ROSE, 0.04]); }
+  // the carpet at the deck's edge (road + 0.03), on the axis
+  return { kolam: mergeGeometries(kolams, false), cy: L(S.d0 - 0.5, S.ax, 0.03).y };
 }
 
 /* ---------- build ---------- */
@@ -677,32 +658,31 @@ export default {
     const dens = quality.tier === 'high' ? 1 : quality.tier === 'med' ? 0.7 : 0.45;
     const group = new THREE.Group();
     group.name = 'event-muhurtham';
-    // deck top at roadY - 0.35 as briefed, lifted if the ground under the footprint rises near it
-    const road = path.roadY(E.s);
-    let gMax = -1e9;
-    for (let lat = E.lat[0]; lat >= E.lat[1]; lat -= 1.2) for (let ds = -HALF_Z; ds <= HALF_Z; ds += 2) gMax = Math.max(gMax, world.heightSL(E.s + ds, lat));
-    const deckY = Math.min(road - 0.1, Math.max(road - 0.35, gMax + 0.12));
-    const c = path.toWorld(E.s, LAT_C);
+    // a level deck, its top within road - 0.05 … road + 0.02 all along it (SITES.md rule 3)
+    let rMin = 1e9, rMax = -1e9;
+    for (let ds = -HALF_Z; ds <= HALF_Z; ds += 1) { const y = path.roadY(S_C + ds); rMin = Math.min(rMin, y); rMax = Math.max(rMax, y); }
+    const deckY = Math.max(rMax - 0.05, Math.min(rMin + 0.02, path.roadY(S.d0) - 0.02));
+    const c = path.toWorld(S_C, LAT_C);
     group.position.set(c.x, deckY, c.z);
-    group.rotation.y = path.sample(E.s).heading;
-    const groundAt = (x, z) => world.heightSL(E.s - z, LAT_C + x) - deckY;
+    group.rotation.y = path.sample(S_C).heading;
+    const groundAt = (x, z) => world.heightSL(S_C - z, LAT_C + x) - deckY;
     group.updateMatrix();
     const inv = group.matrix.clone().invert();
 
     const wood = new Bag(true), stone = new Bag(), gold = new Bag(), runner = new Bag(true), leaf = new Bag();
     const fx = [], flowers = [];
     buildDeck(ctx, wood, stone, groundAt);
-    // the mandap, its florals and the entrance are built round z = 0, then shifted to MZ
+    // the mandap, its florals and its fire are built in the mandap frame (front toward +x), then turned
     const bags = [stone, gold, runner, leaf];
-    bags.forEach(b => { b.offZ = MZ; });
+    bags.forEach(b => { b.post = MFRAME; });
     const f0 = flowers.length, x0 = fx.length;
     buildMandap(stone, gold, runner);
     buildRitual(stone, gold, leaf, fx, R);
     buildFlorals(leaf, stone, flowers, R, dens);
-    bags.forEach(b => { b.offZ = 0; });
-    for (let i = f0; i < flowers.length; i++) flowers[i][2] += MZ;
-    for (let i = x0; i < fx.length; i++) fx[i][3] += MZ;
-    const ct = buildCourt(ctx, inv, stone, gold, fx, R, dens);
+    bags.forEach(b => { b.post = null; });
+    for (let i = f0; i < flowers.length; i++) { const f = flowers[i]; [f[0], f[2]] = toDeck(f[0], f[2]); }
+    for (let i = x0; i < fx.length; i++) { const f = fx[i]; [f[1], f[3]] = toDeck(f[1], f[3]); }
+    const ct = buildCourt(ctx, inv, stone, gold, leaf, flowers, fx, R, dens);
     buildEntrance(stone, gold, runner, leaf, flowers, fx, R, dens, ct.cy, groundAt);
     buildDiyas(stone, fx, R, dens);
 
@@ -723,7 +703,7 @@ export default {
     // coordinates, so it is carried in the deck frame by the inverse of the group's transform
     const compound = buildCompound(ctx, 'muhurtham', {
       drive: { base: '#232221', joint: '#8f887c', accent: '#5a5650' },
-      stone: 0xd9d1c1, cap: 0xb88a3a, glow: 0xffc27a, seaWall: true
+      stone: 0xd9d1c1, cap: 0xb88a3a, glow: 0xffc27a, seaWall: true, carpet: '#8a1f22'   // continues the red aisle runner
     });
     compound.group.applyMatrix4(inv);
     group.add(compound.group);

@@ -5,7 +5,7 @@
  *
  * Exports helpers the cove reuses: duneGrass(ctx, opts), coastRocks(ctx, opts).
  */
-import { onEventSite, eventDist, COURTS } from '../core/timeline.js';
+import { onEventSite, eventDist, COURTS, SITES } from '../core/timeline.js';
 import * as THREE from 'three';
 import { makeWater } from './water.js';
 import { plant, band as band0 } from './flora.js';
@@ -299,7 +299,8 @@ function duneH(s, lat, wall, shore) {
   return band * Math.max(0, 0.25 + n) * 1.25;
 }
 
-const inCourt = (s, l) => Object.values(COURTS).some(c => s > c.s0 - 1 && s < c.s1 + 1 && l < c.lat[0] + 0.3 && l > c.lat[1] - 0.8);
+// the venue sites (forecourt and deck): the sand stays well below their paving and boards
+const inCourt = (s, l) => Object.values(SITES).some(S => s > S.a - 1 && s < S.d1 + 1 && l < -3.4 && l > S.lat[1] - 0.8);
 
 export function sandBeach(ctx, { s0, s1, wallLat, fadeIn = 24, fadeOut = 24 }) {
   const { path, world } = ctx;
