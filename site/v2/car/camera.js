@@ -190,7 +190,7 @@ function update(dt) {
 
   // venue on the left → camera round to behind-right (negative yaw), and the mirror for the right
   const yaw = wT * tYaw + wC * (CHASE.yaw - curvS * 6 + drift) + wE * END.yaw + userC.yaw;
-  const dist = (wT * tDist + wC * (CHASE.dist + sp * 1.4) + wE * END.dist) * (1 + narrow * 0.3) + fk * 0.6;
+  const dist = (wT * tDist + wC * (CHASE.dist + sp * 1.4) + wE * END.dist) * (1 + narrow * 0.3) + fk * 0.6 + fkP * 6;   // phones: pulled back as well as across, so car and set line up
   let h = wT * TITLE.h + wC * (CHASE.h + sp * 0.3 + driftH) + wE * END.h;
   h += userC.pitch * dist * 0.9;
   // swung round to the side or front: a little higher, and (below) allowed a few metres further
@@ -209,7 +209,7 @@ function update(dt) {
     .addScaledVector(left, Math.sin(yaw) * dist);
   want.y = car.pos.y + h + fkP * 2.8;
   // away from the venue's side: a venue on the left (lateral < 0) moves the camera right (−left)
-  if (fkP > 0.001) want.addScaledVector(left, (focusLat < 0 ? -1 : 1) * fkP * 6);
+  if (fkP > 0.001) want.addScaledVector(left, (focusLat < 0 ? -1 : 1) * fkP * 9);
 
   // aim: ahead of the car, pulled toward where the road goes (curve look-ahead)
   look.copy(car.pos).addScaledVector(f, lookF);
@@ -219,6 +219,8 @@ function update(dt) {
   look.y = car.pos.y + lookH;
   // aim across the car at the set: further on narrow screens, where less of it fits
   if (fk > 0.001) look.lerp(focusV, fk * (0.34 + 0.22 * port) + fkP * 0.28);
+  // phones framing a venue from far across the road: aim between the car and the set so both fit
+  if (fkP > 0.001) { tmp.copy(car.pos).add(focusV).multiplyScalar(0.5); tmp.y = car.pos.y + 1.2; look.lerp(tmp, fkP * 0.7); }
   // looking round from the side or the front: aim back at the car, not down the road ahead
   const round = smoothstep(0.5, 1.6, Math.abs(userC.yaw));
   if (round > 0) { tmp.copy(car.pos); tmp.y += 0.9; look.lerp(tmp, round); }
@@ -226,7 +228,8 @@ function update(dt) {
   // stay inside the cleared corridor (road + shoulder + verge) so the lens
   // never ends up inside a tree or a wall beside the road
   const nr = path.nearest(want.x, want.z);
-  const lim = world.VERGE - 0.3 + roundK * 3.5;   // trees start at VERGE + 0.4; looking round may go a little past
+  // trees start at VERGE + 0.4; looking round, or a phone framing a venue, may go a little past
+  const lim = world.VERGE - 0.3 + Math.max(roundK * 3.5, fkP * 3.5);
   if (Math.abs(nr.lateral) > lim) {
     path.sample(nr.s, S);
     want.addScaledVector(S.right, -(nr.lateral - Math.sign(nr.lateral) * lim));
