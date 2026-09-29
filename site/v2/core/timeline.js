@@ -60,6 +60,7 @@ export function onEventSite(s, lateral, pad = 2) {
     const c = COURTS[k];
     if (s > c.s0 - pad && s < c.s1 + pad && lateral < c.lat[0] + pad && lateral > c.lat[1] - pad) return true;
   }
+  if (s > karimS + 20 && s < karimS + 106 && lateral > 3.4 && lateral < 64) return true;   // AMR Unnati's lot and apron
   const b = EVENTS.board;
   return Math.abs(s - b.s) < 4 + pad && Math.abs(lateral - b.lateral) < 3 + pad;
 }
@@ -79,8 +80,10 @@ const eventStop = (id, label, sheet) => {
   return { id, s: e.s, slow: [c - 110, e.s + 20], callout: [c - 95, c - 20], sheet, label,
     venue: { s: e.s + 3, lateral: (e.lat[0] + e.lat[1]) / 2 }, pullover: { side: 'left', lateral: -4.9 },
     route: {
-      in: [[c - 14, -1.8], [c - 4, -2.4], [c + 3, -6.6], [c + 8, -9.9], [c + 14, -10.8]],
-      out: [[c + 14, -10.8], [c + 18.5, -10.2], [c + 21.5, -7.6], [c + 24.5, -4.4], [c + 31, -2.2], [c + 40, -1.8]]
+      // both legs meet at the stop with a short straight run along the road, so the car parks square
+      // and pulls away without a snap; the out leg ends straight in the lane for the same reason
+      in: [[c - 14, -1.8], [c - 4, -2.4], [c + 3, -6.6], [c + 7.5, -10.2], [c + 10.5, -10.8], [c + 14, -10.8]],
+      out: [[c + 14, -10.8], [c + 17.5, -10.8], [c + 20, -9.8], [c + 22, -7.6], [c + 24.5, -4.4], [c + 30, -2.4], [c + 37, -1.85], [c + 45, -1.8], [c + 54, -1.8]]
     },
     cam: { s: c - 7, lateral: 4.2, h: 6.2 }, focus: { s: d0 + 6, lateral: -12.5, h: 1.8 },
     // surface the car drives on (car/car.js): the compound drive (biomes/events/compound.js) is road + 0.03
@@ -100,8 +103,9 @@ export const STOPS = [
     exitGate: { s: karimS + 48 + 29 },
     route: (G => ({
       // stops at the portal steps (portal centre ≈ G + 2.5), nose +s
-      in: [[G - 16, -1.8], [G - 8, -0.6], [G - 4, 3.5], [G - 1.5, 8.5], [G - 0.3, 13], [G + 2, 17.2], [G + 6, 18.8]],
-      out: [[G + 6, 18.8], [G + 13, 19.2], [G + 17, 19.6], [G + 23, 18], [G + 27, 14.5], [G + 29, 10.6], [G + 31, 6], [G + 35, 1.2], [G + 44, -1.8]]
+      // (both legs meet square to the road at the stop: no snap when the car pulls away)
+      in: [[G - 16, -1.8], [G - 8, -0.6], [G - 4, 3.5], [G - 1.5, 8.5], [G - 0.2, 13], [G + 2, 17], [G + 4.5, 18.7], [G + 7, 18.8]],
+      out: [[G + 7, 18.8], [G + 10, 18.8], [G + 13, 19.2], [G + 17, 19.6], [G + 23, 18], [G + 27, 14.5], [G + 29, 10.6], [G + 31, 6], [G + 35, 1.4], [G + 41, -1.2], [G + 49, -1.8], [G + 58, -1.8]]
     }))(karimS + 48),
     cam: { s: karimS + 48 - 8, lateral: -4.6, h: 6.8 }, focus: { s: karimS + 60, lateral: 26, h: 3.5 },
     // surface the car drives on: road, then dam.js's apron ramping up to the lot's pad level across
