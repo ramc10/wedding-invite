@@ -229,7 +229,8 @@ function update(dt) {
   // never ends up inside a tree or a wall beside the road
   const nr = path.nearest(want.x, want.z);
   // trees start at VERGE + 0.4; looking round, or a phone framing a venue, may go a little past
-  const lim = world.VERGE - 0.3 + Math.max(roundK * 3.5, fkP * 3.5);
+  // (the extra room is only for beach venues, whose far side is open lawn; AMR's far side is trees)
+  const lim = world.VERGE - 0.3 + Math.max(roundK * 3.5, focusLat < 0 ? fkP * 3.5 : 0);
   if (Math.abs(nr.lateral) > lim) {
     path.sample(nr.s, S);
     want.addScaledVector(S.right, -(nr.lateral - Math.sign(nr.lateral) * lim));
