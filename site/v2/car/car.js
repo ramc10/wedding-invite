@@ -897,7 +897,8 @@ function update(dt, s) {
   // atan (not atan2) of the track slope, and only when the car is actually
   // moving sideways: atan2(0, ds<0) is π, which used to swing the car 26°
   // sideways every time the page was scrolled back up.
-  const yawT = detour.carYaw != null ? clamp(detour.carYaw, -0.35, 0.35)
+  // a detour drives into a venue compound: allow real turns off the road there
+  const yawT = detour.carYaw != null ? clamp(detour.carYaw, -1.45, 1.45)
     : Math.abs(ds) > 0.02 && Math.abs(dLat) > 1e-4 ? clamp(-Math.atan(dLat / ds), -0.35, 0.35) : 0;
   state.yaw += (yawT - state.yaw) * damp(8, dt);
 
@@ -909,7 +910,9 @@ function update(dt, s) {
   // sit on the ground under each track (the shoulder falls away): height is
   // the mean of the two sides, the difference becomes a small camber roll
   const track = axleInfo.tx ? axleInfo.tx * 2 : 1.52;
-  const yL = groundY(s, state.lateral - track / 2), yR = groundY(s, state.lateral + track / 2);
+  let yL = groundY(s, state.lateral - track / 2), yR = groundY(s, state.lateral + track / 2);
+  // venue courts and drives are paved at road level (core/timeline.js COURTS, dam.js pad)
+  if (detour.carLatExact != null) { const fl = path.roadY(s) + ROAD_LIFT; yL = Math.max(yL, fl); yR = Math.max(yR, fl); }
   pos.y = (yL + yR) / 2;
   const camber = Math.atan2(yL - yR, track);
   object.position.copy(pos);

@@ -197,7 +197,9 @@ function update(dt) {
 
   // ease in the car's frame, so a hard fling never leaves the camera behind
   want.sub(car.pos); look.sub(car.pos);
-  if (first || scroll.cut) { offE.copy(want); offL.copy(look); first = false; }
+  // an authored shot fully in control is exact: easing it in the car's frame
+  // would drag a fixed viewpoint along with the moving car
+  if (first || scroll.cut || (shot && shot.w > 0.999)) { offE.copy(want); offL.copy(look); first = false; }
   const k = shot && shot.w > 0 ? 8 : 3;
   offE.lerp(want, damp(k, dt));
   offL.lerp(look, damp(k + 2, dt));

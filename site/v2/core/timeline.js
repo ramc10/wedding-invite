@@ -28,6 +28,17 @@ export const EVENTS = {
   haldi:     { s: 990, lat: [-7.4, -21], len: 26 },
   muhurtham: { s: 1200, lat: [-7.4, -21], len: 28 }
 };
+/** Each beach event has a paved forecourt (court) at road level just before
+ *  its deck, where "Take me here" drives the car in (car/detour.js): off the
+ *  road at s0, round to a stop facing the deck, and back out onto the road
+ *  before the deck. The deck's entrance faces the court from the deck's near
+ *  end (s = deck start). lat: road-relative, negative = sea side. */
+export const COURTS = {};
+for (const k of ['reception', 'haldi', 'muhurtham']) {
+  const e = EVENTS[k], d0 = e.s - e.len / 2;
+  COURTS[k] = { s0: d0 - 25, s1: d0 - 1, lat: [-5.9, -16.5] };
+}
+
 /** metres from (s, lateral) to the nearest event deck footprint (0 inside) */
 export function eventDist(s, lateral) {
   let d = Infinity;
@@ -43,6 +54,8 @@ export function onEventSite(s, lateral, pad = 2) {
   for (const k of ['reception', 'haldi', 'muhurtham']) {
     const e = EVENTS[k];
     if (Math.abs(s - e.s) < e.len / 2 + pad && lateral < e.lat[0] + pad && lateral > e.lat[1] - pad) return true;
+    const c = COURTS[k];
+    if (s > c.s0 - pad && s < c.s1 + pad && lateral < c.lat[0] + pad && lateral > c.lat[1] - pad) return true;
   }
   const b = EVENTS.board;
   return Math.abs(s - b.s) < 4 + pad && Math.abs(lateral - b.lateral) < 3 + pad;
@@ -52,21 +65,39 @@ export function onEventSite(s, lateral, pad = 2) {
 // (not down in the valley under it), so the car can pull up beside it.
 const karimS = Z.dam.s1 - 25;
 
+/* "Take me here" routes, as [s, lateral] waypoints (car/detour.js runs a
+ * smooth curve through them, starting from wherever the car is). in: from
+ * the lane into the compound, ending at the stop. out: from the stop back to
+ * the lane. cam: the raised, fixed viewpoint the camera glides to while the
+ * car drives in and out ({s, lateral, h} above the road), aimed between the
+ * car and focus (the venue). The callout ends before the route's first point. */
 const eventStop = (id, label, sheet) => {
-  const e = EVENTS[id];
-  return { id, s: e.s, slow: [e.s - 90, e.s + 50], callout: [e.s - 60, e.s + 30], sheet, label,
+  const e = EVENTS[id], c = COURTS[id].s0, d0 = e.s - e.len / 2;
+  return { id, s: e.s, slow: [c - 110, e.s + 20], callout: [c - 95, c - 20], sheet, label,
     venue: { s: e.s + 3, lateral: (e.lat[0] + e.lat[1]) / 2 }, pullover: { side: 'left', lateral: -4.9 },
-    park: { s: e.s - 8 } };
+    route: {
+      in: [[c - 14, -1.8], [c - 4, -2.4], [c + 3, -6.6], [c + 8, -9.9], [c + 14, -10.8]],
+      out: [[c + 14, -10.8], [c + 18.5, -10.2], [c + 21.5, -7.6], [c + 24.5, -4.4], [c + 31, -2.2], [c + 40, -1.8]]
+    },
+    cam: { s: c - 7, lateral: 4.2, h: 6.2 }, focus: { s: d0 + 6, lateral: -12.5, h: 1.8 } };
 };
 
 export const STOPS = [
   eventStop('reception', 'the Reception', 'sheetReception'),
   eventStop('haldi', 'the Haldi', 'sheetHaldi'),
   eventStop('muhurtham', 'the Muhurtham', 'sheetMuhurtham'),
-  { id: 'karimnagar', s: karimS, slow: [karimS - 90, karimS + 50], callout: [karimS - 60, karimS + 30],
+  // AMR Unnati: in through the gate (s G, dam.js), round to the drop-off under the
+  // hall's canopy, out through the exit gate further along (s G + 29)
+  { id: 'karimnagar', s: karimS, slow: [karimS - 90, karimS + 50], callout: [karimS - 60, karimS + 26],
     sheet: 'sheetDam', label: 'AMR Unnati Convention',
     venue: { s: karimS + 68, lateral: 36 }, pullover: { side: 'right', lateral: 4.9 },
-    park: { s: karimS + 40 } }
+    park: { s: karimS + 40 },
+    exitGate: { s: karimS + 48 + 29 },
+    route: (G => ({
+      in: [[G - 16, -1.8], [G - 8, -0.6], [G - 3, 4], [G + 0.5, 9], [G + 3, 13.5], [G + 7, 17.5], [G + 11, 19.6]],
+      out: [[G + 11, 19.6], [G + 17, 19.6], [G + 23, 18], [G + 27, 14.5], [G + 29, 10.6], [G + 31, 6], [G + 35, 1.2], [G + 44, -1.8]]
+    }))(karimS + 48),
+    cam: { s: karimS + 48 - 8, lateral: -4.6, h: 6.8 }, focus: { s: karimS + 60, lateral: 26, h: 3.5 } }
 ];
 export const STOP = Object.fromEntries(STOPS.map(s => [s.id, s]));
 

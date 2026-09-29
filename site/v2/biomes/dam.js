@@ -50,7 +50,7 @@ import { fbm, hash2, smoothstep, rng as makeRng } from '../core/noise.js';
 
 const FLOOR = -16;           // valley floor (matches world.js 'drop')
 // The hall sits 10 m nearer the dam than STOP.karimnagar.venue so its gate lines up with the pull-over spot
-const PARK_S = STOP.karimnagar.park.s, GATE_C = PARK_S + 8;          // gate centre = where the car turns in
+const PARK_S = STOP.karimnagar.park.s, GATE_C = PARK_S + 8, EXIT_C = STOP.karimnagar.exitGate.s;          // gate centre = where the car turns in
 const VENUE = { s: STOP.karimnagar.venue.s - 10, lateral: STOP.karimnagar.venue.lateral };
 
 /* ---------- procedural textures ---------- */
@@ -400,7 +400,8 @@ const LOT = { s0: CREST_BR + 1.5, s1: VENUE.s + 46, l0: 11, l1: VENUE.lateral + 
 /** AMR Unnati layout for biomes/venue-amr*.js: lot (s0..s1 along the road, l0..l1 lateral, right
  *  side), gate opening (s G0..G1 in the front wall at lateral wallL), hall footprint (centre s HS,
  *  width HW along s; front face at lateral front, depth HD), pad level = road level at VENUE.s. */
-export const AMR = { LOT, VENUE, GATE: { s0: GATE_C - 5, s1: GATE_C + 5, c: GATE_C }, wallL: LOT.l0 - 0.4,
+export const AMR = { LOT, VENUE, GATE: { s0: GATE_C - 5, s1: GATE_C + 5, c: GATE_C }, EXIT: { s0: EXIT_C - 4, s1: EXIT_C + 4, c: EXIT_C },
+  route: STOP.karimnagar.route, wallL: LOT.l0 - 0.4,
   hall: { s: VENUE.s + 2, w: 44, front: 25, d: 22 } };
 
 function makeMats() {
@@ -852,7 +853,10 @@ function buildVenue(ctx, M, K, group) {
     for (let s = a + 3; s < b - 1; s += 3) out.plaster.push(tint(place(ctx, box(0.5, top - PY + 0.3, 0.5, 2), s, l, (top + PY) / 2 + 0.05), 0xc9c1b3));
   };
   const G0 = GATE_C - 5, G1 = GATE_C + 5;              // 10 m gate opening facing the pull-over apron
-  wallS(LOT.s0, G0 - 0.7, LOT.l0 - 0.4); wallS(G1 + 0.7, LOT.s1, LOT.l0 - 0.4); wallS(LOT.s0, LOT.s1, LOT.l1 + 0.1);
+  // second 8 m opening further along: the exit gate (the drop-off route leaves through it)
+  const X0 = EXIT_C - 4, X1 = EXIT_C + 4;
+  wallS(LOT.s0, G0 - 0.7, LOT.l0 - 0.4); wallS(G1 + 0.7, X0 - 0.7, LOT.l0 - 0.4); wallS(X1 + 0.7, LOT.s1, LOT.l0 - 0.4);
+  wallS(LOT.s0, LOT.s1, LOT.l1 + 0.1);
 
   // 19. the gate piers are biomes/venue-amr-grounds.js; the wall leaves a 10 m opening
 

@@ -204,7 +204,8 @@ function frame(now) {
 function step(dt) {
   world.U.uTime.value += dt;
   scroll.update(dt);
-  const s = scroll.s;
+  // during a detour the page scroll is frozen: the world (sky, legs, captions) follows the car
+  const s = detour.carS != null ? detour.carS : scroll.s;
 
   car.update(dt, s);
   detour.update(dt);

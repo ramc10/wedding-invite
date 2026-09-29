@@ -1,26 +1,28 @@
-/* "Take me here": pull over, frame the venue, open the sheet — and back.
+/* "Take me here": drive into the venue, open the sheet, and drive back out.
  *
- *   go(stop)  the drive rolls on to stop.s and the page scroll locks; the
- *             indicator blinks toward the shoulder while the car eases onto
- *             it (carLateral = stop.pullover.lateral) and stops; the camera
- *             blends (camShot.w 0→1) to a composed shot — the car large in
- *             the foreground, the venue building standing behind it; the
- *             sheet opens. On close everything runs backwards, the car
- *             indicates back into its lane and the scroll unlocks.
+ *   go(stop)  the page scroll locks and the car drives itself along the
+ *             stop's route (core/timeline.js STOPS[].route): off the road,
+ *             through the gate into the venue's court or forecourt, round to
+ *             a stop at the entrance. Meanwhile the camera glides once to a
+ *             raised, fixed viewpoint beside the entrance (stop.cam) and only
+ *             pans, gently, to keep the car and the venue in frame; it never
+ *             chases the car round the turns. The sheet opens. On close the
+ *             car drives the out route back onto the road, and the camera
+ *             glides back to the chase as it goes.
  *   Reduced motion: the sheet opens straight away.
  *
  * API: init(ctx), update(dt), go(stop) → Promise (resolves after the sheet
  *      closes and the car is back in lane), active (bool),
- *      carS / carLatExact (the car's s and lateral while the detour drives it,
- *      read by car.js), carLateral (eased lateral target), camShot ({pos, look, w} or null,
- *      read by camera.js).
+ *      carS / carLatExact / carYaw (the car's s, lateral and yaw off the road
+ *      heading while the detour drives it, read by car.js), camShot
+ *      ({pos, look, w} or null, read by camera.js).
  */
 import * as THREE from 'three';
 import { ui } from '../ui/index.js';
 import { scroll } from '../core/scroll.js';
 import { path } from '../core/path.js';
 import { world } from '../core/world.js';
-import { smoothstep, clamp } from '../core/noise.js';
+import { smoothstep, clamp, damp } from '../core/noise.js';
 import { car } from './car.js';
 
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
@@ -29,27 +31,7 @@ const frames = n => new Promise(r => { const f = () => (--n <= 0 ? r() : request
 
 const shot = { pos: new THREE.Vector3(), look: new THREE.Vector3(), w: 0 };
 let p = 0, pTarget = 0, rate = 1;   // blend progress (linear), eased into shot.w
-let busy = false;
-
-const C = new THREE.Vector3(), V = new THREE.Vector3(), d = new THREE.Vector3(), side = new THREE.Vector3();
-
-/** Compose the shot: raised three-quarter view from behind the parked car,
- *  set in toward the road centre, looking past the car to the venue — the
- *  car reads large in the foreground and the building stands beyond it. */
-function compose(stop, s) {
-  const S = path.sample(s);
-  path.toWorld(s, stop.pullover.lateral, C);
-  C.y = path.roadY(s);
-  path.toWorld(stop.venue.s, stop.venue.lateral, V);
-  V.y = world.heightSL(stop.venue.s, stop.venue.lateral);
-  const inward = -Math.sign(stop.pullover.lateral) || 1;     // toward the road centre
-  shot.pos.copy(C).addScaledVector(S.fwd, -10.5).addScaledVector(S.right, inward * 4.6);
-  shot.pos.y = C.y + 3.4;
-  const g = world.heightAt(shot.pos.x, shot.pos.z) + 1.3;
-  if (shot.pos.y < g) shot.pos.y = g;
-  shot.look.copy(C).lerp(V, 0.3);
-  shot.look.y = C.y + clamp(1.6 + (V.y - C.y) * 0.5, 1.2, 6);
-}
+let busy = false, camObj = null;
 
 function blendTo(target, seconds) {
   pTarget = target; rate = 1 / Math.max(0.01, seconds);
@@ -59,54 +41,6 @@ function blendTo(target, seconds) {
   });
 }
 
-/** Drive the car itself from (sA, latA) to (sB, latB) over T seconds.
- *  Distance follows smootherstep (pulls away gently, rolls to a stop — no
- *  lurch from a standstill); the lane change happens in the back half of the
- *  run. The car's yaw is the analytic slope of that planned track, so the
- *  nose turns onto the shoulder and back smoothly instead of jittering with
- *  frame timing. */
-const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-const dss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return 6 * t * (1 - t) / (b - a); };
-function drive(sA, sB, latA, latB, T, mode) {
-  const [la, lb] = mode === 'in' ? [0.3, 0.95] : [0.05, 0.7];
-  return new Promise(res => {
-    const t0 = performance.now();
-    const step = now => {
-      const u = clamp((now - t0) / 1000 / T, 0, 1);
-      const e = u * u * u * (u * (u * 6 - 15) + 10);           // smootherstep
-      detour.carS = sA + (sB - sA) * e;
-      detour.carLatExact = latA + (latB - latA) * ss(la, lb, e);
-      const dLatDs = (latB - latA) * dss(la, lb, e) / Math.max(1e-3, sB - sA);
-      detour.carYaw = -Math.atan(dLatDs);
-      if (u < 1) requestAnimationFrame(step); else { detour.carYaw = 0; res(); }
-    };
-    requestAnimationFrame(step);
-  });
-}
-
-/* The detour camera follows the car the whole time, from behind and set in
- * toward the road centre (the normal chase sits behind-left, which on a
- * left-hand pull-over put it inside the hedge and compound wall). As the car
- * slows, its aim drifts from the road ahead to the venue, so arrival reads as
- * one continuous move rather than a swing. */
-let cur = null;                         // { stop, lookK }
-const A = new THREE.Vector3(), L = new THREE.Vector3();
-function follow() {
-  const st = cur.stop, s = car.s, S = path.sample(s);
-  const inward = -Math.sign(st.pullover.lateral) || 1;
-  // pulling away (cur.out 0→1) the shot drifts onto the chase camera's own
-  // spot, behind and a little left, so handing back to it moves nothing
-  const o = smoothstep(0, 1, cur.out);
-  shot.pos.copy(car.pos).addScaledVector(S.fwd, -10.5 + 2.9 * o).addScaledVector(S.right, inward * 4.4 * (1 - o) - 1.5 * o);
-  shot.pos.y = path.roadY(s) + 3.3 - 0.6 * o;
-  const g = world.heightAt(shot.pos.x, shot.pos.z) + 1.3;
-  if (shot.pos.y < g) shot.pos.y = g;
-  A.copy(car.pos).addScaledVector(S.fwd, 12); A.y = path.roadY(s) + 1.4;
-  path.toWorld(st.venue.s, st.venue.lateral, V);
-  V.y = world.heightSL(st.venue.s, st.venue.lateral);
-  L.copy(car.pos).lerp(V, 0.3); L.y = path.roadY(s) + clamp(1.6 + (V.y - path.roadY(s)) * 0.5, 1.2, 6);
-  shot.look.copy(A).lerp(L, smoothstep(0, 1, cur.lookK));
-}
 function animate(obj, key, to, seconds) {
   const from = obj[key], t0 = performance.now();
   return new Promise(res => {
@@ -115,49 +49,112 @@ function animate(obj, key, to, seconds) {
   });
 }
 
+/* Route driving: a centripetal Catmull-Rom through [s, lateral] waypoints
+ * (x = s, z = lateral), run by arc length with smootherstep timing (pulls
+ * away gently, rolls to a stop). The car's yaw is the curve's own tangent,
+ * so it steers through the turns instead of sliding. */
+const routeCurve = pts => new THREE.CatmullRomCurve3(pts.map(([s, l]) => new THREE.Vector3(s, 0, l)), false, 'centripetal');
+const RP = new THREE.Vector3(), RT = new THREE.Vector3();
+function driveRoute(curve, T) {
+  return new Promise(res => {
+    const t0 = performance.now();
+    const step = now => {
+      const u = clamp((now - t0) / 1000 / T, 0, 1);
+      const e = u * u * u * (u * (u * 6 - 15) + 10);           // smootherstep
+      curve.getPointAt(e, RP); curve.getTangentAt(e, RT);
+      detour.carS = RP.x; detour.carLatExact = RP.z;
+      detour.carYaw = -Math.atan2(RT.z, RT.x);
+      u < 1 ? requestAnimationFrame(step) : res();
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+/* The crane: a raised viewpoint beside the venue's entrance. The shot starts
+ * exactly where the chase camera is and glides (cur.u 0→1, eased) to the
+ * crane while the car turns in; on the way out it glides to exactly where the
+ * chase camera will be behind the car in its lane, so neither handover moves
+ * anything. The aim is damped, between the car and the venue (lookK draws it
+ * onto the venue once parked, outK onto the chase's own aim at the end): it
+ * pans; nothing orbits. */
+let cur = null;                         // { stop, lookK, outK, u, from, to, fresh }
+const CAM = new THREE.Vector3(), FOC = new THREE.Vector3(), AIM = new THREE.Vector3(), CH = new THREE.Vector3();
+const _smp = path.sample(0);
+function aimCrane(st) {
+  path.toWorld(st.cam.s, st.cam.lateral, CAM);
+  CAM.y = Math.max(path.roadY(st.cam.s) + st.cam.h, world.heightAt(CAM.x, CAM.z) + 1.5);
+  path.toWorld(st.focus.s, st.focus.lateral, FOC);
+  FOC.y = path.roadY(st.focus.s) + st.focus.h;
+}
+/** where the chase camera sits (and looks) with the car in lane at s */
+function chaseSpot(s, out, look) {
+  path.sample(s, _smp);
+  path.toWorld(s - 7.5, car.LANE - 1.5, out); out.y = path.roadY(s) + 2.7;
+  if (look) { path.toWorld(s + 7, car.LANE, look); look.y = path.roadY(s) + 1.05; }
+}
+function crane(dt) {
+  const e = smoothstep(0, 1, cur.u);
+  shot.pos.lerpVectors(cur.from, cur.to, e);
+  shot.pos.y += Math.sin(Math.PI * e) * 2;   // a gentle arc over roadside trees mid-glide
+  AIM.copy(car.pos); AIM.y += 1.2;
+  AIM.lerp(FOC, 0.35 + 0.45 * smoothstep(0, 1, cur.lookK));
+  if (cur.outK > 0) { chaseSpot(car.s, CH, FOC2); AIM.lerp(FOC2, smoothstep(0, 1, cur.outK)); }
+  if (cur.fresh) { cur.fresh = false; } else shot.look.lerp(AIM, damp(2.4, dt));
+}
+const FOC2 = new THREE.Vector3();
+
 async function go(stop) {
   if (busy || !stop) return;
   busy = true;
   detour.active = true;
   scroll.autoplay(false);
   try {
-    if (RM.matches) {
+    if (RM.matches || !stop.route) {
       scroll.lock();
       try { await ui.openSheet(stop.sheet); } finally { scroll.unlock(); }
       return;
     }
     scroll.lock();
     const s0 = car.s, lat0 = car.lateral;
-    const sPark = Math.max(stop.park ? stop.park.s : stop.s, s0 + 28);
-    const latPark = stop.pullover.lateral;
-    detour.carS = s0; detour.carLatExact = lat0;
-    cur = { stop, lookK: 0, out: 0 };
-    follow();
+    const inPts = [[s0, lat0], ...stop.route.in.filter(([s]) => s > s0 + 3)];
+    const cin = routeCurve(inPts), cout = routeCurve(stop.route.out);
+    detour.carS = s0; detour.carLatExact = lat0; detour.carYaw = 0;
+    aimCrane(stop);
+    // start the shot exactly on the chase camera, so taking over moves nothing
+    cur = { stop, lookK: 0, outK: 0, u: 0, from: new THREE.Vector3(), to: CAM.clone(), fresh: true };
+    cur.from.copy(camObj.position);
+    shot.look.copy(camObj.position).add(camObj.getWorldDirection(AIM).multiplyScalar(20));
+    shot.pos.copy(cur.from);
+    p = pTarget = 1; shot.w = 1;
     detour.camShot = shot;
 
-    // indicate, roll on and pull onto the shoulder, stop — camera eases onto
-    // the follow line at once and turns toward the venue as the car slows
+    // indicate and drive in; the camera glides up to the crane as the car goes
     car.indicate && car.indicate(stop.pullover.side);
-    const T = clamp((sPark - s0) / 6, 4, 7);
-    blendTo(1, 1.1);
-    wait(T * 450).then(() => animate(cur, 'lookK', 1, T * 0.55 + 0.8));
-    await drive(s0, sPark, lat0, latPark, T, 'in');
-    await wait(900);
+    const Tin = clamp(cin.getLength() / 7, 5, 11);
+    animate(cur, 'u', 1, Tin * 0.85);
+    wait(Tin * 600).then(() => animate(cur, 'lookK', 1, Tin * 0.4 + 1));
+    await driveRoute(cin, Tin);
     car.indicate && car.indicate(null);
+    await wait(900);
 
     await ui.openSheet(stop.sheet);
 
-    // indicate back, pull away into the lane, hand back to the chase camera
+    // indicate, drive back out onto the road; hand back to the chase on the way
     car.indicate && car.indicate(stop.pullover.side === 'left' ? 'right' : 'left');
     await wait(400);
-    const sOut = Math.max(sPark + 30, stop.callout[1] + 4);   // rejoin past the callout, so it doesn't pop back up
-    animate(cur, 'lookK', 0, 2.4);
-    animate(cur, 'out', 1, 4.2);
-    wait(1800).then(() => blendTo(0, 3.2));                 // hand back gradually, during the pull-away
-    await drive(sPark, sOut, latPark, car.LANE, 4.2, 'out');
-    car.indicate && car.indicate(null);
+    const Tout = clamp(cout.getLength() / 6.5, 5, 9);
+    const sOut = stop.route.out[stop.route.out.length - 1][0];
+    // glide from the crane to the chase camera's own spot behind the car in its lane
+    cur.from.copy(CAM); chaseSpot(sOut, cur.to); cur.u = 0;
+    animate(cur, 'lookK', 0, Tout * 0.5);
+    wait(Tout * 250).then(() => animate(cur, 'u', 1, Tout * 0.75));
+    wait(Tout * 350).then(() => animate(cur, 'outK', 1, Tout * 0.65));
+    wait(Tout * 700).then(() => car.indicate && car.indicate(null));
+    await driveRoute(cout, Tout);
     scroll.place(sOut);
-    await blendTo(0, 3.2);
+    detour.carYaw = 0;
+    await wait(250);
+    await blendTo(0, 0.9);
   } finally {
     cur = null;
     detour.camShot = null; shot.w = 0; p = pTarget = 0;
@@ -174,12 +171,12 @@ function update(dt) {
     p = Math.abs(pTarget - p) <= step ? pTarget : p + Math.sign(pTarget - p) * step;
   }
   shot.w = smoothstep(0, 1, p);
-  if (cur) follow();
+  if (cur) crane(dt);
 }
 
 export const detour = {
   active: false, carLateral: null, camShot: null, carS: null, carLatExact: null, carYaw: null,
-  init() {},
+  init(ctx) { camObj = ctx.camera; },
   update,
   go
 };
