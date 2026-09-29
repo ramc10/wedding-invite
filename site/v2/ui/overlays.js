@@ -59,7 +59,7 @@ async function go(stop, el) {
 function update(dt, s) {
   for (const b of blocks) {
     const o = b.o;
-    const a = Math.min(smoothstep(o.from - o.fade, o.from, s), 1 - smoothstep(o.to, o.to + o.fade, s));
+    const a = Math.min(smoothstep(o.from - o.fade, o.from, s), 1 - smoothstep(o.to, o.to + (o.fadeOut ?? o.fade), s));
     const q = Math.round(a * 500) / 500;          // skip style writes when nothing visible changes
     if (q === b.last) continue;
     b.last = q;

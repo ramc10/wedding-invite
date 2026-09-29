@@ -122,7 +122,9 @@ export const STOP = Object.fromEntries(STOPS.map(s => [s.id, s]));
 
 const cap = (id, els) => ({ id, els, from: EVENTS[id].s - 55, to: EVENTS[id].s + 45, fade: 30 });
 export const OVERLAYS = [
-  { id: 'title', els: ['title', 'titleVenue'], from: -1e9, to: at('garden', 0.3), fade: 40 },   // gone before the garden opens up
+  // the names wait for the first scroll: hidden at rest, written in over the first few metres
+  { id: 'title', els: ['title'], from: 9, to: at('garden', 0.3), fade: 8, fadeOut: 40 },
+  { id: 'titleVenue', els: ['titleVenue'], from: -1e9, to: at('garden', 0.3), fade: 40 },   // gone before the garden opens up
   { id: 'vizag', els: ['venue'], from: EVENTS.board.s - 10, to: EVENTS.muhurtham.s + 70, fade: 40 },  // the hotel, the whole way along the beach
   cap('reception', ['capReception']),
   cap('haldi', ['capHaldi']),
