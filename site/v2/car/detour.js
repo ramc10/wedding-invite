@@ -96,6 +96,9 @@ function crane(dt) {
   const e = smoothstep(0, 1, cur.u);
   shot.pos.lerpVectors(cur.from, cur.to, e);
   shot.pos.y += Math.sin(Math.PI * e) * 2;   // a gentle arc over roadside trees mid-glide
+  // never crowd or overtake the car: hold the camera at least 8 m behind it along the road
+  const nr = path.nearest(shot.pos.x, shot.pos.z), over = nr.s - (car.s - 8);
+  if (over > 0) { path.sample(nr.s, _smp); shot.pos.addScaledVector(_smp.fwd, -over); }
   AIM.copy(car.pos); AIM.y += 1.2;
   AIM.lerp(FOC, 0.35 + 0.45 * smoothstep(0, 1, cur.lookK));
   if (cur.outK > 0) { chaseSpot(car.s, CH, FOC2); AIM.lerp(FOC2, smoothstep(0, 1, cur.outK)); }
@@ -131,7 +134,7 @@ async function go(stop) {
     // indicate and drive in; the camera glides up to the crane as the car goes
     car.indicate && car.indicate(stop.pullover.side);
     const Tin = clamp(cin.getLength() / 7, 5, 11);
-    animate(cur, 'u', 1, Tin * 0.85);
+    wait(Tin * 180).then(() => animate(cur, 'u', 1, Tin * 0.82));   // let the car pull away first
     wait(Tin * 600).then(() => animate(cur, 'lookK', 1, Tin * 0.4 + 1));
     await driveRoute(cin, Tin);
     car.indicate && car.indicate(null);

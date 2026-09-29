@@ -360,10 +360,10 @@ function buildPortal(L, lo) {
   const TR = 0.42, RH = 0.15;
   for (let k = 1; k <= 3; k++) {
     const x0 = PX - TR * k, top = FL - RH * k;
-    box(stone, x0, -0.4, OP[0] - 0.6 - 0.3 * k, PX, top, OP[1] + 0.6 + 0.3 * k, { uv: () => [0.01, 0.4] });
+    box(stone, x0, -0.4, OP[0] - 0.6, PX, top, OP[1] + 0.6, { uv: () => [0.01, 0.4] });
   }
   for (let k = 0; k <= 3; k++) {
-    const xf = PX - TR * k, top = FL - RH * k, z0 = OP[0] - 0.6 - 0.3 * k, z1 = OP[1] + 0.6 + 0.3 * k;
+    const xf = PX - TR * k, top = FL - RH * k, z0 = OP[0] - 0.6, z1 = OP[1] + 0.6;
     box(glow, xf - 0.012, top - 0.035, z0 + 0.1, xf, top - 0.012, z1 - 0.1, { col: 0xffc27a });
     faceX(pool, xf - 0.02, z0 + 0.1, z1 - 0.1, top - RH, top - 0.02,
       { col: 0xc98040, uv: (x, y) => [0.5, 0.5 + 0.5 * (top - y) / RH] });
@@ -399,13 +399,15 @@ function buildPortal(L, lo) {
 
 /* ---------- 3. canopy, chandelier, sign ---------- */
 
-const CZ = [2.4, 16.6], CD = 8.2, CY = 9.9, TILT = -0.12;                 // canopy z span, depth, root height, pitch
+// canopy z span, depth, root height, pitch. As in the render it runs past the portal across the left
+// wing's glazing, far enough (z -2.2 = s hall.s + 2.2) to shelter the car at the drop-off stop
+const CZ = [-2.2, 16.6], CD = 8.2, CY = 9.9, TILT = -0.12;
 
 function buildCanopy(L, lo) {
   const { dark, cglass, pool } = L;
   const beams = [], glass = [];
   // waffle grid in the canopy's own plane (x' from -CD..0 outward, y' = 0 top of beams)
-  const nx = 9, nz = 16, W = CZ[1] - CZ[0];
+  const nx = 9, nz = 20, W = CZ[1] - CZ[0];
   box(beams, -CD, -0.34, CZ[0], 0, 0, CZ[0] + 0.16, { col: CHAR_D });                   // rim beams
   box(beams, -CD, -0.34, CZ[1] - 0.16, 0, 0, CZ[1], { col: CHAR_D });
   box(beams, -CD, -0.34, CZ[0], -CD + 0.16, 0, CZ[1], { col: CHAR_D });
@@ -415,6 +417,9 @@ function buildCanopy(L, lo) {
   add(glass, new THREE.PlaneGeometry(CD, W), -CD / 2, 0.02, (CZ[0] + CZ[1]) / 2, { rx: -Math.PI / 2 });
   const place = g => { g.rotateZ(TILT); g.translate(PX, CY, 0); return g; };
   dark.push(...beams.map(place)); L.cglass.push(...glass.map(place));
+  // where it passes the left wing (set back from the portal face), the root beam ties back into the
+  // charcoal band on two slim outriggers
+  for (const z of [CZ[0] + 0.08, (CZ[0] + P0) / 2]) box(dark, PX, CY - 0.3, z - 0.08, 0.05, CY, z + 0.08, { col: CHAR_D });
   // warm light caught on the underside: a faint additive sheet just under the grid
   const under = add(pool, new THREE.PlaneGeometry(CD, W), -CD / 2, -0.36, (CZ[0] + CZ[1]) / 2,
     { rx: Math.PI / 2, col: 0x5a3818, uv: (x, y, z) => [0.5 + x / (CD * 1.4), 0.5 + (z - (CZ[0] + CZ[1]) / 2) / (W * 1.1)] });

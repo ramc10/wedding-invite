@@ -6,15 +6,18 @@
  * mustard drapes (plus a sheer layer), marigold string curtains and a mango-leaf
  * toran, a wooden chowki for the couple with a brass urli and turmeric bowls, a U of
  * printed floor gaddis and bolsters, fringed yellow chhatris, potted banana plants,
- * a flower rangoli, and a marigold arch with steps down from the sea wall.
+ * a flower rangoli, and a marigold arch at the deck's near end facing the court.
+ * Court (core/timeline.js COURTS.haldi): a road-level forecourt of terracotta pavers
+ * with a marigold-yellow sandstone border, laterite plinth down to the sand, potted
+ * bananas and brass urlis on its edges, clear of the "Take me here" route.
  *
  * Scene-local frame: group at the deck centre, rotation.y = heading; local -z is
  * road-forward, +x is toward the road. Deck top is local y = 0.
- * Draw calls: wood, rugs, gaddis, fabric, sheer, brass, leaves, marigolds = 8.
+ * Draw calls: wood, rugs, gaddis, fabric, sheer, brass, leaves, strings, marigolds, pavers, stone = 11.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/addons/utils/BufferGeometryUtils.js';
-import { EVENTS } from '../../core/timeline.js';
+import { EVENTS, COURTS, STOP } from '../../core/timeline.js';
 import { rng as makeRng } from '../../core/noise.js';
 
 const TIER = { high: 1, med: 0.6, low: 0.35 };
@@ -236,12 +239,51 @@ function pompomTex(R) {
   head(32, 32); head(96, 96); head(96, 32); head(32, 96);
   return tex(c);
 }
+// court pavers: 512 px = 2 m of handmade terracotta / laterite in a basket weave
+// (0.25 m cells of two 0.25 x 0.125 bricks, alternating direction), sand-grout joints
+function paverTex(R) {
+  const c = mkCanvas(512), x = c.getContext('2d'), P = 64;
+  x.fillStyle = '#a88f72'; x.fillRect(0, 0, 512, 512);
+  const brick = (bx, by, w, h) => {
+    const r = 150 + R() * 42, g = r * (0.46 + R() * 0.1), b = r * (0.3 + R() * 0.07);
+    x.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`; x.fillRect(bx + 1.5, by + 1.5, w - 3, h - 3);
+    for (let k = 0; k < 26; k++) {                                   // pores and fired speckle
+      const d = R() < 0.6;
+      x.fillStyle = d ? `rgba(60,25,10,${0.12 + R() * 0.2})` : `rgba(235,190,140,${0.1 + R() * 0.15})`;
+      x.fillRect(bx + 2 + R() * (w - 5), by + 2 + R() * (h - 5), 1 + R() * 2, 1 + R() * 1.6);
+    }
+    const gr = x.createLinearGradient(bx, by, bx + w, by + h);        // slight worn crown
+    gr.addColorStop(0, 'rgba(255,220,180,0.08)'); gr.addColorStop(1, 'rgba(40,15,5,0.1)');
+    x.fillStyle = gr; x.fillRect(bx + 1.5, by + 1.5, w - 3, h - 3);
+  };
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+    const ox = i * P, oy = j * P;
+    if ((i + j) % 2) { brick(ox, oy, P, P / 2); brick(ox, oy + P / 2, P, P / 2); }
+    else { brick(ox, oy, P / 2, P); brick(ox + P / 2, oy, P / 2, P); }
+  }
+  return tex(c);
+}
+// dressed stone (greyscale, tinted by vertex colour): sandstone border, laterite plinth
+function stoneTex(R) {
+  const c = mkCanvas(256), x = c.getContext('2d');
+  x.fillStyle = '#e6e6e6'; x.fillRect(0, 0, 256, 256);
+  for (let k = 0; k < 2600; k++) {
+    const l = 170 + R() * 85 | 0;
+    x.fillStyle = `rgba(${l},${l},${l},${0.25 + R() * 0.35})`;
+    x.fillRect(R() * 256, R() * 256, 1 + R() * 3, 1 + R() * 2);
+  }
+  for (let y = 0; y < 256; y += 64) {                                 // coursed joints every 0.5 m
+    x.fillStyle = 'rgba(80,70,60,0.45)'; x.fillRect(0, y, 256, 2);
+    for (let xx = (y / 64) % 2 ? 64 : 0; xx < 256; xx += 128) x.fillRect(xx, y, 2, 64);
+  }
+  return tex(c);
+}
 const rugUV = printUV;   // same 2 x 2 atlas layout: 0 jute, 1 mustard dhurrie, 2 rangoli, 3 green dhurrie
 
 /* ------------------------------------------------------------ colours */
 const C = {
   deck: 0xe9e2d4, deckOld: 0xc9c0ae, post: 0xa89c88, bamboo: 0xd4b77a, bambooDk: 0xb08f55,
-  teak: 0xa0683a, terracotta: 0xb65a34, coconut: 0x6b4a2a,
+  teak: 0xa0683a, terracotta: 0xb65a34, coconut: 0x6b4a2a, sandstone: 0xd89c34, laterite: 0x9a5236,
   yellow: 0xf6c21c, mustard: 0xdc9812, saffron: 0xee8a12, sheer: 0xfff0b0, pink: 0xd8246e,
   turmeric: 0xe8a30c, water: 0x4d7470, brass: 0xd0a24a,
   leaf: 0xf2f6e8, leafLt: 0xffffff, mango: 0x2f6b24
@@ -266,9 +308,13 @@ export default {
     group.position.set(origin.x, Y0, origin.z);
     group.rotation.y = path.sample(s0).heading;
     const ground = (x, z) => world.heightSL(s0 - z, latMid + x) - Y0;   // local ground height
-    const WALLX = -6.2 - latMid;                                        // sea wall / arch, local x ≈ 8
+    group.updateMatrixWorld(true);
+    const CO = COURTS.haldi, ROUTE = STOP.haldi.route;
+    // road coords -> scene-local point (y given in world units)
+    const L = (s, lat, y) => { const w = path.toWorld(s, lat); w.y = y; return group.worldToLocal(w); };
+    const AX = -11 - latMid, AZ = HZ;                                   // arch: deck near end, lat -11, facing the court
 
-    const WOOD = [], RUG = [], GAD = [], FAB = [], SHE = [], BR = [], LF = [];
+    const WOOD = [], RUG = [], GAD = [], FAB = [], SHE = [], BR = [], LF = [], CRT = [], CST = [];
     const beads = [];   // [x, y, z, colourIndex, scale]
     const bead = (x, y, z, ci, s = 1) => beads.push(x, y, z, ci, s);
 
@@ -300,29 +346,17 @@ export default {
     };
     railRun(-HX + 0.05, -HZ + 0.05, -HX + 0.05, HZ - 0.05);
     railRun(-HX + 0.05, -HZ + 0.05, HX - 0.05, -HZ + 0.05);
-    railRun(-HX + 0.05, HZ - 0.05, HX - 0.05, HZ - 0.05);
+    railRun(-HX + 0.05, HZ - 0.05, AX - 1.55, HZ - 0.05);             // near end, open for the arch
+    railRun(AX + 1.55, HZ - 0.05, HX - 0.05, HZ - 0.05);
+    railRun(HX - 0.05, -HZ + 0.05, HX - 0.05, HZ - 0.05);               // road side
 
-    /* ---------------- entrance: landing and steps from the promenade, bamboo arch */
-    const AW = 1.3;                          // arch half-width (along z)
-    // landing platform out to the verge, then steps up from the verge
-    const LX1 = WALLX + 0.3, gV = Math.min(ground(LX1 + 0.4, -AW), ground(LX1 + 0.4, AW), ground(LX1 + 0.4, 0));
-    WOOD.push(box(LX1 - HX, 0.12, AW * 2 + 0.9, (LX1 + HX) / 2, -0.06, 0, C.deck, [0.6, 1.5]));
-    for (const sz of [-1, 1]) for (const x of [HX + 0.4, LX1 - 0.15]) {
-      const h = -0.12 - ground(x, sz * AW);
-      if (h > 0.02) WOOD.push(box(0.16, h, 0.16, x, -0.12 - h / 2, sz * AW, C.post, [0.1, h / 2]));
-    }
-    const nSt = gV > -0.1 ? 0 : Math.max(1, Math.min(3, Math.round(-gV / 0.17)));
-    for (let k = 0; k < nSt; k++) {
-      const top = -(k + 1) * (-gV / (nSt + 1)), x = LX1 + 0.17 + k * 0.32;
-      WOOD.push(box(0.32, top - gV + 0.1, AW * 2 - 0.2, x, (top + gV - 0.1) / 2, 0, C.deck, [0.2, 1.2]));
-    }
-    // arch: two bamboo posts and a curved bamboo head, pleated in marigolds later
-    const archX = WALLX - 0.2, archH = 2.75, archPts = [];
+    /* ---------------- entrance: bamboo arch across the deck's near end, facing the court */
+    const AW = 1.4, archZ = AZ - 0.12, archH = 2.75, archPts = [];
     for (let k = 0; k <= 16; k++) {
-      const t = k / 16, a = Math.PI * t;
-      archPts.push(new THREE.Vector3(archX, archH + Math.sin(a) * 0.55, -Math.cos(a) * AW));
+      const a = Math.PI * (k / 16);
+      archPts.push(new THREE.Vector3(AX - Math.cos(a) * AW, archH + Math.sin(a) * 0.55, archZ));
     }
-    for (const sz of [-1, 1]) WOOD.push(rod(new THREE.Vector3(archX, -0.4, sz * AW), new THREE.Vector3(archX, archH, sz * AW), 0.07, 8, C.bamboo));
+    for (const sx of [-1, 1]) WOOD.push(rod(new THREE.Vector3(AX + sx * AW, -0.02, archZ), new THREE.Vector3(AX + sx * AW, archH, archZ), 0.07, 8, C.bamboo));
     for (let k = 0; k < 16; k++) WOOD.push(rod(archPts[k], archPts[k + 1], 0.06, 7, C.bamboo));
 
     /* ---------------- mandap: four bamboo posts, beams, draped canopy */
@@ -454,15 +488,15 @@ export default {
       g.setIndex([0, 1, 2, 0, 2, 3, 1, 4, 2, 2, 4, 3]); g.computeVertexNormals();
       list.push(part(place(g, x, y, z, tilt, rotY, 0), color));
     };
-    const toran = (x, y, z0, z1, lenL, ry) => {
-      const n = Math.round(Math.abs(z1 - z0) / 0.1);
+    const toran = (x0, z0, x1, z1, y, lenL, ry) => {
+      const n = Math.round(Math.hypot(x1 - x0, z1 - z0) / 0.1);
       for (let i = 0; i <= n; i++) {
-        const z = z0 + (z1 - z0) * i / n, sag = 0.08 * Math.sin(Math.PI * i / n);
+        const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n, sag = 0.08 * Math.sin(Math.PI * i / n);
         leafQuad(x, y - sag, z, lenL * (0.85 + R() * 0.3), 0.1, ry + (R() - 0.5) * 0.3, (R() - 0.5) * 0.25, R() < 0.5 ? 0xffffff : 0xd8e4c8, LF);
-        bead(x + 0.02, y - sag - 0.01, z + 0.05, i % 2 ? 0 : 2, 1.2);
+        bead(x + 0.02 * Math.sin(ry), y - sag - 0.01, z + 0.02 * Math.cos(ry), i % 2 ? 0 : 2, 1.2);
       }
     };
-    toran(MX0 + 0.2, MH - 0.02, -MZ + 0.1, MZ - 0.1, 0.24, Math.PI / 2);
+    toran(MX0 + 0.2, -MZ + 0.1, MX0 + 0.2, MZ - 0.1, MH - 0.02, 0.24, Math.PI / 2);
     // posts wrapped in a marigold spiral
     for (const [x, z] of corners) {
       const pts = [];
@@ -481,12 +515,12 @@ export default {
       tube(wound, r * 0.5, cB);
     };
     // arch: garland up the posts and over the curved head, a toran under the head
-    const archRope = [new THREE.Vector3(archX, 0.2, -AW), new THREE.Vector3(archX, archH * 0.5, -AW), ...archPts.slice(1, -1).map(p => p.clone()),
-      new THREE.Vector3(archX, archH * 0.5, AW), new THREE.Vector3(archX, 0.2, AW)];
+    const archRope = [new THREE.Vector3(AX - AW, 0.2, archZ), new THREE.Vector3(AX - AW, archH * 0.5, archZ), ...archPts.slice(1, -1).map(p => p.clone()),
+      new THREE.Vector3(AX + AW, archH * 0.5, archZ), new THREE.Vector3(AX + AW, 0.2, archZ)];
     archRope[2].y -= 0.03; archRope[archRope.length - 3].y -= 0.03;
     rope(archRope, 0.1, 0xee7d0c, 0xf7c21c);
-    toran(archX + 0.12, archH - 0.04, -AW + 0.14, AW - 0.14, 0.2, Math.PI / 2);
-    for (let z = -AW + 0.22, k = 0; z <= AW - 0.2; z += 0.2, k++) string(archX - 0.02, z, archH - 0.12, 0.35 + 0.35 * Math.sin(Math.PI * (z + AW) / (2 * AW)), k);
+    toran(AX - AW + 0.14, archZ + 0.12, AX + AW - 0.14, archZ + 0.12, archH - 0.04, 0.2, 0);
+    for (let x = -AW + 0.22, k = 0; x <= AW - 0.2; x += 0.2, k++) string(AX + x, archZ - 0.02, archH - 0.12, 0.35 + 0.35 * Math.sin(Math.PI * (x + AW) / (2 * AW)), k);
     // festoons along the sea-side railing
     const fStep = 1.6 * (K < 0.5 ? 2 : 1);
     for (let z = -HZ + 0.1; z < HZ - 1; z += fStep) {
@@ -499,6 +533,7 @@ export default {
     const rug = (w, d, x, z, cell, y = 0.006) =>
       RUG.push(part(place(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), x, y, z), 0xffffff, rugUV(cell)));
     for (let x = 6.0; x > -0.4; x -= 1.45) rug(1.44, 1.3, x, 0, 0);                    // jute runner up the aisle
+    for (let z = AZ - 0.75; z > 5.6; z -= 1.3) rug(1.2, 1.28, AX, z, 0);               // and in from the arch
     rug(4.2, 4.4, MXC, 0, 1, 0.009);                                                   // mandap dhurrie
     rug(1.5, 1.5, -2.15, 0, 2, 0.016);                                                 // rangoli
     for (const sz of [-1, 1]) {
@@ -581,7 +616,7 @@ export default {
       [0.16, 1.04], [0.17, 1.07], [0.03, 1.08], [0.02, 1.2], [0.05, 1.26], [0, 1.32]], 20, CX - 0.2, 0, 1.25, C.brass);
     // purna kumbham at the arch foot: brass kalash, coconut and mango leaves
     for (const sz of [-1, 1]) {
-      const kx = HX - 0.45, kz = sz * (AW - 0.05);
+      const kx = AX + sz * (AW - 0.05), kz = AZ - 0.55;
       lathe([[0, 0], [0.12, 0], [0.13, 0.03], [0.2, 0.14], [0.21, 0.22], [0.16, 0.34], [0.09, 0.4], [0.12, 0.44], [0.1, 0.45], [0, 0.44]], 20, kx, 0, kz, C.brass);
       WOOD.push(part(place(new THREE.SphereGeometry(0.12, 10, 8), kx, 0.53, kz, 0, 0, 0, 1, 1.25, 1), C.coconut));
       for (let i = 0; i < 7; i++) leafQuad(kx + Math.cos(i * 0.9) * 0.07, 0.49, kz + Math.sin(i * 0.9) * 0.07, 0.26, 0.11, -i * 0.9 + Math.PI / 2, -2.2, 0xffffff, LF);
@@ -635,7 +670,7 @@ export default {
         WOOD.push(rod(new THREE.Vector3(ux, UH + 0.5, uz), new THREE.Vector3(ux + Math.cos(th) * (UR - 0.05), canopyY(UR, th) - 0.03, uz + Math.sin(th) * (UR - 0.05)), 0.012, 4, C.teak));
       }
     };
-    const umbrellas = [[3.9, 9.4], [3.9, -9.4], [-3.4, 9.8], [-3.4, -9.8]];
+    const umbrellas = [[5.3, 9.0], [3.9, -9.4], [-3.4, 9.8], [-3.4, -9.8]];
     umbrellas.forEach(([ux, uz], i) => {
       chhatri(ux, uz);
       rug(2.8, 2.8, ux, uz, i % 2 ? 1 : 3, 0.008);
@@ -669,22 +704,112 @@ export default {
       g.setIndex(idx); g.computeVertexNormals();
       LF.push(part(g, color));
     };
-    const banana = (x, z, h, potted = true) => {
-      const y0 = potted ? 0.5 : 0;
+    const banana = (x, z, h, potted = true, yb = 0, pot = 1) => {
+      const y0 = yb + (potted ? 0.5 * pot : 0);
       if (potted) {
-        lathe([[0, 0], [0.2, 0], [0.24, 0.05], [0.3, 0.42], [0.33, 0.47], [0.33, 0.52], [0.26, 0.5], [0, 0.46]], 16, x, 0, z, C.terracotta, WOOD);
+        lathe([[0, 0], [0.2, 0], [0.24, 0.05], [0.3, 0.42], [0.33, 0.47], [0.33, 0.52], [0.26, 0.5], [0, 0.46]].map(([r, h]) => [r * pot, h * pot]), 16, x, yb, z, C.terracotta, WOOD);
       }
       LF.push(part(place(new THREE.CylinderGeometry(0.06, 0.1, h, 8, 1, true), x, y0 + h / 2, z), 0xc8d8a0, [0, 0, 0.25, 0.5]));
       const n = Math.round((K < 0.5 ? 4.5 : 6) + R() * 2);
       for (let i = 0; i < n; i++) {
-        const a = i * 2.4 + R(), L = 1.1 + R() * 0.6;
-        bananaLeaf(x, y0 + h - 0.05 - R() * 0.2, z, a, L, 0.2 + R() * 0.06, 0.9 + R() * 0.6, 1.0 + R() * 0.5, R() < 0.5 ? C.leaf : C.leafLt);
+        const a = i * 2.4 + R(), bl = 1.1 + R() * 0.6;
+        bananaLeaf(x, y0 + h - 0.05 - R() * 0.2, z, a, bl, 0.2 + R() * 0.06, 0.9 + R() * 0.6, 1.0 + R() * 0.5, R() < 0.5 ? C.leaf : C.leafLt);
       }
     };
     for (const [x, z] of [[-HX + 0.55, HZ - 0.55], [-HX + 0.55, -HZ + 0.55], [HX - 0.55, HZ - 0.55], [HX - 0.55, -HZ + 0.55],
       [MX1 - 0.5, MZ + 0.6], [MX1 - 0.5, -MZ - 0.6], [-HX + 0.6, HZ - 1.6], [-HX + 0.6, -HZ + 1.6]]) banana(x, z, 1.1 + R() * 0.5);
-    for (const sz of [-1, 1]) banana(archX - 0.05, sz * (AW + 0.28), 1.9, true);          // banana stems tied at the arch
+    for (const sx of [-1, 1]) banana(AX + sx * (AW + 0.32), AZ - 0.4, 1.9, true);         // banana stems tied at the arch
     bananaLeaf(TX - 0.4, 0.035, TZ, 0, 0.95, 0.2, 0, 0, 0xe8f0d8);                         // leaf laid under the thali
+
+    /* ---------------- the court: road-level forecourt the car drives into ("Take me here") */
+    const c0 = CO.s0, cs1 = CO.s1, SEA = CO.lat[1] ?? -16.5, cY = s => path.roadY(s) + 0.02;
+    const ss = u => u * u * (3 - 2 * u);
+    // a surface strip between two edges pa(t), pb(t) -> [s, lat], at court height + dy
+    const band = (pa, pb, n, dy, color, list, m = 2) => {
+      const pos = [], uv = [], idx = [];
+      for (let i = 0; i <= n; i++) for (const e of [pa(i / n), pb(i / n)]) {
+        const p = L(e[0], e[1], cY(e[0]) + dy); pos.push(p.x, p.y, p.z); uv.push(e[1] / m, e[0] / m);
+      }
+      for (let i = 0; i < n; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals();
+      if (g.attributes.normal.getY(0) < 0) { g.setIndex(idx.map((_, k) => idx[k - k % 3 + [0, 2, 1][k % 3]])); g.computeVertexNormals(); }
+      list.push(part(g, color));
+    };
+    // plinth face: from the paving edge down into the sand along [s, lat] points
+    const plinth = pts => {
+      const pos = [], uv = [], idx = [];
+      let run = 0;
+      pts.forEach(([s, lat], i) => {
+        if (i) run += Math.hypot(s - pts[i - 1][0], lat - pts[i - 1][1]);
+        const top = cY(s), bot = Math.min(top - 0.1, world.heightSL(s, lat) - 0.3);
+        const a = L(s, lat, top + 0.03), b = L(s, lat, bot);
+        pos.push(a.x, a.y, a.z, b.x, b.y, b.z); uv.push(run / 2, 0, run / 2, (top - bot) / 2);
+      });
+      for (let i = 0; i < pts.length - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals();
+      CST.push(part(g, C.laterite));
+    };
+    const line = (sA, latA, sB, latB, n = 12) => Array.from({ length: n + 1 }, (_, i) => [sA + (sB - sA) * i / n, latA + (latB - latA) * i / n]);
+    // aprons where the route leaves and rejoins the lane beyond the court's ends
+    const apA = s => -3.7 - 3.2 * ss((s - (c0 - 7)) / 7), apB = s => -3.7 - 3.4 * (1 - ss((s - cs1) / 7));
+    const paved = [[c0 - 7, c0, apA], [c0, cs1, () => SEA], [cs1, cs1 + 7, apB]];
+    for (const [sA, sB, sea] of paved) {
+      const n = Math.ceil(sB - sA), nl = Math.max(2, Math.ceil((-3.7 - Math.min(sea(sA), sea(sB))) / 1.6));
+      for (let j = 0; j < nl; j++)
+        band(t => { const s = sA + (sB - sA) * t; return [s, -3.7 + (sea(s) + 3.7) * j / nl]; },
+          t => { const s = sA + (sB - sA) * t; return [s, -3.7 + (sea(s) + 3.7) * (j + 1) / nl]; }, n, 0, 0xffffff, CRT);
+      if (sea !== paved[1][2]) plinth(Array.from({ length: n + 1 }, (_, i) => { const s = sA + (sB - sA) * i / n; return [s, sea(s)]; }));
+    }
+    plinth(line(c0, apA(c0), c0, SEA, 8)); plinth(line(c0, SEA, cs1, SEA, 24)); plinth(line(cs1, SEA, cs1, apB(cs1), 8));
+    // marigold-yellow sandstone border on three sides, and two inlay bands leading to the arch
+    const BW = 0.5, gold = C.sandstone;
+    band(t => [c0 + (cs1 - c0) * t, SEA], t => [c0 + (cs1 - c0) * t, SEA + BW], 24, 0.012, gold, CST);
+    band(t => [c0, -3.7 + (SEA + 3.7) * t], t => [c0 + BW, -3.7 + (SEA + 3.7) * t], 6, 0.012, gold, CST);
+    band(t => [cs1 - BW, -3.7 + (SEA + 3.7) * t], t => [cs1, -3.7 + (SEA + 3.7) * t], 6, 0.012, gold, CST);
+    for (const bl of [-11 - 1.7, -11 + 1.7])
+      band(t => [c0 + 16 + (cs1 - BW - c0 - 16) * t, bl - 0.13], t => [c0 + 16 + (cs1 - BW - c0 - 16) * t, bl + 0.13], 4, 0.012, gold, CST);
+
+    /* ---------------- steps from the court down (or up) onto the deck, under the arch */
+    {
+      const e = L(cs1, -11, cY(cs1)), yc = e.y, zc = e.z;                // court edge, local
+      const risers = Math.max(1, Math.round(Math.abs(yc) / 0.16)), T = Math.max(1, risers - 1), d = (zc - AZ) / T;
+      for (let k = 0; k < T; k++) {
+        const top = risers > 1 ? yc * (1 - (k + 1) / risers) : yc, z = zc - (k + 0.5) * d;
+        const gb = Math.min(ground(AX - AW, z), ground(AX + AW, z), top - 0.12) - 0.1;
+        CST.push(box(2 * AW + 0.9, top - gb, d + 0.02, AX, (top + gb) / 2, z, C.sandstone, [1.1, 0.3]));
+      }
+    }
+
+    /* ---------------- court dressing: potted bananas and brass urlis, clear of the route */
+    const segs = [ROUTE.in, ROUTE.out].flatMap(r => r.slice(1).map((p, i) => [r[i], p]));
+    const dRoute = (s, lat) => Math.min(...segs.map(([a, b]) => {
+      const ds = b[0] - a[0], dl = b[1] - a[1], t = Math.max(0, Math.min(1, ((s - a[0]) * ds + (lat - a[1]) * dl) / (ds * ds + dl * dl)));
+      return Math.hypot(s - a[0] - ds * t, lat - a[1] - dl * t);
+    }));
+    const urli = (x, y, z) => {
+      lathe([[0, 0], [0.1, 0], [0.16, 0.05], [0.14, 0.13], [0.22, 0.16], [0, 0.16]], 16, x, y, z, C.brass);   // stand
+      const U = [[0, 0], [0.18, 0], [0.2, 0.03], [0.34, 0.08], [0.44, 0.15], [0.47, 0.18], [0.45, 0.185], [0.41, 0.15], [0.3, 0.09], [0, 0.06]];
+      lathe(U.map(([r, h]) => [r * 1.45, h * 1.45]), 22, x, y + 0.16, z, C.brass);
+      BR.push(part(place(new THREE.CircleGeometry(0.6, 24).rotateX(-Math.PI / 2), x, y + 0.16 + 0.22, z), C.water));
+      for (let i = 0; i < 9; i++) {
+        const a = i * 2.4, r = 0.12 + 0.38 * Math.sqrt((i + 0.5) / 9);
+        bead(x + Math.cos(a) * r, y + 0.385, z + Math.sin(a) * r, i % 4 === 0 ? 5 : i % 2 ? 2 : 0, 1.5);
+      }
+    };
+    const PROPS = [];
+    for (let k = 0; k < 6; k++) PROPS.push([c0 + 1.6 + k * 4.1, SEA + 0.95, k % 2 ? 'u' : 'b']);   // sea edge
+    for (const lat of [-10, -13.6]) PROPS.push([c0 + 0.95, lat, lat < -12 ? 'b' : 'u']);              // far end
+    for (const s of [c0 + 10, c0 + 14, c0 + 18]) PROPS.push([s, -4.75, 'u']);                         // road edge
+    PROPS.push([cs1 - 1.1, -14.2, 'b'], [cs1 - 1.1, -7.9, 'b']);                                      // flanking the steps
+    for (const [s, lat, kind] of PROPS) {
+      if (dRoute(s, lat) < (kind === 'b' ? 3.8 : 3.0)) continue;
+      const p = L(s, lat, cY(s));
+      kind === 'b' ? banana(p.x, p.z, 1.5 + R() * 0.4, true, p.y, 1.35) : urli(p.x, p.y, p.z);
+    }
 
     /* ---------------- meshes: one per material, beads instanced */
     const tris = { n: 0 };
@@ -708,10 +833,13 @@ export default {
     mesh(BR, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.7, roughness: 0.26, emissive: 0x3a2508, emissiveIntensity: 0.4 }), 'brass');
     mesh(LF, new THREE.MeshStandardMaterial({ map: leafTex(R), vertexColors: true, roughness: 0.55, side: THREE.DoubleSide, alphaTest: 0.5 }), 'leaves');
 
+    mesh(CRT, new THREE.MeshStandardMaterial({ map: paverTex(R), vertexColors: true, roughness: 0.9 }), 'court', false);
+    mesh(CST, new THREE.MeshStandardMaterial({ map: stoneTex(R), vertexColors: true, roughness: 0.8, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }), 'stone', false);
     const pomp = pompomTex(R);
     mesh(MR, new THREE.MeshStandardMaterial({ map: pomp, vertexColors: true, roughness: 0.9, emissive: 0x5a2600, emissiveIntensity: 0.35 }), 'marigold-strings');
     const nB = beads.length / 5;
-    const bg = new THREE.IcosahedronGeometry(0.034, K >= 1 ? 1 : 0);
+    const bg = K >= 1 ? new THREE.SphereGeometry(0.034, 7, 5) : new THREE.IcosahedronGeometry(0.034, 0);   // 56 / 20 tris
     const bm = new THREE.InstancedMesh(bg, new THREE.MeshStandardMaterial({ map: pomp, roughness: 0.9, emissive: 0x401800, emissiveIntensity: 0.25 }), nB);
     const col = new THREE.Color();
     for (let i = 0; i < nB; i++) {

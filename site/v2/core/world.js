@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import { path } from './path.js';
 import { ZONES, weightsAt, zoneAt } from './zones.js';
 import { fbm, smoothstep } from './noise.js';
+import { COURTS } from './timeline.js';
 
 const VERGE = path.halfWidth + 2.2;
 
@@ -68,6 +69,21 @@ function rawOff(s, lateral, d, b, w) {
     if (!w[i]) continue;
     const z = ZONES[i], prof = z.profile[side];
     h += w[i] * (PROFILES[prof](d, b, s, lateral, z.water) + far(d, s, lateral, prof));
+  }
+  return courtCap(s, lateral, b, h);
+}
+
+/* The beach venues' courts (core/timeline.js COURTS) are paved at road level,
+ * with aprons 7 m either side where the car leaves and rejoins the road: the
+ * ground there is held just under the paving, easing back to its own shape
+ * over a few metres, so no terrain pokes through where the car drives. */
+const COURT_BOX = Object.values(COURTS).map(c => ({ s0: c.s0 - 7, s1: c.s1 + 7, l0: -16.8, l1: -3.6 }));
+function courtCap(s, lateral, b, h) {
+  for (const c of COURT_BOX) {
+    const ds = Math.max(0, c.s0 - s, s - c.s1), dl = Math.max(0, c.l0 - lateral, lateral - c.l1);
+    if (ds > 8 || dl > 8) continue;
+    const cap = b + 0.02 + Math.hypot(ds, dl) * 0.45;     // b is road − 0.12: 10 cm under the paving
+    if (h > cap) h = cap;
   }
   return h;
 }

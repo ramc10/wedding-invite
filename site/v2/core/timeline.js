@@ -39,13 +39,16 @@ for (const k of ['reception', 'haldi', 'muhurtham']) {
   COURTS[k] = { s0: d0 - 25, s1: d0 - 1, lat: [-5.9, -16.5] };
 }
 
-/** metres from (s, lateral) to the nearest event deck footprint (0 inside) */
+/** metres from (s, lateral) to the nearest event deck or court footprint (0 inside) */
 export function eventDist(s, lateral) {
   let d = Infinity;
   for (const k of ['reception', 'haldi', 'muhurtham']) {
     const e = EVENTS[k];
     const ds = Math.max(0, Math.abs(s - e.s) - e.len / 2), dl = Math.max(0, lateral - e.lat[0], e.lat[1] - lateral);
     d = Math.min(d, Math.hypot(ds, dl));
+    const c = COURTS[k];                                   // its forecourt counts too
+    const cs = Math.max(0, c.s0 - s, s - c.s1), cl = Math.max(0, lateral - c.lat[0], c.lat[1] - lateral);
+    d = Math.min(d, Math.hypot(cs, cl));
   }
   return d;
 }
@@ -94,8 +97,9 @@ export const STOPS = [
     park: { s: karimS + 40 },
     exitGate: { s: karimS + 48 + 29 },
     route: (G => ({
-      in: [[G - 16, -1.8], [G - 8, -0.6], [G - 3, 4], [G + 0.5, 9], [G + 3, 13.5], [G + 7, 17.5], [G + 11, 19.6]],
-      out: [[G + 11, 19.6], [G + 17, 19.6], [G + 23, 18], [G + 27, 14.5], [G + 29, 10.6], [G + 31, 6], [G + 35, 1.2], [G + 44, -1.8]]
+      // stops at the portal steps (portal centre ≈ G + 2.5), nose +s
+      in: [[G - 16, -1.8], [G - 8, -0.6], [G - 4, 3.5], [G - 1.5, 8.5], [G - 0.3, 13], [G + 2, 17.2], [G + 6, 18.8]],
+      out: [[G + 6, 18.8], [G + 13, 19.2], [G + 17, 19.6], [G + 23, 18], [G + 27, 14.5], [G + 29, 10.6], [G + 31, 6], [G + 35, 1.2], [G + 44, -1.8]]
     }))(karimS + 48),
     cam: { s: karimS + 48 - 8, lateral: -4.6, h: 6.8 }, focus: { s: karimS + 60, lateral: 26, h: 3.5 } }
 ];

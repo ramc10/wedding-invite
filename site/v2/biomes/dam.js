@@ -834,11 +834,15 @@ function buildVenue(ctx, M, K, group) {
     const lats = range(3.45, FW, 1.5);
     out.conc.push(tint(wallAcross(ctx, CREST_BR - 0.4, lats, l => Yr(CREST_BR) + 0.02, l => Math.min(H(CREST_BR, l), Yr(CREST_BR)) - 1.5, 0.3), 0xcfc6b6));
   }
-  const fpS = range(GATE_C + 7, LOT.s1, 2);
-  out.path.push(sweep(ctx, fpS, s => [[3.6, Yr(s) + 0.15], [6.2, Yr(s) + 0.15], [6.2, Yr(s) + 0.02]], 2, 2));
-  out.kerb.push(sweep(ctx, fpS, s => [[3.6, Yr(s) - 0.05], [3.6, Yr(s) + 0.15], [3.75, Yr(s) + 0.16]], 2, 0.3, true));
-  // tapered kerb ramp where the footpath starts (a dropped kerb, not a step)
-  out.kerb.push(place(ctx, new THREE.BoxGeometry(2.6, 0.1, 1.6).toNonIndexed().translate(1.3, 0, 0), GATE_C + 6.2, 3.6, Yr(GATE_C + 6) + 0.06));
+  // the footpath breaks for the exit drive (the "Take me here" route leaves through EXIT_C)
+  for (const [fa, fb] of [[GATE_C + 7, EXIT_C - 3], [EXIT_C + 12, LOT.s1]]) {
+    const fpS = range(fa, fb, 2);
+    out.path.push(sweep(ctx, fpS, s => [[3.6, Yr(s) + 0.15], [6.2, Yr(s) + 0.15], [6.2, Yr(s) + 0.02]], 2, 2));
+    out.kerb.push(sweep(ctx, fpS, s => [[3.6, Yr(s) - 0.05], [3.6, Yr(s) + 0.15], [3.75, Yr(s) + 0.16]], 2, 0.3, true));
+  }
+  // tapered kerb ramps where each footpath run starts and ends (dropped kerbs, not steps)
+  const ramp = (s, dir) => out.kerb.push(place(ctx, new THREE.BoxGeometry(2.6, 0.1, 1.6).toNonIndexed().translate(1.3, 0, 0), s, 3.6, Yr(s) + 0.06, dir > 0 ? 0 : Math.PI));
+  ramp(GATE_C + 6.2, 1); ramp(EXIT_C + 11.2, 1);
   // painted edge line + a stop line across the apron mouth
   out.conc.push(tint(sweep(ctx, range(CREST_BR, LOT.s1, 2), s => [[3.5, Yr(s) + 0.035], [3.62, Yr(s) + 0.035]], 4, 4), 0xe8e2d4));
 

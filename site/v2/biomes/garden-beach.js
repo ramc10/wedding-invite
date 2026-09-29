@@ -299,6 +299,8 @@ function duneH(s, lat, wall, shore) {
   return band * Math.max(0, 0.25 + n) * 1.25;
 }
 
+const inCourt = (s, l) => Object.values(COURTS).some(c => s > c.s0 - 1 && s < c.s1 + 1 && l < c.lat[0] + 0.3 && l > c.lat[1] - 0.8);
+
 export function sandBeach(ctx, { s0, s1, wallLat, fadeIn = 24, fadeOut = 24 }) {
   const { path, world } = ctx;
   const DS = 1.5;
@@ -318,7 +320,10 @@ export function sandBeach(ctx, { s0, s1, wallLat, fadeIn = 24, fadeOut = 24 }) {
       const h = world.heightSL(s, l);
       // no dunes under the event decks; they ease back in over 5 m
       const dune = h > w + 0.9 ? duneH(s, l, wallLat, shore) * smoothstep(0.5, 5, eventDist(s, l)) : 0;
-      pos.push(p.x, h + 0.1 + dune, p.z);            // clear of the coarser terrain triangles
+      let y = h + 0.1 + dune;                          // clear of the coarser terrain triangles
+      // under a venue court (paved at road level) the sand stays well below the paving
+      if (inCourt(s, l)) y = Math.min(y, path.roadY(s) - 0.35);
+      pos.push(p.x, y, p.z);
       fade.push(fs);
     }
   }

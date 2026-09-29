@@ -141,7 +141,7 @@ function surf(ctx, s0, s1, l0, l1, y, T, step = 2, swap = false) {
 }
 
 /** Strip of width w along a centreline of [s, l] points, at height y. */
-function strip(ctx, pts, w, y, T) {
+function strip(ctx, pts, w, y, T, lmin = -1e9) {
   const pos = [], uv = [], idx = [], p = new THREE.Vector3();
   let acc = 0;
   for (let i = 0; i < pts.length; i++) {
@@ -149,7 +149,7 @@ function strip(ctx, pts, w, y, T) {
     let ds = b[0] - a[0], dl = b[1] - a[1]; const L = Math.hypot(ds, dl) || 1; ds /= L; dl /= L;
     if (i) acc += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     for (const k of [-1, 1]) {
-      ctx.path.toWorld(pts[i][0] - dl * k * w / 2, pts[i][1] + ds * k * w / 2, p);
+      ctx.path.toWorld(pts[i][0] - dl * k * w / 2, Math.max(lmin, pts[i][1] + ds * k * w / 2), p);   // clamp to the wall line
       pos.push(p.x, y, p.z); uv.push((k + 1) * w / 4 / T, acc / T);
     }
     if (i) { const q = (i - 1) * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
@@ -262,11 +262,26 @@ function layout(ctx) {
   const o = hall.s, F0 = o - hall.w / 2, F1 = o + hall.w / 2, HF = hall.front, HB = hall.front + hall.d;
   const L0 = wallL + 0.18, L1 = LOT.l1 - 0.1, Gc = GATE.c;
   const PY = ctx.path.roadY(AMR.VENUE.s) + 0.02;
-  // drive: in through the gate, a smooth curve up to the drop-off lane under the canopy (l ~ 20)
-  const curve = new THREE.CatmullRomCurve3([[Gc, 9.9], [Gc, 12.2], [Gc + 3.5, 16.2], [o - 4, 19.8], [o + 3, 20.2], [o + 10, 20.2]]
-    .map(([s, l]) => new THREE.Vector3(s, l, 0)), false, 'centripetal');
-  const drive = curve.getSpacedPoints(48).map(p => [p.x, p.y]);
-  return { o, F0, F1, HF, HB, L0, L1, Gc, PY, drive, DW: 5, LOT, GATE, wallL };
+  // drive: the car's own route (same centripetal Catmull-Rom as car/detour.js): in through the gate,
+  // up to the drop-off under the canopy, then along the hall front and out through the exit gate
+  const cr = pts => new THREE.CatmullRomCurve3(pts.map(([s, l]) => new THREE.Vector3(s, l, 0)), false, 'centripetal');
+  const { in: rin, out: rout } = AMR.route;
+  const sp = (c, n) => c.getSpacedPoints(n).map(p => [p.x, p.y]);
+  const cin = sp(cr(rin), 60), cout = sp(cr(rout), 60);
+  const drive = [...cin, ...cout.slice(1)];
+  // clearance: distance from (s, l) to the route (both the waypoint polyline and the driven curve)
+  const lines = [rin, rout, cin, cout];
+  const dist = (s, l) => {
+    let d = 1e9;
+    for (const P of lines) for (let i = 1; i < P.length; i++) {
+      const [as, al] = P[i - 1], ds = P[i][0] - as, dl = P[i][1] - al, n = ds * ds + dl * dl || 1;
+      const t = Math.min(1, Math.max(0, ((s - as) * ds + (l - al) * dl) / n));
+      d = Math.min(d, Math.hypot(s - as - t * ds, l - al - t * dl));
+    }
+    return d;
+  };
+  const CLR = 2.4, clear = (s, l, r = 0) => dist(s, l) - r > CLR;
+  return { o, F0, F1, HF, HB, L0, L1, Gc, PY, drive, DW: 5, LOT, GATE, EXIT: AMR.EXIT, wallL, dist, clear, CLR };
 }
 
 /** Raised planter with a granite kerb (w across, d along), soil top; LED strip at the base on `ledSides`. */
@@ -295,7 +310,10 @@ function gatePier(ctx, s, L, out) {
   out.stone.push(tint(at(ctx, box(D + 0.02, 0.05, W + 0.02), s, L.wallL, y), 0x9d968a));      // plinth line
   for (const f of [-1, 1]) {
     out.glow.push(tint(at(ctx, box(0.02, 1.5, 0.05), s, L.wallL + f * (D / 2 + 0.005), y + 0.45), 0xffc98a));
-    out.pools.push({ s, l: L.wallL + f * 1.2, r: 1.4, k: 0.35 });
+    // outside the wall the apron ramps down to the road (dam.js): sit the pool on it, not at pad level
+    const l = L.wallL + f * 1.2, Yr = ctx.path.roadY(s), t = Math.min(1, Math.max(0, (l - 3.45) / (L.wallL - 3.45)));
+    const ya = Yr + 0.025 + (y - Yr) * t * t * (3 - 2 * t);
+    out.pools.push({ s, l, r: 1.4, k: 0.35, dy: f < 0 ? ya - y : 0 });
   }
 }
 
@@ -358,13 +376,14 @@ export default {
     const lawn = [surf(ctx, LOT.s0 + 0.2, F0, L0, L1, PY + 0.03, 6), surf(ctx, F1, LOT.s1 - 0.2, L0, L1, PY + 0.03, 6),
       surf(ctx, F0, F1, HB - 0.4, L1, PY + 0.03, 6)];
     group.add(mesh(merge(lawn), M.lawn, 'amr:lawns'));
-    group.add(mesh(strip(ctx, L.drive, L.DW, PY + 0.045, 3.6), M.drive, 'amr:drive'));
+    const LM = L.wallL - 0.35;                                        // the drive starts at the wall line
+    group.add(mesh(strip(ctx, L.drive, L.DW, PY + 0.045, 3.6, LM), M.drive, 'amr:drive'));
     for (const k of [-1, 1]) {                                        // slim granite edge bands along the drive
       const edge = L.drive.map((p, i, a) => {
         const q = a[Math.min(a.length - 1, i + 1)], r = a[Math.max(0, i - 1)], ds = q[0] - r[0], dl = q[1] - r[1], n = Math.hypot(ds, dl);
         return [p[0] - dl / n * k * (L.DW / 2 + 0.08), p[1] + ds / n * k * (L.DW / 2 + 0.08)];
       });
-      out.stone.push(tint(strip(ctx, edge, 0.16, PY + 0.05, 1), 0xa39d92));
+      out.stone.push(tint(strip(ctx, edge, 0.16, PY + 0.05, 1, LM), 0xa39d92));
     }
 
     // 2. planters: along both forecourt edges, and along the hall's base either side of the entrance
@@ -395,7 +414,9 @@ export default {
       new THREE.Quaternion().setFromAxisAngle(_up, yaw), new THREE.Vector3(rx / BR, ry * 2 / BH, rz / BR)), c: new THREE.Color(col).multiplyScalar(1.25 + 0.4 * R()) });
 
     // 3. trees: merged bark + foliage
+    const skipped = [];
     trees.forEach(([s, l, y, H, feat], i) => {
+      if (!L.clear(s, l, H * (feat ? 0.5 : 0.4))) { skipped.push([s - Gc, l]); return; }   // keep the car's corridor clear
       const t = bonsai(i + 1, H, detail, !!feat), yaw = R() * 6.28;
       for (const g of t.bark) out.bark.push(tint(at(ctx, g, s, l, y - 0.05, yaw), 0xc4b29c, 0.8 + 0.3 * R()));
       ctx.path.toWorld(s, l, _v); _v.y = y;
@@ -407,9 +428,12 @@ export default {
       }
     });
 
-    // 4. gate piers in the wall opening; the drop-off pool under the canopy
+    // 4. gate piers in both wall openings; the drop-off pool under the canopy; a warm pool at the exit
+    const X = L.EXIT, stop = AMR.route.in[AMR.route.in.length - 1];
     gatePier(ctx, GATE.s0 - 0.25, L, out); gatePier(ctx, GATE.s1 + 0.25, L, out);
-    out.pools.push({ s: o + 1, l: 19.8, rs: 7.5, rl: 4.5, k: 0.5, col: 0xffc080 });
+    gatePier(ctx, X.s0 - 0.25, L, out); gatePier(ctx, X.s1 + 0.25, L, out);
+    out.pools.push({ s: stop[0] - 2, l: stop[1] + 0.2, rs: 8, rl: 4.2, k: 0.5, col: 0xffc080 });
+    out.pools.push({ s: X.c, l: L.wallL + 2.6, rs: 4.6, rl: 2.4, k: 0.45, col: 0xffc080 });   // inside only: the apron outside falls away
 
     // 5. low bollard lights along both edges of the drive
     const post = box(0.16, 0.62, 0.16), cap = box(0.2, 0.05, 0.2), lens = box(0.17, 0.09, 0.17);
@@ -417,7 +441,7 @@ export default {
       const p = L.drive[i], q = L.drive[i + 1], ds = q[0] - p[0], dl = q[1] - p[1], n = Math.hypot(ds, dl);
       for (const k of [-1, 1]) {
         const s = p[0] - dl / n * k * (L.DW / 2 + 0.55), l = p[1] + ds / n * k * (L.DW / 2 + 0.55);
-        if (l < L0 + 0.6 || l > HF - 1.2 || (Math.abs(s - o) < 8 && l > 16)) continue;   // clear of the wall and the canopy
+        if (l < L0 + 0.6 || l > HF - 1.2 || (s > o - 17 && s < o + 2.4 && l > 13.2) || !L.clear(s, l, 0.1)) continue;   // clear of the wall, the canopy, the route
         out.stone.push(tint(at(ctx, post.clone(), s, l, PY), 0x2c2c2e), tint(at(ctx, cap.clone(), s, l, PY + 0.69), 0x2c2c2e));
         out.glow.push(tint(at(ctx, lens.clone(), s, l, PY + 0.6), 0xffcf94));
         out.pools.push({ s, l, r: 1.1, k: 0.42 });
@@ -465,7 +489,7 @@ export default {
 
     let tris = 0;
     group.traverse(m => { if (m.isInstancedMesh) tris += m.userData.tris || 0; else if (m.isMesh) tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; });
-    window.__amrGrounds = { ms: Math.round(performance.now() - t0), tris: Math.round(tris), calls: group.children.length, o, F0, F1, Gc, PY };
+    window.__amrGrounds = { ms: Math.round(performance.now() - t0), tris: Math.round(tris), calls: group.children.length, o, F0, F1, Gc, PY, skipped };
 
     const U = ctx.world.U, gcol = M.glow.color;
     return {
