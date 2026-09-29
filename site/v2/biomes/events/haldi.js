@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/addons/utils/BufferGeometryUtils.js';
 import { EVENTS, COURTS, STOP } from '../../core/timeline.js';
+import { buildCompound } from './compound.js';
 import { rng as makeRng } from '../../core/noise.js';
 
 const TIER = { high: 1, med: 0.6, low: 0.35 };
@@ -239,30 +240,6 @@ function pompomTex(R) {
   head(32, 32); head(96, 96); head(96, 32); head(32, 96);
   return tex(c);
 }
-// court pavers: 512 px = 2 m of handmade terracotta / laterite in a basket weave
-// (0.25 m cells of two 0.25 x 0.125 bricks, alternating direction), sand-grout joints
-function paverTex(R) {
-  const c = mkCanvas(512), x = c.getContext('2d'), P = 64;
-  x.fillStyle = '#a88f72'; x.fillRect(0, 0, 512, 512);
-  const brick = (bx, by, w, h) => {
-    const r = 150 + R() * 42, g = r * (0.46 + R() * 0.1), b = r * (0.3 + R() * 0.07);
-    x.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`; x.fillRect(bx + 1.5, by + 1.5, w - 3, h - 3);
-    for (let k = 0; k < 26; k++) {                                   // pores and fired speckle
-      const d = R() < 0.6;
-      x.fillStyle = d ? `rgba(60,25,10,${0.12 + R() * 0.2})` : `rgba(235,190,140,${0.1 + R() * 0.15})`;
-      x.fillRect(bx + 2 + R() * (w - 5), by + 2 + R() * (h - 5), 1 + R() * 2, 1 + R() * 1.6);
-    }
-    const gr = x.createLinearGradient(bx, by, bx + w, by + h);        // slight worn crown
-    gr.addColorStop(0, 'rgba(255,220,180,0.08)'); gr.addColorStop(1, 'rgba(40,15,5,0.1)');
-    x.fillStyle = gr; x.fillRect(bx + 1.5, by + 1.5, w - 3, h - 3);
-  };
-  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
-    const ox = i * P, oy = j * P;
-    if ((i + j) % 2) { brick(ox, oy, P, P / 2); brick(ox, oy + P / 2, P, P / 2); }
-    else { brick(ox, oy, P / 2, P); brick(ox + P / 2, oy, P / 2, P); }
-  }
-  return tex(c);
-}
 // dressed stone (greyscale, tinted by vertex colour): sandstone border, laterite plinth
 function stoneTex(R) {
   const c = mkCanvas(256), x = c.getContext('2d');
@@ -283,7 +260,7 @@ const rugUV = printUV;   // same 2 x 2 atlas layout: 0 jute, 1 mustard dhurrie, 
 /* ------------------------------------------------------------ colours */
 const C = {
   deck: 0xe9e2d4, deckOld: 0xc9c0ae, post: 0xa89c88, bamboo: 0xd4b77a, bambooDk: 0xb08f55,
-  teak: 0xa0683a, terracotta: 0xb65a34, coconut: 0x6b4a2a, sandstone: 0xd89c34, laterite: 0x9a5236,
+  teak: 0xa0683a, terracotta: 0xb65a34, coconut: 0x6b4a2a, sandstone: 0xd89c34, sandPale: 0xe8cf9e, laterite: 0x9a5236,
   yellow: 0xf6c21c, mustard: 0xdc9812, saffron: 0xee8a12, sheer: 0xfff0b0, pink: 0xd8246e,
   turmeric: 0xe8a30c, water: 0x4d7470, brass: 0xd0a24a,
   leaf: 0xf2f6e8, leafLt: 0xffffff, mango: 0x2f6b24
@@ -314,7 +291,7 @@ export default {
     const L = (s, lat, y) => { const w = path.toWorld(s, lat); w.y = y; return group.worldToLocal(w); };
     const AX = -11 - latMid, AZ = HZ;                                   // arch: deck near end, lat -11, facing the court
 
-    const WOOD = [], RUG = [], GAD = [], FAB = [], SHE = [], BR = [], LF = [], CRT = [], CST = [];
+    const WOOD = [], RUG = [], GAD = [], FAB = [], SHE = [], BR = [], LF = [], CST = [];
     const beads = [];   // [x, y, z, colourIndex, scale]
     const bead = (x, y, z, ci, s = 1) => beads.push(x, y, z, ci, s);
 
@@ -754,24 +731,15 @@ export default {
       CST.push(part(g, C.laterite));
     };
     const line = (sA, latA, sB, latB, n = 12) => Array.from({ length: n + 1 }, (_, i) => [sA + (sB - sA) * i / n, latA + (latB - latA) * i / n]);
-    // aprons where the route leaves and rejoins the lane beyond the court's ends
-    const apA = s => -3.7 - 3.2 * ss((s - (c0 - 7)) / 7), apB = s => -3.7 - 3.4 * (1 - ss((s - cs1) / 7));
-    const paved = [[c0 - 7, c0, apA], [c0, cs1, () => SEA], [cs1, cs1 + 7, apB]];
-    for (const [sA, sB, sea] of paved) {
-      const n = Math.ceil(sB - sA), nl = Math.max(2, Math.ceil((-3.7 - Math.min(sea(sA), sea(sB))) / 1.6));
-      for (let j = 0; j < nl; j++)
-        band(t => { const s = sA + (sB - sA) * t; return [s, -3.7 + (sea(s) + 3.7) * j / nl]; },
-          t => { const s = sA + (sB - sA) * t; return [s, -3.7 + (sea(s) + 3.7) * (j + 1) / nl]; }, n, 0, 0xffffff, CRT);
-      if (sea !== paved[1][2]) plinth(Array.from({ length: n + 1 }, (_, i) => { const s = sA + (sB - sA) * i / n; return [s, sea(s)]; }));
-    }
-    plinth(line(c0, apA(c0), c0, SEA, 8)); plinth(line(c0, SEA, cs1, SEA, 24)); plinth(line(cs1, SEA, cs1, apB(cs1), 8));
-    // marigold-yellow sandstone border on three sides, and two inlay bands leading to the arch
+    // the compound (compound.js) lays the lawn, drive, walls and gates; this adds the laterite
+    // plinth down to the sand, a sandstone edge at the deck end and a walk from the drop-off to the arch
+    const WALLL = -5.75;
+    plinth(line(c0, WALLL, c0, SEA, 8)); plinth(line(c0, SEA, cs1, SEA, 24)); plinth(line(cs1, SEA, cs1, WALLL, 8));
     const BW = 0.5, gold = C.sandstone;
-    band(t => [c0 + (cs1 - c0) * t, SEA], t => [c0 + (cs1 - c0) * t, SEA + BW], 24, 0.012, gold, CST);
-    band(t => [c0, -3.7 + (SEA + 3.7) * t], t => [c0 + BW, -3.7 + (SEA + 3.7) * t], 6, 0.012, gold, CST);
-    band(t => [cs1 - BW, -3.7 + (SEA + 3.7) * t], t => [cs1, -3.7 + (SEA + 3.7) * t], 6, 0.012, gold, CST);
-    for (const bl of [-11 - 1.7, -11 + 1.7])
-      band(t => [c0 + 16 + (cs1 - BW - c0 - 16) * t, bl - 0.13], t => [c0 + 16 + (cs1 - BW - c0 - 16) * t, bl + 0.13], 4, 0.012, gold, CST);
+    band(t => [cs1 - BW, WALLL + (SEA - WALLL) * t], t => [cs1, WALLL + (SEA - WALLL) * t], 6, 0, gold, CST);
+    band(t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, -9.3], t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, -12.7], 4, 0, C.sandPale, CST);
+    for (const bl of [-9.3, -12.7])
+      band(t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, bl - 0.12], t => [c0 + 19.5 + (cs1 - BW - c0 - 19.5) * t, bl + 0.12], 4, 0.004, gold, CST);
 
     /* ---------------- steps from the court down (or up) onto the deck, under the arch */
     {
@@ -800,13 +768,17 @@ export default {
         bead(x + Math.cos(a) * r, y + 0.385, z + Math.sin(a) * r, i % 4 === 0 ? 5 : i % 2 ? 2 : 0, 1.5);
       }
     };
+    // clear of the drive (half-width up to 2.1 m + 0.8) and of the drop-off apron (compound.js)
+    const stopP = ROUTE.in[ROUTE.in.length - 1];
+    const clear = (s, lat, r) => dRoute(s, lat) >= 2.9 + r &&
+      ((s - stopP[0] - 1) / (6 + r)) ** 2 + ((lat - stopP[1] + 0.6) / (4.2 + r)) ** 2 >= 1;
     const PROPS = [];
-    for (let k = 0; k < 6; k++) PROPS.push([c0 + 1.6 + k * 4.1, SEA + 0.95, k % 2 ? 'u' : 'b']);   // sea edge
-    for (const lat of [-10, -13.6]) PROPS.push([c0 + 0.95, lat, lat < -12 ? 'b' : 'u']);              // far end
-    for (const s of [c0 + 10, c0 + 14, c0 + 18]) PROPS.push([s, -4.75, 'u']);                         // road edge
+    for (let k = 0; k < 6; k++) PROPS.push([c0 + 1.6 + k * 4.1, SEA + 1.35, k % 2 ? 'u' : 'b']);   // sea edge, inside the sea wall
+    for (const lat of [-10, -13.6]) PROPS.push([c0 + 1.3, lat, lat < -12 ? 'b' : 'u']);              // far end
+    for (const s of [c0 + 9, c0 + 13, c0 + 17]) PROPS.push([s, -6.9, 'u']);                          // inside the road wall
     PROPS.push([cs1 - 1.1, -14.2, 'b'], [cs1 - 1.1, -7.9, 'b']);                                      // flanking the steps
     for (const [s, lat, kind] of PROPS) {
-      if (dRoute(s, lat) < (kind === 'b' ? 3.8 : 3.0)) continue;
+      if (!clear(s, lat, kind === 'b' ? 0.9 : 0.7)) continue;
       const p = L(s, lat, cY(s));
       kind === 'b' ? banana(p.x, p.z, 1.5 + R() * 0.4, true, p.y, 1.35) : urli(p.x, p.y, p.z);
     }
@@ -833,7 +805,6 @@ export default {
     mesh(BR, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.7, roughness: 0.26, emissive: 0x3a2508, emissiveIntensity: 0.4 }), 'brass');
     mesh(LF, new THREE.MeshStandardMaterial({ map: leafTex(R), vertexColors: true, roughness: 0.55, side: THREE.DoubleSide, alphaTest: 0.5 }), 'leaves');
 
-    mesh(CRT, new THREE.MeshStandardMaterial({ map: paverTex(R), vertexColors: true, roughness: 0.9 }), 'court', false);
     mesh(CST, new THREE.MeshStandardMaterial({ map: stoneTex(R), vertexColors: true, roughness: 0.8, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }), 'stone', false);
     const pomp = pompomTex(R);
@@ -856,9 +827,15 @@ export default {
     group.userData.stats = { beads: nB, tris: Math.round(tris.n), draws: group.children.length };
     if (typeof window !== 'undefined') (window.__haldi = group.userData.stats);
 
+    // the compound: lawn, terracotta drive along the route, laterite walls and gates (world coords)
+    const comp = buildCompound(ctx, 'haldi', { drive: { base: '#b0603a', joint: '#7d5a40', accent: '#5e2412' },
+      stone: 0x9a5236, cap: 0x3b302a, glow: 0xffc27a, seaWall: true });
+    const root = new THREE.Group(); root.name = 'haldi-root';
+    root.add(group, comp.group);
+    group.userData.stats.draws += comp.group.children.length;
     return {
-      group,
-      update() {}
+      group: root,
+      update() { comp.update(world.U.uDusk.value); }
     };
   }
 };

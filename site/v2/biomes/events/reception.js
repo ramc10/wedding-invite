@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from '../../vendor/addons/utils/BufferGeometryUtils.js';
 import { EVENTS, COURTS, STOP } from '../../core/timeline.js';
+import { buildCompound } from './compound.js';
 
 const TEAK = 0x8a5a36, TEAK_D = 0x5e3b22, IVORY = 0xf3ece0, LINEN = 0xf7f3ec, CHAMP = 0xd9bf8a;
 const WARM = new THREE.Color(0xffc68c);          // ~2700 K
@@ -353,8 +354,8 @@ function buildEntrance(K, tier) {
   lantern(K, x0 - w - 0.5, 0, z + 0.1, 0.9); lantern(K, x0 + w + 0.5, 0, z + 0.1, 0.9);
 }
 
-/* ---------- forecourt: honed ivory stone at road level with brass inlay, where the car drives in ---------- */
-const STONE = 0xe8dcc6, STONE_B = 0xd5c19c, GROUT = 0xb3a488, SKIRT = 0xcdb994;
+/* ---------- forecourt frame: road-coord helpers and the route clearance test (surface: compound.js) ---------- */
+const STONE = 0xe8dcc6, STONE_B = 0xd5c19c, SKIRT = 0xcdb994;
 function quads(bk, list) {                 // list: [[a,b,c,d], col, hint] in local coords; hint = wanted normal side
   const pos = [], nor = [], colr = [], c = new THREE.Color(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), n = new THREE.Vector3();
   for (const [[a, b, cc, d], col, hint] of list) {
@@ -386,36 +387,7 @@ function buildCourt(K, ctx, group) {
     }
     return d;
   };
-  const s0 = C.s0, s1 = C.s1, l0 = -16.5, l1 = -3.7, B = 0.6, top = [], brass = [];
-  const tile = (sa, sb, la, lb, col, dy = TOP) => top.push([[L(sa, la, dy), L(sb, la, dy), L(sb, lb, dy), L(sa, lb, dy)], col, UP]);
-  const vary = (k) => { const c = new THREE.Color(k), j = (Math.random() - 0.5) * 0.05; return c.offsetHSL(0, 0, j).getHex(); };
-  tile(s0, s1, l0, l1, GROUT, TOP - 0.008);                                        // grout bed
-  const J = 0.004;
-  // border band: long slabs of a deeper sand stone
-  for (let s = s0; s < s1 - 1e-3; s += 1.2) { const e = Math.min(s1, s + 1.2);
-    tile(s + J, e - J, l0 + J, l0 + B - J, vary(STONE_B)); tile(s + J, e - J, l1 - B + J, l1 - J, vary(STONE_B)); }
-  for (let l = l0 + B; l < l1 - B - 1e-3; l += 1.2) { const e = Math.min(l1 - B, l + 1.2);
-    tile(s0 + J, s0 + B - J, l + J, e - J, vary(STONE_B)); tile(s1 - B + J, s1 - J, l + J, e - J, vary(STONE_B)); }
-  // field: 1.2 × 0.8 honed ivory slabs in running bond
-  let row = 0;
-  for (let l = l0 + B; l < l1 - B - 1e-3; l += 0.8, row++) {
-    const le = Math.min(l1 - B, l + 0.8);
-    for (let s = s0 + B - (row % 2) * 0.6; s < s1 - B - 1e-3; s += 1.2) {
-      const sa = Math.max(s0 + B, s), sb = Math.min(s1 - B, s + 1.2);
-      if (sb - sa > 0.05) tile(sa + J, sb - J, l + J, le - J, vary(STONE));
-    }
-  }
-  // brass inlay: a line framing the field, and a double ring round the drop-off
-  const strip = (pts, w) => { for (let i = 0; i < pts.length - 1; i++) {
-    const [as, al] = pts[i], [bs, bl] = pts[i + 1], len = Math.hypot(bs - as, bl - al), ns = -(bl - al) / len * w / 2, nl = (bs - as) / len * w / 2;
-    brass.push([[L(as + ns, al + nl, TOP + 0.002), L(bs + ns, bl + nl, TOP + 0.002), L(bs - ns, bl - nl, TOP + 0.002), L(as - ns, al - nl, TOP + 0.002)], 0xa98446, UP]); } };
-  const f0 = s0 + B + 0.05, f1 = s1 - B - 0.05, g0 = l0 + B + 0.05, g1 = l1 - B - 0.05;
-  strip([[f0, g0], [f1, g0], [f1, g1], [f0, g1], [f0, g0]], 0.03);
-  const [cs, cl] = R.in[R.in.length - 1];
-  for (const r of [3.0, 3.25]) { const ring = []; for (let k = 0; k <= 64; k++) { const a = k / 64 * Math.PI * 2; ring.push([cs + Math.cos(a) * r, cl + Math.sin(a) * r]); } strip(ring, 0.025); }
-  strip([[cs + 3.25, cl], [f1, cl]], 0.03);                                       // axis line on to the steps
-  quads(K.iv, top); quads(K.gd, brass);
-  K.pools.push(...[[cs, cl, 3.6, 0.42]].map(([s, l, r, k]) => { const p = L(s, l); return [p.x, p.y, p.z, r, k]; }));
+  const s0 = C.s0, s1 = C.s1, l0 = C.lat[1], l1 = -3.7;   // the lawn, drive, road wall and gates come from compound.js
   return { L, G, put, s0, s1, l0, l1 };
 }
 
@@ -453,23 +425,14 @@ function buildCourtEdges(K, cc) {
       put(K.iv, box, 0xeee4d2, sm, lm, TOP + 0.53, 0.44, 0.06, len / k + 0.02, ry);
     }
   };
-  wall([s0 + 0.17, l0 + 0.17], [s1 - 0.02, l0 + 0.17]); wall([s0 + 0.17, l0 + 0.17], [s0 + 0.17, -8.9]);
+  wall([s0 + 0.5, l0 + 0.17], [s1 - 0.02, l0 + 0.17]);
   const warmAt = [];
   for (let s = s0 + 2; s < s1 - 1; s += 4) {
     const p = L(s, l0 + 0.17, TOP + 0.56); lantern(K, p.x, p.y, p.z, 0.85);
     const q = L(s, l0 + 1.1); K.pools.push([q.x, q.y, q.z, 1.5, 0.4]); warmAt.push(q);
   }
-  // road-side planters: a low stone trough with a clipped hedge and white blooms, only where the car never goes
-  for (let s = s0 + 5; s < s1 - 4; s += 1.4) {
-    const sm = s + 0.65;
-    if (K.clear(s, -4.3) < 2.5 || K.clear(s + 1.3, -4.3) < 2.5) continue;
-    put(K.iv, box, SKIRT, sm, -4.3, TOP + 0.22, 0.6, 0.44, 1.3);
-    put(K.iv, box, 0x4a5d3c, sm, -4.3, TOP + 0.56, 0.48, 0.26, 1.22);
-    for (let k = 0; k < 4; k++) { const p = L(s + 0.1 + Math.random() * 1.1, -4.3 + (Math.random() - 0.5) * 0.4, TOP + 0.66 + Math.random() * 0.04);
-      K.flowers.push([p.x, p.y, p.z, 0.05 + Math.random() * 0.02, Math.random() < 0.25 ? 0xf1d8d6 : 0xfbf8f2]); }
-  }
   // stone bollards with a glowing brass-lined slot, at the mouths and the corners of the court
-  for (const [s, l] of [[s0 + 4.6, -4.3], [s1 - 3.4, -4.3], [s0 + 0.2, -8.4], [s1 - 0.6, l0 + 0.9], [s0 + 12, l0 + 0.9]]) {
+  for (const [s, l] of [[s1 - 0.6, l0 + 0.75], [s0 + 12, l0 + 0.75]]) {
     if (K.clear(s, l) < 2.45) continue;
     put(K.iv, box, 0xeee4d2, s, l, TOP + 0.38, 0.22, 0.76, 0.22);
     put(K.gd, box, CHAMP, s, l, TOP + 0.78, 0.25, 0.04, 0.25);
@@ -485,7 +448,6 @@ function buildCourtEdges(K, cc) {
     lantern(K, p.x, p.y + 2.5, p.z, 1.15);
     K.pools.push([p.x, p.y, p.z, 2.6, 0.45]); warmAt.push(p);
   }
-  for (let s = s0 + 6; s < s1 - 4; s += 3.5) { const q = L(s, -5.2); LIGHTS.push([q.x, q.y + 0.8, q.z, 0.35, 1.6]); }
   const st = L(...STOP.reception.route.in.at(-1), 1.2);
   for (const q of warmAt) LIGHTS.push([q.x, q.y + 0.5, q.z, 0.45, 1.8]);
   LIGHTS.push([st.x, st.y, st.z, 0.3, 4.5]);
@@ -682,9 +644,15 @@ export default {
     const pools = lightPools(K.pools, tex); group.add(pools);
 
     const dayBulb = new THREE.Color(0x8c8a82), nightBulb = new THREE.Color(2.2, 1.7, 1.05), sz = new THREE.Vector2();
+    // the compound (lawn, runway drive, road wall and gates) is built in road coords, so it sits beside the deck group
+    const comp = buildCompound(ctx, 'reception', { drive: { base: '#e7dcc6', joint: '#b8a78a', accent: '#c7a878' },
+      stone: 0xd8c6a2, cap: 0x7b5b3c, glow: 0xffc98e, seaWall: false });
+    const outer = new THREE.Group(); outer.name = 'reception';
+    outer.add(group, comp.group);
     return {
-      group,
+      group: outer,
       update(dt, s, cam) {
+        comp.update(world.U.uDusk.value);
         const d = world.U.uDusk.value, on = THREE.MathUtils.smoothstep(d, 0.15, 0.8);
         warmU.value.copy(WARM).multiplyScalar(on * 0.42);
         canopyU.value.setRGB(1.0, 0.78, 0.55).multiplyScalar(on * 0.7);

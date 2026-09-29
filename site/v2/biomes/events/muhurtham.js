@@ -8,13 +8,15 @@
  * the agni kund and the four brass lamps), plus one instanced additive mesh that holds every
  * flame, halo and light pool.
  *
- * The forecourt (COURTS.muhurtham) is dark granite at road level with a kolam at the drop-off; the
- * entrance arch stands at the deck's near end, facing it, over steps down from the court.
+ * The forecourt (COURTS.muhurtham) is the shared compound (compound.js: lawn, black-granite drive,
+ * road wall and gates) with a kolam on the drop-off apron; the entrance arch stands at the deck's
+ * near end, facing it, over steps down from the court.
  *
- * Draw calls: wood, stone, gold, runner, leaf, chairs, court, kolam, flowers, fx = 10. <80k triangles on 'high'. */
+ * Draw calls: wood, stone, gold, runner, leaf, chairs, kolam, flowers, fx = 9, + compound 5 = 14. <80k triangles on 'high'. */
 import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/addons/utils/BufferGeometryUtils.js';
 import { EVENTS, COURTS, STOP } from '../../core/timeline.js';
+import { buildCompound } from './compound.js';
 
 const E = EVENTS.muhurtham;
 const HALF_Z = E.len / 2;                       // 14
@@ -141,26 +143,6 @@ function runnerTex() {
   });
 }
 
-// polished black granite slabs, 1.0 x 0.5 m in running bond, 2 m per repeat (256 px/m)
-function graniteTex(R) {
-  return canvasTex(512, 512, (g, w, h) => {
-    const px = w / 2;
-    g.fillStyle = '#1c1b1a'; g.fillRect(0, 0, w, h);
-    for (let row = 0; row < 4; row++) for (let c = -1; c < 3; c++) {
-      const x0 = (c + (row % 2) * 0.5) * px, y0 = row * px / 2, l = 0.85 + R() * 0.3;
-      g.fillStyle = `rgb(${Math.round(30 * l)},${Math.round(29 * l)},${Math.round(28 * l)})`;
-      g.fillRect(x0 + 1, y0 + 1, px - 2, px / 2 - 2);
-    }
-    for (let i = 0; i < 9000; i++) {                                     // feldspar and mica speckle
-      const v = R(), a = 0.25 + R() * 0.5;
-      g.fillStyle = v < 0.7 ? `rgba(70,68,66,${a})` : v < 0.93 ? `rgba(130,126,120,${a})` : `rgba(210,205,196,${a})`;
-      g.fillRect(R() * w, R() * h, 1 + R() * 1.6, 1 + R() * 1.6);
-    }
-    g.fillStyle = 'rgba(120,114,104,0.55)';                              // pale joints
-    for (let row = 0; row <= 4; row++) g.fillRect(0, row * px / 2 - 1, w, 2);
-    for (let row = 0; row < 4; row++) for (let c = -1; c < 3; c++) g.fillRect((c + (row % 2) * 0.5) * px - 1, row * px / 2, 2, px / 2);
-  });
-}
 // white rice-flour kolam: a pulli (dot) kolam woven round a lotus, on transparent ground
 function kolamTex() {
   return canvasTex(512, 512, (g, w) => {
@@ -611,42 +593,36 @@ function buildChairs(chairMat, dens) {
   return mesh;
 }
 
-/* ---------- 7. the forecourt: dark granite at road level, kolam at the drop-off, lamps ----------
- * The car drives in along STOP.muhurtham.route and parks at (CT.s0 + 14, -10.8). Nothing taller
- * than 5 cm stands within 2.4 m of the route. Built from path coordinates, then taken into the
- * deck's local frame (inv), so the paving follows the road's grade exactly. */
-function routeDist(s, lat) {
-  const r = STOP.muhurtham.route;
-  let d = Infinity;
-  for (const pts of [r.in, r.out]) for (let i = 1; i < pts.length; i++) {
-    const [as, al] = pts[i - 1], [bs, bl] = pts[i], ds = bs - as, dl = bl - al;
-    const t = Math.max(0, Math.min(1, ((s - as) * ds + (lat - al) * dl) / (ds * ds + dl * dl)));
-    d = Math.min(d, Math.hypot(s - as - ds * t, lat - al - dl * t));
+/* the drive as compound.js lays it: the same centripetal curve through STOP.muhurtham.route,
+ * sampled every 0.3 m, and the drop-off apron (an ellipse) at the stop */
+const DRIVE = (() => {
+  const r = STOP.muhurtham.route, out = [], p = new THREE.Vector3();
+  for (const pts of [r.in, r.out]) {
+    const c = new THREE.CatmullRomCurve3(pts.map(([s, l]) => new THREE.Vector3(s, 0, l)), false, 'centripetal');
+    const n = Math.ceil(c.getLength() / 0.3);
+    for (let i = 0; i <= n; i++) { c.getPointAt(i / n, p); out.push([p.x, p.z]); }
   }
-  return d;
+  return out;
+})();
+const STOP_PT = STOP.muhurtham.route.in.at(-1);
+/** clearance (m) from (s, lat) to the edge of the paved drive / apron; < 0 means on it */
+function driveClear(s, lat) {
+  let d = Infinity;
+  for (const [ds, dl] of DRIVE) d = Math.min(d, Math.hypot(s - ds, lat - dl));
+  d -= 2.1 + 2.2 * Math.max(0, Math.min(1, (lat + 6.2) / 2.6));          // half-width, bellmouth near the road
+  const es = (s - STOP_PT[0] - 1) / 5.2, el = (lat - STOP_PT[1] + 0.6) / 3.4;
+  return Math.min(d, (Math.hypot(es, el) - 1) * 3.4);
 }
+/* ---------- 7. dressing for the shared compound (compound.js: lawn, drive, walls, gates) ----------
+ * Retaining skirt under the lawn's open edges, brass lamps and diyas on the lawn clear of the
+ * drive, and the kolam on the apron. Built from path coordinates, taken into the deck frame (inv). */
 function buildCourt(ctx, inv, stone, gold, fx, R, dens) {
   const { path, world } = ctx;
   const _p = new THREE.Vector3();
-  const L = (s, lat, dy = 0) => { path.toWorld(s, lat, _p); _p.y = path.roadY(s) + 0.02 + dy; return _p.applyMatrix4(inv).clone(); };
+  const L = (s, lat, dy = 0) => { path.toWorld(s, lat, _p); _p.y = path.roadY(s) + 0.012 + dy; return _p.applyMatrix4(inv).clone(); };
   const G = (s, lat) => { path.toWorld(s, lat, _p); _p.y = world.heightSL(s, lat); return _p.applyMatrix4(inv).y; };
-  const [la, lb] = [-3.7, CT.lat[1]];
-  // paving: a grid in (s, lat) with uv in metres (granite texture tiles every 2 m)
-  const ns = Math.ceil((CT.s1 - CT.s0) / 2), nl = 4, pos = [], uv = [], idx = [];
-  for (let i = 0; i <= ns; i++) for (let j = 0; j <= nl; j++) {
-    const s = CT.s0 + (CT.s1 - CT.s0) * i / ns, lat = la + (lb - la) * j / nl, v = L(s, lat);
-    pos.push(v.x, v.y, v.z); uv.push(lat / 2, s / 2);
-  }
-  for (let i = 0; i < ns; i++) for (let j = 0; j < nl; j++) {
-    const a = i * (nl + 1) + j, b = a + nl + 1;
-    idx.push(a, b, a + 1, a + 1, b, b + 1);
-  }
-  const court = new THREE.BufferGeometry();
-  court.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  court.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  court.setIndex(idx); court.computeVertexNormals();
-  if (court.attributes.normal.getY(0) < 0) { court.index.array.reverse(); court.computeVertexNormals(); }
-  // retaining skirt down to the sand: sea side and both ends (dressed granite, a shade lighter)
+  const [la, lb] = [-5.75, CT.lat[1]];
+  // retaining skirt down to the sand: sea side and both ends (dark granite, both faces)
   const skirt = (s0, l0, s1, l1, steps) => {
     const P = [];
     for (let k = 0; k < steps; k++) {
@@ -654,38 +630,19 @@ function buildCourt(ctx, inv, stone, gold, fx, R, dens) {
       const qa = l0 + (l1 - l0) * k / steps, qb = l0 + (l1 - l0) * (k + 1) / steps;
       const A = L(sa, qa), B = L(sb, qb), ya = Math.min(A.y - 0.05, G(sa, qa) - 0.4), yb = Math.min(B.y - 0.05, G(sb, qb) - 0.4);
       P.push(A.x, A.y, A.z, A.x, ya, A.z, B.x, B.y, B.z, B.x, B.y, B.z, A.x, ya, A.z, B.x, yb, B.z);
+      P.push(A.x, A.y, A.z, B.x, B.y, B.z, A.x, ya, A.z, B.x, B.y, B.z, B.x, yb, B.z, A.x, ya, A.z);
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
     g.computeVertexNormals();
     stone.add(g, 0x3c3935, null, 0.08);
-    const g2 = g.clone(); g2.index = null;                                  // double-sided: add the reverse winding
-    const a = g2.attributes.position.array;
-    for (let t = 0; t < a.length; t += 9) for (let c = 0; c < 3; c++) { const tmp = a[t + 3 + c]; a[t + 3 + c] = a[t + 6 + c]; a[t + 6 + c] = tmp; }
-    g2.computeVertexNormals(); stone.add(g2, 0x3c3935, null, 0.08);
   };
   skirt(CT.s0, la, CT.s0, lb, 4); skirt(CT.s0, lb, CT.s1, lb, 12); skirt(CT.s1, lb, CT.s1, la, 4);
-  // granite kerb along the sea edge and the part of the near end clear of the route
-  const kerb = (s0, l0, s1, l1) => {
-    const A = L(s0, l0, 0.12), B = L(s1, l1, 0.12), len = A.distanceTo(B);
-    stone.add(new THREE.BoxGeometry(0.34, 0.26, len), 0x55514b, mat((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2, 0, Math.atan2(B.x - A.x, B.z - A.z)), 0.05);
-  };
-  // pale Kota-stone inlay: a border band inset from the edges, and a walk from the kolam to the steps
-  const band = (s0, l0, s1, l1, w, hex = 0xcdc3ae) => {
-    const A = L(s0, l0, 0.004), B = L(s1, l1, 0.004), len = A.distanceTo(B);
-    stone.add(new THREE.BoxGeometry(w, 0.008, len + w), hex, mat((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2, 0, Math.atan2(B.x - A.x, B.z - A.z)), 0.03);
-  };
-  const bi = 0.9, bs0 = CT.s0 + bi, bs1 = CT.s1 - bi, bl0 = la - 0.5, bl1 = lb + bi;
-  for (let s = bs0; s < bs1 - 0.1; s += 6) { band(s, bl0, Math.min(bs1, s + 6), bl0, 0.22); band(s, bl1, Math.min(bs1, s + 6), bl1, 0.22); }
-  band(bs0, bl0, bs0, bl1, 0.22); band(bs1, bl0, bs1, bl1, 0.22);
-  for (const o of [-1.45, 1.45]) band(CT.s0 + 22.2, -11 + o, bs1, -11 + o, 0.12, 0xb89548);   // brass lines to the stair
-  for (let s = CT.s0; s < CT.s1 - 0.1; s += 4) kerb(s, lb + 0.17, Math.min(CT.s1, s + 4), lb + 0.17);
-  kerb(CT.s0 + 0.17, lb + 0.34, CT.s0 + 0.17, -8.6);
-  // lamps: a brass samai on a granite pedestal, and clay diyas between them, all clear of the route
+  // lamps: a brass samai on a granite pedestal; clay diyas between them; all on the lawn, off the drive
   const lampGeo = lathe([[0, 0], [0.13, 0], [0.13, 0.03], [0.07, 0.06], [0.035, 0.12], [0.03, 0.4], [0.055, 0.43], [0.03, 0.46],
     [0.026, 0.62], [0.05, 0.64], [0.15, 0.68], [0.16, 0.72], [0.05, 0.71], [0.025, 0.75], [0.03, 0.82], [0.012, 0.9], [0, 0.93]], 8);
   const cup = lathe([[0, 0], [0.045, 0], [0.062, 0.04], [0, 0.03]], 6);
   const lamp = (s, lat) => {
-    if (routeDist(s, lat) < 2.7) return;
+    if (driveClear(s, lat) < 1.0) return;
     const b = L(s, lat);
     stone.box(0.34, 0.5, 0.34, 0x2a2826, b.x, b.y + 0.25, b.z, 0, 0.03);
     stone.box(0.4, 0.05, 0.4, 0x6c665d, b.x, b.y + 0.52, b.z);
@@ -694,23 +651,20 @@ function buildCourt(ctx, inv, stone, gold, fx, R, dens) {
     fx.push([1, b.x, b.y + 1.3, b.z, 0.9, 0.9, 0.7], [2, b.x, b.y + 0.01, b.z, 2.8, 2.8, 0.22]);
   };
   const diya = (s, lat) => {
-    if (routeDist(s, lat) < 2.5) return;
+    if (driveClear(s, lat) < 0.8) return;
     const b = L(s, lat);
     stone.add(cup, 0x9c4d27, mat(b.x, b.y + 0.004, b.z, 0, R() * 3, 0), 0.15);
     fx.push([0, b.x, b.y + 0.085, b.z, 0.042, 0.075, 1.0], [1, b.x, b.y + 0.08, b.z, 0.34, 0.34, 0.5]);
   };
-  for (let s = CT.s0 + 1.5; s < CT.s1; s += 4.5) lamp(s, lb + 0.6);                  // sea edge
-  for (let s = CT.s0 + 1.5; s < CT.s1; s += 4.5) lamp(s, -4.3);                      // road edge
-  for (const lat of [-10, -13.5]) lamp(CT.s0 + 0.9, lat);                           // near end
+  for (let s = CT.s0 + 2.2; s < CT.s1 - 0.5; s += 4.5) { lamp(s, lb + 0.75); lamp(s, la - 0.9); }   // sea edge, inside the road wall
+  for (const lat of [-9.5, -13]) lamp(CT.s0 + 1.1, lat);                                             // near end
   const step = 0.55 / dens;
-  for (let s = CT.s0 + 0.5; s < CT.s1; s += step) { diya(s, lb + 0.75); diya(s, -4.0); }
-  for (let lat = -8.5; lat > lb + 0.8; lat -= step) diya(CT.s0 + 0.6, lat);
-  // the drop-off: a soft warm pool where the car stops, and the kolam just ahead of its nose
-  const stop = STOP.muhurtham.route.in.at(-1), P = L(stop[0] + 0.5, stop[1], 0.03);
-  fx.push([2, P.x, P.y, P.z, 8, 8, 0.14]);
-  const K = L(CT.s0 + 19.8, -11, 0.012);
-  const kolam = new THREE.PlaneGeometry(4.2, 4.2).rotateX(-Math.PI / 2).translate(K.x, K.y, K.z);
-  return { court, kolam, cy: L(CT.s1, AX + LAT_C).y };
+  for (let s = CT.s0 + 0.8; s < CT.s1 - 0.3; s += step) { diya(s, lb + 0.95); diya(s, la - 0.55); }
+  for (let lat = la - 1.2; lat > lb + 1.2; lat -= step) diya(CT.s0 + 0.75, lat);
+  // the kolam on the drop-off apron (apron top is road + 0.031), just ahead of the car's nose
+  const K = L(STOP_PT[0] + 4.4, -11, 0.027);
+  const kolam = new THREE.PlaneGeometry(3.6, 3.6).rotateX(-Math.PI / 2).translate(K.x, K.y, K.z);
+  return { kolam, cy: L(CT.s1, AX + LAT_C, 0.008).y };
 }
 
 /* ---------- build ---------- */
@@ -765,9 +719,15 @@ export default {
     add(wood, mats.wood, 'wood'); add(stone, mats.stone, 'stone'); add(gold, mats.gold, 'gold');
     add(runner, mats.runner, 'runner'); add(leaf, mats.leaf, 'leaf');
     group.add(buildChairs(mats.chair, dens));
-    const courtMat = litMat({ map: graniteTex(R), roughness: 0.84, metalness: 0.0, color: 0xcfcac3, envMapIntensity: 0.4 }, { amb: 0.1 });
-    const court = new THREE.Mesh(ct.court, courtMat); court.name = 'muhurtham:court'; group.add(court);
-    const kolamMat = litMat({ map: kolamTex(), transparent: true, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 }, { amb: 0.18, self: 0.25 });
+    // the compound (lawn, granite drive and apron, road wall, gates, bollards): built in world
+    // coordinates, so it is carried in the deck frame by the inverse of the group's transform
+    const compound = buildCompound(ctx, 'muhurtham', {
+      drive: { base: '#232221', joint: '#8f887c', accent: '#5a5650' },
+      stone: 0xd9d1c1, cap: 0xb88a3a, glow: 0xffc27a, seaWall: true
+    });
+    compound.group.applyMatrix4(inv);
+    group.add(compound.group);
+    const kolamMat = litMat({ map: kolamTex(), transparent: true, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8 }, { amb: 0.18, self: 0.25 });
     const kolam = new THREE.Mesh(ct.kolam, kolamMat); kolam.name = 'muhurtham:kolam'; kolam.renderOrder = 2; group.add(kolam);
 
     // flowers: one instanced octahedron per bud
@@ -802,7 +762,7 @@ export default {
     let tris = 0;
     const per = {};
     group.traverse(o => { if (o.isMesh) { const g = o.geometry, n = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.count || 1); tris += n; per[o.name] = Math.round(n); } });
-    group.userData.stats = { tris: Math.round(tris), calls: group.children.length, flowers: flowers.length, fx: fx.length, ms: Math.round(performance.now() - t0), per };
+    group.userData.stats = { tris: Math.round(tris), calls: Object.keys(per).length, flowers: flowers.length, fx: fx.length, ms: Math.round(performance.now() - t0), per };
     window.__muh = group.userData.stats;   // debugging handle (tris, calls, build ms)
 
     return {
@@ -813,6 +773,7 @@ export default {
         LIT.uFlick.value = 0.88 + 0.08 * Math.sin(t * 9.3) + 0.05 * Math.sin(t * 14.1 + 1.7) + 0.03 * Math.sin(t * 23.0);
         fxMat.uniforms.uTime.value = t;
         fxMat.uniforms.uGlow.value = d;
+        compound.update(d);
       }
     };
   }

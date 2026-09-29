@@ -86,14 +86,14 @@ function crossing(sm, L) {
 const V = new THREE.Vector3();
 function at(ctx, s, l, dy) { ctx.path.toWorld(s, l, V); V.y = ctx.path.roadY(s) + dy; return V; }
 /** a strip along samples, half-width hw(sample) either side of the centreline, dy above the road */
-function strip(ctx, sm, hw, dy, uvK = 1 / 2.4) {
+function strip(ctx, sm, hw, dy, uvK = 1 / 2.4, maxL = Infinity) {
   const pos = [], uv = [], idx = [];
   let along = 0;
   sm.forEach((q, i) => {
     if (i) along += Math.hypot(q.s - sm[i - 1].s, q.l - sm[i - 1].l);
     const nl = q.ts, ns = -q.tl, h = hw(q);                     // normal to the tangent, in (s, l)
     for (const k of [-1, 1]) {
-      const p = at(ctx, q.s + ns * h * k, q.l + nl * h * k, dy);
+      const p = at(ctx, q.s + ns * h * k, Math.min(maxL, q.l + nl * h * k), dy);   // never onto the road
       pos.push(p.x, p.y, p.z); uv.push((k * h) * uvK, along * uvK);
     }
     if (i) { const b = i * 2; idx.push(b - 2, b - 1, b, b - 1, b + 1, b); }
@@ -135,7 +135,7 @@ export function buildCompound(ctx, id, style) {
   const inS = samples(R.in), outS = samples(R.out);
   // wider where it meets the road (a bellmouth), so the turn in reads as a proper entrance
   const hw = q => W / 2 + 2.2 * smoothstep(-6.2, -3.6, q.l);
-  const drive = [strip(ctx, inS, hw, 0.03), strip(ctx, outS, hw, 0.03), apron(ctx, stop[0] + 1, stop[1] - 0.6, 5.2, 3.4, 0.031)];
+  const drive = [strip(ctx, inS, hw, 0.03, 1 / 2.4, -3.62), strip(ctx, outS, hw, 0.03, 1 / 2.4, -3.62), apron(ctx, stop[0] + 1, stop[1] - 0.6, 5.2, 3.4, 0.031)];
 
   // lawn over the rest of the court, just under the drive
   const lp = [], lu = [], li = [], ns = Math.ceil((C.s1 - C.s0) / 1.5), nl = Math.ceil((WALL - C.lat[1]) / 1.5);
@@ -178,7 +178,7 @@ export function buildCompound(ctx, id, style) {
     stone.push(box(ctx, 0.7, 2.3, 0.7, s, WALL, 0));
     cap.push(box(ctx, 0.84, 0.1, 0.84, s, WALL, 2.3));
     glow.push(box(ctx, 0.06, 1.5, 0.02, s, WALL + 0.36, 0.45));
-    pools.push({ s, l: WALL + 1.2, r: 2.4 }, { s, l: WALL - 1.2, r: 2.2 });
+    pools.push({ s, l: WALL + 1.1, r: 1.7 }, { s, l: WALL - 1.1, r: 1.6 });
   }
   // bollards along both edges of the drive, every ~4.5 m, off the lane
   for (const sm of [inS, outS]) {
@@ -218,10 +218,13 @@ function assemble(ctx, id, style, P) {
   const add = (g, m, name, shadow) => { const x = new THREE.Mesh(g, m); x.name = name; x.receiveShadow = true; x.castShadow = !!shadow; group.add(x); return x; };
   const off = n => ({ polygonOffset: true, polygonOffsetFactor: n, polygonOffsetUnits: n });
   add(P.lawn, new THREE.MeshStandardMaterial({ map: lawnTex(), roughness: 0.96, ...off(-1) }), id + ':lawn');
-  add(mergeGeometries(P.drive.map(g => { g.deleteAttribute('normal'); g.computeVertexNormals(); return g; })),
-    new THREE.MeshStandardMaterial({ map: paverTex(style.drive), roughness: 0.82, ...off(-3) }), id + ':drive');
-  add(mergeGeometries([...colored(P.stone, style.stone), ...colored(P.cap, style.cap)]),
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 }), id + ':walls', true);
+  // at night the walls and drive take a soft warm fill from the venue's lamps (no real lights),
+  // so they don't read as black slabs beside the lit deck
+  const driveMat = new THREE.MeshStandardMaterial({ map: paverTex(style.drive), roughness: 0.82, emissive: style.glow, emissiveIntensity: 0, ...off(-3) });
+  driveMat.emissiveMap = driveMat.map;
+  add(mergeGeometries(P.drive.map(g => { g.deleteAttribute('normal'); g.computeVertexNormals(); return g; })), driveMat, id + ':drive');
+  const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, emissive: style.glow, emissiveIntensity: 0 });
+  add(mergeGeometries([...colored(P.stone, style.stone), ...colored(P.cap, style.cap)]), wallMat, id + ':walls', true);
   const glowMat = new THREE.MeshBasicMaterial({ color: style.glow, toneMapped: false });
   add(mergeGeometries(colored(P.glow, 0xffffff)), glowMat, id + ':glow');
   // light pools: flat additive quads a few cm above the ground
@@ -240,7 +243,9 @@ function assemble(ctx, id, style, P) {
     update(d) {
       const on = smoothstep(0.15, 0.8, d);
       glowMat.color.copy(dim).lerp(base, on).multiplyScalar(1 + 1.8 * on);
-      poolMat.opacity = 0.55 * on;
+      poolMat.opacity = 0.32 * on;
+      wallMat.emissiveIntensity = 0.16 * on;
+      driveMat.emissiveIntensity = 0.1 * on;
     }
   };
 }
