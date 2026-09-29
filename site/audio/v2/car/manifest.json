@@ -1,0 +1,18 @@
+[
+  {"file": "engine-idle.mp3", "purpose": "idle loop (mono, 10 s + 0.5 s head repeat)", "freesound_id": 845611, "url": "https://freesound.org/s/845611/", "author": "KVV_Audio", "license": "CC-BY 4.0", "start": 2.0, "len": 10.0, "f0_hz": 24.0,
+   "notes": "Hyundai Kona (small SUV) static idle, exterior, 96 kHz source. Steady harmonic comb on 24.0 Hz (72/120/144/168/216 Hz); strongest lines 72 and 75 Hz. RMS -24 dBFS."},
+  {"file": "engine-cruise.mp3", "purpose": "constant-RPM drone for speed pitch-shifting (mono, 9 s + 0.5 s head repeat)", "freesound_id": 481726, "url": "https://freesound.org/s/481726/", "author": "craigsmith", "license": "CC0", "start": 0.5, "len": 9.0, "f0_hz": 102.7,
+   "notes": "'Constant Fast Car Engine'. Source drifted 95-108 Hz; varispeed-flattened (time-varying resample tracking the 3rd-order line) to 102.7 +/-0.2 Hz over 0.6-29.1 s of the original, then looped from 0.5 s of the flattened take. Weaker half-order comb every 17.1 Hz underneath (137, 205, 257 Hz...). Source rolls off above ~3 kHz. RMS -24 dBFS."},
+  {"file": "road.mp3", "purpose": "tyre/road roll loop (stereo, 20 s + 0.5 s head repeat)", "freesound_id": 612011, "url": "https://freesound.org/s/612011/", "author": "klankbeeld", "license": "CC-BY 4.0", "start": 24.0, "len": 20.0,
+   "notes": "Inside car at 90 km/h on asphalt, steady broadband roll (-22 dBFS per 1 s window, no bumps). Recorded in the cabin, so it is warm/low (little above 2 kHz) with a faint engine line near 110 Hz. RMS -24 dBFS."},
+  {"file": "tick.mp3", "purpose": "indicator relay on-click", "freesound_id": 431816, "url": "https://freesound.org/s/431816/", "author": "Audy_Leonard", "license": "CC0", "start": 1.8156, "len": 0.12,
+   "notes": "Duration 120 ms; attack at 3.8 ms, peak -3 dB at 10.5 ms. Cut from a decoded WAV (mp3 -ss seeks were ~10 ms off). Lower click (centroid ~870 Hz)."},
+  {"file": "tock.mp3", "purpose": "indicator relay off-click", "freesound_id": 431816, "url": "https://freesound.org/s/431816/", "author": "Audy_Leonard", "license": "CC0", "start": 2.2155, "len": 0.12,
+   "notes": "Duration 120 ms; attack at 2.0 ms, peak -3 dB at 5.8 ms. Same recording as tick, 0.4 s later; brighter click (centroid ~2.2 kHz), 8 dB quieter in the source (normalised to -3 dB peak like tick)."},
+  {"file": "door-close.mp3", "purpose": "door close thunk", "freesound_id": 827291, "url": "https://freesound.org/s/827291/", "author": "DangerLaef", "license": "CC0", "start": 6.423, "len": 0.9,
+   "notes": "Volvo XC40 exterior door close; solid low thunk (spectral centroid ~180 Hz), quiet background. Onset ~5 ms, peak -3 dB."},
+  {"file": "engine-start.mp3", "purpose": "crank, catch, settle toward idle", "freesound_id": 362944, "url": "https://freesound.org/s/362944/", "author": "AlexanderChe", "license": "CC0", "start": 11.9, "len": 3.0,
+   "notes": "Chevrolet Lacetti 1.4 petrol. Key click, ~0.5 s crank, catch at ~0.6 s, flare peaking ~0.9 s, dropping toward idle by the 0.9 s fade-out. Peak -3 dB."},
+  {"file": "engine-off.mp3", "purpose": "engine switch-off", "freesound_id": 362944, "url": "https://freesound.org/s/362944/", "author": "AlexanderChe", "license": "CC0", "start": 3.9, "len": 1.6,
+   "notes": "Same Lacetti 1.4 take: ~0.45 s of idle, key click, engine shudders down and stops. Peak -3 dB."}
+]

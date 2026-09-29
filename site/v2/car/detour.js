@@ -96,9 +96,13 @@ function crane(dt) {
   const e = smoothstep(0, 1, cur.u);
   shot.pos.lerpVectors(cur.from, cur.to, e);
   shot.pos.y += Math.sin(Math.PI * e) * 2;   // a gentle arc over roadside trees mid-glide
-  // never crowd or overtake the car: hold the camera at least 8 m behind it along the road
-  const nr = path.nearest(shot.pos.x, shot.pos.z), over = nr.s - (car.s - 8);
-  if (over > 0) { path.sample(nr.s, _smp); shot.pos.addScaledVector(_smp.fwd, -over); }
+  // never crowd or overtake the car: hold the camera at least 8 m behind it along the road. Measured
+  // continuously against the road's direction at the car (path.nearest snaps to 0.5 m steps, and the
+  // clamped camera stepped with it: visible judder on the way out), and eased in rather than a hard stop
+  path.sample(car.s, _smp);
+  const along = (shot.pos.x - car.pos.x) * _smp.fwd.x + (shot.pos.z - car.pos.z) * _smp.fwd.z;
+  const over = along + 8;
+  if (over > -2) { const push = over > 0 ? over + 1 : (over + 2) * (over + 2) / 4; shot.pos.addScaledVector(_smp.fwd, -push); }
   AIM.copy(car.pos); AIM.y += 1.2;
   AIM.lerp(FOC, 0.35 + 0.45 * smoothstep(0, 1, cur.lookK));
   if (cur.outK > 0) { chaseSpot(car.s, CH, FOC2); AIM.lerp(FOC2, smoothstep(0, 1, cur.outK)); }
