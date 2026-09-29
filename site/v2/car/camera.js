@@ -207,9 +207,9 @@ function update(dt) {
   want.copy(car.pos)
     .addScaledVector(back, Math.cos(yaw) * dist)
     .addScaledVector(left, Math.sin(yaw) * dist);
-  want.y = car.pos.y + h + fkP * 2.2;
+  want.y = car.pos.y + h + fkP * 2.8;
   // away from the venue's side: a venue on the left (lateral < 0) moves the camera right (−left)
-  if (fkP > 0.001) want.addScaledVector(left, (focusLat < 0 ? -1 : 1) * fkP * 3.2);
+  if (fkP > 0.001) want.addScaledVector(left, (focusLat < 0 ? -1 : 1) * fkP * 6);
 
   // aim: ahead of the car, pulled toward where the road goes (curve look-ahead)
   look.copy(car.pos).addScaledVector(f, lookF);
@@ -218,7 +218,7 @@ function update(dt) {
   look.z += (tmp.z - (car.pos.z + f.z * 18)) * 0.35 * wC;
   look.y = car.pos.y + lookH;
   // aim across the car at the set: further on narrow screens, where less of it fits
-  if (fk > 0.001) look.lerp(focusV, fk * (0.34 + 0.22 * port) + fkP * 0.2);
+  if (fk > 0.001) look.lerp(focusV, fk * (0.34 + 0.22 * port) + fkP * 0.28);
   // looking round from the side or the front: aim back at the car, not down the road ahead
   const round = smoothstep(0.5, 1.6, Math.abs(userC.yaw));
   if (round > 0) { tmp.copy(car.pos); tmp.y += 0.9; look.lerp(tmp, round); }
@@ -254,7 +254,7 @@ function update(dt) {
   camera.position.copy(eye);
   camera.lookAt(lookC);
 
-  const fov = (rm ? FOV : FOV + sp * 4 * wC - wT * 4) + narrow * 14 + fkP * 5;
+  const fov = (rm ? FOV : FOV + sp * 4 * wC - wT * 4) + narrow * 14 + fkP * 10;
   if (Math.abs(camera.fov - fov) > 0.01) {
     camera.fov += (fov - camera.fov) * damp(3, dt);
     camera.updateProjectionMatrix();
