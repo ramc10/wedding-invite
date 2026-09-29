@@ -82,7 +82,9 @@ const eventStop = (id, label, sheet) => {
       in: [[c - 14, -1.8], [c - 4, -2.4], [c + 3, -6.6], [c + 8, -9.9], [c + 14, -10.8]],
       out: [[c + 14, -10.8], [c + 18.5, -10.2], [c + 21.5, -7.6], [c + 24.5, -4.4], [c + 31, -2.2], [c + 40, -1.8]]
     },
-    cam: { s: c - 7, lateral: 4.2, h: 6.2 }, focus: { s: d0 + 6, lateral: -12.5, h: 1.8 } };
+    cam: { s: c - 7, lateral: 4.2, h: 6.2 }, focus: { s: d0 + 6, lateral: -12.5, h: 1.8 },
+    // surface the car drives on (car/car.js): the compound drive (biomes/events/compound.js) is road + 0.03
+    ground: (s, l) => path.roadY(s) + (l < -3.35 ? 0.031 : 0.02) };
 };
 
 export const STOPS = [
@@ -101,7 +103,16 @@ export const STOPS = [
       in: [[G - 16, -1.8], [G - 8, -0.6], [G - 4, 3.5], [G - 1.5, 8.5], [G - 0.3, 13], [G + 2, 17.2], [G + 6, 18.8]],
       out: [[G + 6, 18.8], [G + 13, 19.2], [G + 17, 19.6], [G + 23, 18], [G + 27, 14.5], [G + 29, 10.6], [G + 31, 6], [G + 35, 1.2], [G + 44, -1.8]]
     }))(karimS + 48),
-    cam: { s: karimS + 48 - 8, lateral: -4.6, h: 6.8 }, focus: { s: karimS + 60, lateral: 26, h: 3.5 } }
+    cam: { s: karimS + 48 - 8, lateral: -4.6, h: 6.8 }, focus: { s: karimS + 60, lateral: 26, h: 3.5 },
+    // surface the car drives on: road, then dam.js's apron ramping up to the lot's pad level across
+    // lateral 3.45 … 10.6 (the wall line), then venue-amr-grounds.js's drive at pad + 0.045. The pad is
+    // level at road height by the hall, so where the road falls away the drive stands well above it.
+    ground: (s, l) => {
+      const Yr = path.roadY(s), PY = path.roadY(karimS + 58) + 0.02;
+      if (l <= 3.45) return Yr + 0.02;
+      if (l < 10.6) { const k = Math.min(1, (l - 3.45) / (10.6 - 3.45)), e = k * k * (3 - 2 * k); return Yr + 0.025 + (PY - Yr - 0.005) * e; }
+      return PY + 0.046;
+    } }
 ];
 export const STOP = Object.fromEntries(STOPS.map(s => [s.id, s]));
 

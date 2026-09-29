@@ -945,13 +945,24 @@ function update(dt, s) {
   // the mean of the two sides, the difference becomes a small camber roll
   const track = axleInfo.tx ? axleInfo.tx * 2 : 1.52;
   let yL = groundY(s, state.lateral - track / 2), yR = groundY(s, state.lateral + track / 2);
-  // venue courts and drives are paved at road level (core/timeline.js COURTS, dam.js pad)
-  if (detour.carLatExact != null) { const fl = path.roadY(s) + ROAD_LIFT; yL = Math.max(yL, fl); yR = Math.max(yR, fl); }
+  // pitch with the road grade
+  let grade = Math.atan2(path.roadY(s + 1.8) - path.roadY(s - 1.8), 3.6);
+  const gf = detour.carLatExact != null ? detour.carGround : null;
+  if (gf) {
+    // driving into a venue (STOPS[].ground knows the surface along the route): sit each of the four
+    // wheels on it, so the car pitches and rolls with a ramp it crosses at an angle
+    const c = Math.cos(state.yaw), sn = Math.sin(state.yaw), hb = WHEELBASE / 2, ht = track / 2;
+    const w = (z, x) => gf(s + c * z + sn * x, state.lateral - sn * z + c * x);   // z along the car, x to its right
+    const fl = w(hb, -ht), fr = w(hb, ht), rl = w(-hb, -ht), rr = w(-hb, ht);
+    yL = (fl + rl) / 2; yR = (fr + rr) / 2;
+    grade = Math.atan2((fl + fr) / 2 - (rl + rr) / 2, WHEELBASE);
+  } else if (detour.carLatExact != null) {
+    // venue courts and drives are paved at road level
+    const fl = path.roadY(s) + ROAD_LIFT; yL = Math.max(yL, fl); yR = Math.max(yR, fl);
+  }
   pos.y = (yL + yR) / 2;
   const camber = Math.atan2(yL - yR, track);
   object.position.copy(pos);
-  // pitch with the road grade
-  const grade = Math.atan2(path.roadY(s + 1.8) - path.roadY(s - 1.8), 3.6);
   object.rotation.set(0, 0, 0);
   object.rotation.y = state.heading + Math.PI + state.yaw;
   object.rotateX(-grade);

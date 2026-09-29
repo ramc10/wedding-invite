@@ -122,6 +122,7 @@ async function go(stop) {
     const inPts = [[s0, lat0], ...stop.route.in.filter(([s]) => s > s0 + 3)];
     const cin = routeCurve(inPts), cout = routeCurve(stop.route.out);
     detour.carS = s0; detour.carLatExact = lat0; detour.carYaw = 0;
+    detour.carGround = stop.ground || null;
     aimCrane(stop);
     // start the shot exactly on the chase camera, so taking over moves nothing
     cur = { stop, lookK: 0, outK: 0, u: 0, from: new THREE.Vector3(), to: CAM.clone(), fresh: true };
@@ -161,7 +162,7 @@ async function go(stop) {
   } finally {
     cur = null;
     detour.camShot = null; shot.w = 0; p = pTarget = 0;
-    detour.carS = null; detour.carLatExact = null; detour.carLateral = null; detour.carYaw = null;
+    detour.carS = null; detour.carLatExact = null; detour.carLateral = null; detour.carYaw = null; detour.carGround = null;
     scroll.unlock();
     detour.active = false;
     busy = false;
@@ -178,7 +179,7 @@ function update(dt) {
 }
 
 export const detour = {
-  active: false, carLateral: null, camShot: null, carS: null, carLatExact: null, carYaw: null,
+  active: false, carLateral: null, camShot: null, carS: null, carLatExact: null, carYaw: null, carGround: null,
   init(ctx) { camObj = ctx.camera; },
   update,
   go

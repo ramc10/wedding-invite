@@ -69,7 +69,7 @@ function samples(pts, step = 0.6) {
   const p = new THREE.Vector3(), t = new THREE.Vector3();
   for (let i = 0; i <= n; i++) {
     c.getPointAt(i / n, p); c.getTangentAt(i / n, t);
-    if (p.z < -3.4) out.push({ s: p.x, l: p.z, ts: t.x, tl: t.z });
+    if (p.z < -3.2) out.push({ s: p.x, l: p.z, ts: t.x, tl: t.z });   // from just over the road's edge
   }
   return out;
 }
@@ -135,7 +135,7 @@ export function buildCompound(ctx, id, style) {
   const inS = samples(R.in), outS = samples(R.out);
   // wider where it meets the road (a bellmouth), so the turn in reads as a proper entrance
   const hw = q => W / 2 + 2.2 * smoothstep(-6.2, -3.6, q.l);
-  const drive = [strip(ctx, inS, hw, 0.03, 1 / 2.4, -3.62), strip(ctx, outS, hw, 0.03, 1 / 2.4, -3.62), apron(ctx, stop[0] + 1, stop[1] - 0.6, 5.2, 3.4, 0.031)];
+  const drive = [strip(ctx, inS, hw, 0.03, 1 / 2.4, -3.35), strip(ctx, outS, hw, 0.03, 1 / 2.4, -3.35), apron(ctx, stop[0] + 1, stop[1] - 0.6, 5.2, 3.4, 0.031)];
 
   // lawn over the rest of the court, just under the drive
   const lp = [], lu = [], li = [], ns = Math.ceil((C.s1 - C.s0) / 1.5), nl = Math.ceil((WALL - C.lat[1]) / 1.5);
