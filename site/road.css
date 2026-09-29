@@ -69,6 +69,35 @@ body {
   pointer-events: auto;
   cursor: pointer;
 }
+/* The same action as a real button, above the venue lines, for as long as a
+   callout is on screen — a pill reads as tappable where painted art doesn't. */
+.stop-btn {
+  position: fixed; z-index: 23; left: 50%;
+  bottom: calc(3vh + env(safe-area-inset-bottom, 0px) + 84px);
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 0 20px 0 16px; height: 48px; border-radius: 999px;
+  font: inherit; font-family: "EB Garamond", Georgia, serif; font-size: 1.1rem; letter-spacing: .03em;
+  color: #FFF6E8; white-space: nowrap; cursor: pointer;
+  background: linear-gradient(180deg, rgba(107, 44, 22, .8), rgba(75, 27, 12, .86));
+  border: 1px solid rgba(232, 198, 106, .6);
+  backdrop-filter: blur(10px) saturate(130%); -webkit-backdrop-filter: blur(10px) saturate(130%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 8px 26px rgba(0, 0, 0, .35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translate(-50%, 14px) scale(.96);
+  transition: opacity .4s ease, transform .5s cubic-bezier(.2, .9, .25, 1.1), visibility 0s linear .4s;
+  -webkit-tap-highlight-color: transparent;
+}
+.stop-btn svg { width: 14px; height: 18px; flex: none; }
+.stop-btn svg path { fill: var(--gold); }
+.stop-btn svg circle { fill: #4B1B0C; }
+.stop-btn.on {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: translate(-50%, 0);
+  transition: opacity .4s ease, transform .5s cubic-bezier(.2, .9, .25, 1.1), visibility 0s;
+}
+.stop-btn:active { transform: translate(-50%, 0) scale(.97); }
+html.sheet-open .stop-btn { opacity: 0; visibility: hidden; pointer-events: none; }
 
 /* tarmac motion smear, gated on measured speed */
 .streaks {
@@ -226,17 +255,63 @@ body {
   box-shadow: 0 0 0 1px rgba(10,18,8,.5), 0 0 9px rgba(232,198,106,.7);
 }
 
+/* The opening hint. Guests missed the old 1px line, so it's a glass pill with
+   a gesture that shows the motion: a finger swiping up on touch screens, a
+   wheel rolling on desktop. Tapping it nudges the drive forward (road.js). */
 .cue {
-  position: fixed; bottom: 5vh; left: 0; right: 0; z-index: 22;
-  display: flex; justify-content: center; pointer-events: none;
-  transition: opacity .5s ease;
+  position: fixed; z-index: 22; left: 50%;
+  bottom: calc(3vh + env(safe-area-inset-bottom, 0px) + 72px);
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 0 20px 0 16px; height: 52px; border-radius: 999px;
+  font: inherit; font-family: "EB Garamond", Georgia, serif; color: #FFF6E8;
+  white-space: nowrap; cursor: pointer;
+  background: rgba(27, 36, 22, .5);
+  border: 1px solid rgba(232, 198, 106, .45);
+  backdrop-filter: blur(10px) saturate(130%); -webkit-backdrop-filter: blur(10px) saturate(130%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 26px rgba(0, 0, 0, .35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+  transform: translate(-50%, 0);
+  animation: cue-in .7s cubic-bezier(.2, .9, .25, 1.1) .6s backwards, cue-hop 4s ease-in-out 3s infinite;
+  transition: opacity .4s ease, visibility 0s;
+  -webkit-tap-highlight-color: transparent;
 }
-.cue span {
-  width: 1px; height: 44px;
-  background: linear-gradient(rgba(255,255,255,0), rgba(255,255,255,.8));
-  animation: cue 2.4s ease-in-out infinite;
+.cue.gone {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .4s ease, visibility 0s linear .4s;
 }
-@keyframes cue { 0%,100% { opacity: .25; transform: translateY(0); } 50% { opacity: .9; transform: translateY(8px); } }
+.cue:hover { border-color: var(--gold); }
+@keyframes cue-in { from { opacity: 0; transform: translate(-50%, 14px); } }
+/* a small hop every few seconds while it's still being ignored */
+@keyframes cue-hop {
+  0%, 84%, 100% { transform: translate(-50%, 0); }
+  88% { transform: translate(-50%, -7px); }
+  92% { transform: translate(-50%, 0); }
+  95% { transform: translate(-50%, -3px); }
+}
+.cue-text { font-size: .95rem; letter-spacing: .18em; padding-left: .18em; text-transform: uppercase; font-weight: 500; }
+.cue-gesture { width: 20px; height: 27px; flex: none; }
+.cue-frame { fill: none; stroke: #FFF6E8; stroke-width: 1.6; opacity: .85; }
+.cue-finger { fill: var(--gold); animation: cue-swipe 1.8s cubic-bezier(.5, 0, .3, 1) infinite; }
+.cue-wheel { fill: var(--gold); animation: cue-wheel 1.6s ease-in-out infinite; }
+@keyframes cue-swipe {
+  0%   { transform: translateY(4px); opacity: 0; }
+  15%  { opacity: 1; }
+  70%  { transform: translateY(-12px); opacity: 1; }
+  100% { transform: translateY(-12px); opacity: 0; }
+}
+@keyframes cue-wheel { 0% { transform: translateY(0); opacity: 1; } 70% { transform: translateY(6px); opacity: 0; } 100% { transform: translateY(0); opacity: 0; } }
+.cue-chev {
+  width: 16px; height: 10px; flex: none; fill: none; stroke: var(--gold); stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+  animation: cue 2.2s ease-in-out infinite;
+}
+@keyframes cue { 0%, 100% { opacity: .35; transform: translateY(-2px); } 50% { opacity: 1; transform: translateY(4px); } }
+/* touch screens swipe, everything else scrolls */
+.cue .cue-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .cue .cue-touch { display: inline; }
+  .cue .cue-mouse { display: none; }
+}
 
 /* Music toggle — a small floating control, top-right, in the same gold-on-
    dark language as the rest of the fixed UI. Shipped with no styling at
@@ -602,7 +677,7 @@ html.sheet-open { overflow: hidden; }
 /* ------------------------------------------------------- reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
-  .car-drop, .cue span { animation: none !important; }
+  .car-drop, .cue, .cue-chev, .cue-finger, .cue-wheel { animation: none !important; }
   .streaks { display: none !important; }
   .title, .details, .dam-caption, .venue, .music-toggle { transition: none; }
   .sheet, .sheet::backdrop { animation: none !important; transition: none !important; }

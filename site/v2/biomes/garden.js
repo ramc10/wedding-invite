@@ -37,7 +37,8 @@ function lcg(seed) {
 
 function canvasTex(W, H, draw, { srgb = true, repeat = true } = {}) {
   const c = document.createElement('canvas'); c.width = W; c.height = H;
-  draw(c.getContext('2d'), W, H);
+  // software canvas: thousands of tiny draws rasterise faster on the CPU than as GPU-canvas commands
+  draw(c.getContext('2d', { willReadFrequently: true }), W, H);
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -45,26 +46,30 @@ function canvasTex(W, H, draw, { srgb = true, repeat = true } = {}) {
   return t;
 }
 
+const WRAP = [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]];   // tile wrap offsets
 /** Dense small-leaf foliage (box / Murraya hedge). Returns {map, bump}. */
 function leafTextures(base, seed, dots = null) {
   const R = lcg(seed);
-  const leaves = [];
-  for (let i = 0; i < 2600; i++) leaves.push([R() * 256, R() * 256, R() * 6.28, 2.5 + R() * 3.5, R()]);
+  const leaves = [], tc = new THREE.Color();
+  for (let i = 0; i < 2600; i++) {
+    const x = R() * 256, y = R() * 256, a = R() * 6.28, r = 2.5 + R() * 3.5, k = R(), v = 90 + k * 160 | 0;
+    leaves.push([x, y, Math.cos(a), Math.sin(a), r, '#' + tc.set(base).offsetHSL((k - 0.5) * 0.04, (k - 0.5) * 0.15, (k - 0.45) * 0.16).getHexString(), `rgb(${v},${v},${v})`]);
+  }
   const flowers = [];
   if (dots) for (let i = 0; i < dots.n; i++) flowers.push([R() * 256, R() * 256, R(), dots.cols[Math.floor(R() * dots.cols.length)]]);
   const paint = (g, bump) => {
     g.fillStyle = bump ? '#202020' : '#1c2e14'; g.fillRect(0, 0, 256, 256);
-    for (const [x, y, a, r, k] of leaves) {
-      for (const [ox, oy] of [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]]) {
+    g.strokeStyle = 'rgba(255,255,240,0.12)'; g.lineWidth = 0.6;
+    for (const [x, y, ca, sa, r, fill, grey] of leaves) {
+      g.fillStyle = bump ? grey : fill;
+      for (const [ox, oy] of WRAP) {
         if (x + ox < -8 || x + ox > 264 || y + oy < -8 || y + oy > 264) continue;
-        g.save(); g.translate(x + ox, y + oy); g.rotate(a);
-        if (bump) g.fillStyle = `rgb(${90 + k * 160 | 0},${90 + k * 160 | 0},${90 + k * 160 | 0})`;
-        else { const c = new THREE.Color(base).offsetHSL((k - 0.5) * 0.04, (k - 0.5) * 0.15, (k - 0.45) * 0.16); g.fillStyle = '#' + c.getHexString(); }
+        g.setTransform(ca, sa, -sa, ca, x + ox, y + oy);   // translate + rotate
         g.beginPath(); g.ellipse(0, 0, r, r * 0.5, 0, 0, 7); g.fill();
-        if (!bump) { g.strokeStyle = 'rgba(255,255,240,0.12)'; g.lineWidth = 0.6; g.beginPath(); g.moveTo(-r, 0); g.lineTo(r, 0); g.stroke(); }
-        g.restore();
+        if (!bump) { g.beginPath(); g.moveTo(-r, 0); g.lineTo(r, 0); g.stroke(); }
       }
     }
+    g.setTransform(1, 0, 0, 1, 0, 0);
     for (const [x, y, k, col] of flowers) {
       const r = 2.2 + k * 2.4;
       g.fillStyle = bump ? '#ffffff' : col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
@@ -93,10 +98,13 @@ function gravelTextures() {
   return { map: canvasTex(256, 256, g => paint(g, false)), bump: canvasTex(256, 256, g => paint(g, true), { srgb: false }) };
 }
 
-/** Granite / sandstone speckle, used as a multiply map on vertex-coloured stone. */
-function stoneTexture(seed = 5) {
-  const R = lcg(seed);
-  return canvasTex(128, 128, g => {
+/** Granite / sandstone speckle, used as a multiply map on vertex-coloured stone.
+ * One texture shared by every stone material (a per-material seed made no visible difference). */
+let _stoneTex = null;
+function stoneTexture() {
+  if (_stoneTex) return _stoneTex;
+  const R = lcg(5);
+  return _stoneTex = canvasTex(128, 128, g => {
     g.fillStyle = '#d8d8d8'; g.fillRect(0, 0, 128, 128);
     for (let i = 0; i < 1800; i++) {
       const v = 150 + R() * 105 | 0;
@@ -107,13 +115,15 @@ function stoneTexture(seed = 5) {
 }
 
 /** Road-frame at (s, lateral): x = +lateral dir, y = up, z = backward along the road. Ground height at y. */
+const _smp = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), right: new THREE.Vector3(), heading: 0, curvature: 0 };
+const _yawM = new THREE.Matrix4(), _sc = new THREE.Vector3();
 function roadFrame(ctx, s, lat, yaw = 0, scale = 1, y = null) {
-  const smp = ctx.path.sample(s);
+  const smp = ctx.path.sample(s, _smp);
   ctx.path.toWorld(s, lat, _v);
   _v.y = y ?? ctx.world.heightSL(s, lat);
   const m = new THREE.Matrix4().makeBasis(smp.right, UP, _w.crossVectors(smp.right, UP));
-  if (yaw) m.multiply(new THREE.Matrix4().makeRotationY(yaw));
-  m.scale(new THREE.Vector3(scale, scale, scale));
+  if (yaw) m.multiply(_yawM.makeRotationY(yaw));
+  m.scale(_sc.setScalar(scale));
   m.setPosition(_v);
   return m;
 }
@@ -262,7 +272,7 @@ function gardenGround(ctx, L, s0, s1, fountainS, group) {
     m.scale(new THREE.Vector3(1, top - bot, 1));
     kerbM.push(m);
   }
-  const kerb = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ map: stoneTexture(3), color: 0xb9b2a6, roughness: 0.85 }), kerbM.length);
+  const kerb = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ map: stoneTexture(), color: 0xb9b2a6, roughness: 0.85 }), kerbM.length);
   kerbM.forEach((m, i) => kerb.setMatrixAt(i, m));
   kerb.name = 'kerb'; kerb.receiveShadow = true; kerb.computeBoundingSphere();
   group.add(kerb);
@@ -292,7 +302,9 @@ function hedges(ctx, L, s0, s1, group, K) {
   const mat = new THREE.MeshStandardMaterial({ map: lt.map, bumpMap: lt.bump, bumpScale: 2.5, roughness: 0.92, vertexColors: true });
   const B = new Builder();
   const bump = (s, i, dx, dy) => 0.035 * fbm(s * 1.3, dy * 3 + dx * 2, 2);
-  const tint = (s, i) => new THREE.Color(0xffffff).multiplyScalar(0.92 + 0.12 * fbm(s * 0.08, 3, 2)).offsetHSL(0.01 * fbm(s * 0.05, 9, 2), 0, 0);
+  // tint depends on s only: computed once per ring, not per ring vertex
+  const tc = new THREE.Color(); let tS = NaN;
+  const tint = s => s === tS ? tc : (tS = s, tc.setRGB(1, 1, 1).multiplyScalar(0.92 + 0.12 * fbm(s * 0.08, 3, 2)).offsetHSL(0.01 * fbm(s * 0.05, 9, 2), 0, 0));
   for (const sg of [-1, 1]) {
     for (const [a, b] of L.runs) sweep(ctx, B, a, b, sg * HEDGE, hedgeProfile(0.85, 0.82), { ds: 0.45, cap: 0.32, centre: [0, 0.35], keepBase: true, bump, color: tint, uvScale: 0.9, sink: 0.08 });
     // taller back hedge framing the parterre
@@ -414,15 +426,14 @@ function beds(ctx, L, group, K) {
       heads[bd.kind].push([_v.clone(), R(), R(), R(), e]);
     }
   }
-  const fm = new THREE.Mesh(frame.geometry(), new THREE.MeshStandardMaterial({ map: stoneTexture(8), vertexColors: true, roughness: 0.9 }));
+  const fm = new THREE.Mesh(frame.geometry(), new THREE.MeshStandardMaterial({ map: stoneTexture(), vertexColors: true, roughness: 0.9 }));
   fm.name = 'bed-edging'; fm.receiveShadow = fm.castShadow = true;
   group.add(fm);
   const tex = {
-    marigold: leafTextures(0x3f6e2a, 41, { n: 1400, cols: ['#f28c12', '#ffb300', '#e86a10', '#ffc93a'] }),
+    marigold: leafTextures(0x3f6e2a, 41, { n: 3600, cols: ['#f28c12', '#ffb300', '#e86a10', '#ffc93a'] }),
     rose: leafTextures(0x2c4f22, 43, { n: 700, cols: ['#b3122e', '#d8325a', '#f3c2cc', '#8e0c22'] }),
     salvia: leafTextures(0x2f5a24, 47, { n: 3200, cols: ['#c8141c', '#e0262a', '#a80e18', '#d83a2e'] })
   };
-  tex.marigold = leafTextures(0x3f6e2a, 41, { n: 3600, cols: ['#f28c12', '#ffb300', '#e86a10', '#ffc93a'] });
   for (const k of ['marigold', 'rose', 'salvia']) {
     if (!fol[k].n) continue;
     const m = new THREE.Mesh(fol[k].geometry(), new THREE.MeshStandardMaterial({ map: tex[k].map, bumpMap: tex[k].bump, bumpScale: 3, roughness: 0.88 }));
@@ -594,12 +605,12 @@ function furniture(ctx, L, s0, s1, group) {
     if (s > s1 - 4) continue;
     benchM.push(roadFrame(ctx, s, sg * 7.55, sg > 0 ? 0 : Math.PI));
   }
-  const lampMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(12), roughness: 0.55, metalness: 0.35 });
+  const lampMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(), roughness: 0.55, metalness: 0.35 });
   const lamps = new THREE.InstancedMesh(lampGeometry(), lampMat, lampsM.length);
   const glass = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.11, 0.42, 4).rotateY(Math.PI / 4).translate(0, 3.43, 0),
     new THREE.MeshStandardMaterial({ color: 0xfff1d0, emissive: 0xffc070, emissiveIntensity: 0.35, roughness: 0.15, transparent: true, opacity: 0.85 }), lampsM.length);
   lampsM.forEach((m, i) => { lamps.setMatrixAt(i, m); glass.setMatrixAt(i, m); });
-  const benches = new THREE.InstancedMesh(benchGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(14), roughness: 0.8 }), benchM.length);
+  const benches = new THREE.InstancedMesh(benchGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(), roughness: 0.8 }), benchM.length);
   benchM.forEach((m, i) => benches.setMatrixAt(i, m));
   for (const x of [lamps, glass, benches]) { x.castShadow = true; x.computeBoundingSphere(); }
   lamps.name = 'lamps'; glass.name = 'lamp-glass'; benches.name = 'benches';
@@ -619,7 +630,7 @@ function fountain(ctx, s, lat, group) {
   const M = roadFrame(ctx, s, lat);
   const baseY = Math.min(...[-3, 0, 3].flatMap(a => [-3, 0, 3].map(b => ctx.world.heightSL(s + a, lat + b)))) - 0.05;
   M.elements[13] = baseY;
-  const body = new THREE.Mesh(mergeVC(p), new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(21), roughness: 0.8 }));
+  const body = new THREE.Mesh(mergeVC(p), new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(), roughness: 0.8 }));
   body.applyMatrix4(M); body.castShadow = body.receiveShadow = true; body.name = 'fountain';
   // water surfaces: basin pool + two bowls
   const R = lcg(5);
@@ -749,7 +760,7 @@ function mangoLeafGeometry() {                    // hangs down from origin, ~22
 function gates(ctx, sList, group) {
   const { path } = ctx;
   const bases = sList.map(s => roadFrame(ctx, s, 0, 0, 1, path.roadY(s) - 0.05));
-  const frame = new THREE.InstancedMesh(gateFrame(), new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(31), roughness: 0.8, side: THREE.DoubleSide }), bases.length);
+  const frame = new THREE.InstancedMesh(gateFrame(), new THREE.MeshStandardMaterial({ vertexColors: true, map: stoneTexture(), roughness: 0.8, side: THREE.DoubleSide }), bases.length);
   const lay = gateLayout();
   const fl = new THREE.InstancedMesh(marigoldGeometry(0), new THREE.MeshStandardMaterial({ map: petalTex(), vertexColors: true, roughness: 0.78 }), lay.F.length * bases.length);
   const lvMat = new THREE.MeshStandardMaterial({ color: 0x3c7424, roughness: 0.55, side: THREE.DoubleSide });
@@ -772,7 +783,7 @@ function gates(ctx, sList, group) {
     }
   });
   // brass kalash finials on both posts
-  const brass = new THREE.MeshStandardMaterial({ color: 0xe8b85a, metalness: 0.6, roughness: 0.3, emissive: 0x2a1c06, map: stoneTexture(44) });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xe8b85a, metalness: 0.6, roughness: 0.3, emissive: 0x2a1c06, map: stoneTexture() });
   const kal = new THREE.InstancedMesh(kalashGeometry(), brass, bases.length * 2);
   bases.forEach((base, k) => { for (const sg of [-1, 1]) kal.setMatrixAt(k * 2 + (sg > 0), m.makeTranslation(sg * PX, POST_TOP + 0.12, 0).premultiply(base)); });
   for (const x of [frame, fl, lv, kal]) { x.castShadow = true; x.computeBoundingSphere(); }

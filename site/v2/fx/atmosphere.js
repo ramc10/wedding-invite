@@ -370,7 +370,11 @@ function update(dt, s) {
     tmp.applyQuaternion(lq.invert());
     sun.target.position.copy(tmp);
     sun.position.copy(tmp).addScaledVector(day.sunDir, 150);
-    sun.castShadow = elDeg > 1;
+    // castShadow stays on: flipping it changes every lit material's program
+    // (a recompile hitch when the sun sets). Fade the shadow and stop
+    // redrawing its map instead.
+    sun.shadow.intensity = smooth(elDeg, 0.5, 1.5);
+    sun.shadow.autoUpdate = elDeg > 0.5;
   } else {
     sun.position.copy(c).addScaledVector(day.sunDir, 200);
     sun.target.position.copy(c);

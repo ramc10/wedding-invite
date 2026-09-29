@@ -55,38 +55,57 @@ const zoneGroups = [];
 const buildTimes = {};   // ms per module, for profiling boot (window.__v2.buildTimes)
 ctx.buildTimes = buildTimes;
 
+// ?legs=forest,dam builds only those legs (QA: iterate on one leg in seconds)
+const LEGS = new URLSearchParams(location.search).get('legs');
+const PLAN = LEGS ? BIOMES.filter(b => LEGS.split(',').includes(b.id)) : BIOMES;
+const tick = () => new Promise(r => setTimeout(r));
+
+/* Everything is built, compiled and drawn once behind the loader, and only
+ * then is the drive handed over. Building the later legs after ready froze
+ * the page for 4-15 s at a time while guests were already scrolling; a longer
+ * loader with a drive that answers straight away is the better trade. */
 async function boot() {
   let tb = performance.now();
   // the car's .glb downloads and Draco-decodes (in a worker) while the
-  // terrain and first leg are generated on the main thread
+  // terrain and legs are generated on the main thread
   const carReady = car.init(ctx);
-  atmosphere.init(ctx); progress(0.08);
+  atmosphere.init(ctx); progress(0.04);
   buildTimes.atmosphere = Math.round(performance.now() - tb); tb = performance.now();
-  terrain.init(ctx); progress(0.2);
+  terrain.init(ctx); progress(0.08);
   buildTimes.terrain = Math.round(performance.now() - tb);
+  tb = performance.now();
+  await terrain.initRest(ctx);
+  buildTimes.terrainRest = Math.round(performance.now() - tb);
+  progress(0.12);
 
-  // Only the first leg is built before the page shows; the rest follow in
-  // route order after ready (buildRest), while the title is on screen. Every
-  // leg is several seconds of generation, and building all seven up front
-  // held the loader for well over a minute.
-  await buildBiome(BIOMES[0]);
-  progress(0.6);
+  for (let i = 0; i < PLAN.length; i++) {
+    await tick();
+    await buildBiome(PLAN[i]);
+    progress(0.12 + 0.63 * (i + 1) / PLAN.length);
+  }
 
   tb = performance.now();
   await terrain.ready();
   buildTimes.roadTex = Math.round(performance.now() - tb);
   tb = performance.now();
-  await carReady; progress(0.8);
+  await carReady;
   buildTimes.car = Math.round(performance.now() - tb);
+  tb = performance.now();
+  car.prepareEnv();
+  buildTimes.carEnv = Math.round(performance.now() - tb);
+  progress(0.8);
   cam.init(ctx);
   detour.init(ctx);
   petals.init(ctx);
   post.init(ctx);
   ui.init(ctx);
-  progress(0.9);
+  progress(0.82);
 
   tb = performance.now();
+  // compile every leg's programs, not just what the start camera can see
+  for (const g of zoneGroups) g.group.visible = true;
   try { await renderer.compileAsync(scene, camera); } catch (e) { /* older drivers: compile lazily */ }
+  for (const g of zoneGroups) g.group.visible = false;
   buildTimes.compile = Math.round(performance.now() - tb);
   tb = performance.now();
   await warmUp();
@@ -94,7 +113,7 @@ async function boot() {
   progress(1);
   dispatchEvent(new CustomEvent('v2:ready'));
   requestAnimationFrame(frame);
-  buildRest();
+  dispatchEvent(new CustomEvent('v2:complete'));
 }
 
 async function buildBiome(b) {
@@ -111,25 +130,6 @@ async function buildBiome(b) {
   } catch (e) { console.error('[v2] biome ' + b.id + ' failed', e); }
   finally { buildTimes[b.id] = Math.round(performance.now() - tb); }
   return null;
-}
-
-/* After ready: build the remaining legs one at a time, yielding between them
- * so the title keeps animating, and compile each one's shaders off the main
- * render so its first appearance doesn't hitch. */
-async function buildRest() {
-  let tb = performance.now();
-  await terrain.initRest(ctx);
-  buildTimes.terrainRest = Math.round(performance.now() - tb);
-  for (const b of BIOMES.slice(1)) {
-    await new Promise(r => setTimeout(r, 120));
-    const g = await buildBiome(b);
-    if (g) {
-      g.visible = true;
-      try { await renderer.compileAsync(g, camera, scene); } catch (e) { /* compile lazily */ }
-      g.visible = false;
-    }
-  }
-  dispatchEvent(new CustomEvent('v2:complete'));
 }
 
 /* compileAsync only covers what the start camera can see. Everything else —
@@ -152,15 +152,34 @@ async function warmUp() {
       camera.lookAt(look);
       terrain.update(0, s, camera);
       for (const g of zoneGroups) { g.group.visible = zones.visible(g.zone, s); if (g.group.visible && g.update) g.update(0, s, camera); }
+      // draw everything in the visible legs, not just what this one pose
+      // sees: with culling off, every mesh's buffers upload and its main and
+      // shadow-depth programs link here instead of on first sight mid-drive
+      const unculled = [];
+      for (const g of zoneGroups) if (g.group.visible) g.group.traverse(o => { if (o.frustumCulled) { o.frustumCulled = false; unculled.push(o); } });
       const tr = performance.now();
       post.render(renderer, scene, camera, 0);
+      for (const o of unculled) o.frustumCulled = true;
       buildTimes['warm' + u] = Math.round(performance.now() - tr);
     }
-    progress(0.9 + 0.1 * (i + 1) / n);
+    progress(0.82 + 0.18 * (i + 1) / n);
     await new Promise(r => setTimeout(r));
   }
   camera.position.copy(home); camera.quaternion.copy(homeQ);
   terrain.update(0, 0, camera);
+  // Then the real frame at the title pose, a few times: car, camera, sky,
+  // petals and the DOM overlays all run their first update here, and whatever
+  // only the title shot sees uploads now. A 1-pixel read makes the GPU finish
+  // all of it (ANGLE builds pipelines at first draw) before the loader lifts.
+  const px = new Uint8Array(4), gl = renderer.getContext();
+  for (let k = 0; k < 3; k++) {
+    const tr = performance.now();
+    step(1 / 60);
+    renderer.setRenderTarget(null);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    buildTimes['warmHome' + k] = Math.round(performance.now() - tr);
+    await new Promise(r => setTimeout(r));
+  }
 }
 
 function resize() {
@@ -176,7 +195,12 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (document.hidden) { last = now; return; }
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  step(dt);
+  quality.tick(dt);
+}
 
+// one frame of the drive (also run behind the loader by warmUp)
+function step(dt) {
   world.U.uTime.value += dt;
   scroll.update(dt);
   const s = scroll.s;
@@ -196,7 +220,6 @@ function frame(now) {
   ui.update(dt, s);
 
   post.render(renderer, scene, camera, dt);
-  quality.tick(dt, renderer, post);
 }
 
 boot().catch(e => {

@@ -273,82 +273,104 @@ function signTex() {
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 const ONE = new THREE.Vector3(1, 1, 1);
 
+const _smp = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), right: new THREE.Vector3(), heading: 0, curvature: 0 };
 /** Place a geometry built in the local road frame at (s, lateral, y). */
 function place(ctx, geo, s, lat, y, yaw = 0) {
-  const h = ctx.path.sample(s).heading + yaw;
+  const h = ctx.path.sample(s, _smp).heading + yaw;
   ctx.path.toWorld(s, lat, _v); _v.y = y;
   _m.compose(_v, _q.setFromAxisAngle(_up, h), ONE);
   return geo.applyMatrix4(_m);
 }
 
+/* A unit box, non-indexed, built once: box() scales copies of its arrays (the same
+ * vertices BoxGeometry(w, h, d).toNonIndexed() would give, without building one per call). */
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+const UB_P = UNIT_BOX.attributes.position.array, UB_N = UNIT_BOX.attributes.normal.array, UB_UV = UNIT_BOX.attributes.uv.array;
+
 /** Box with UVs in metres / T (so the texture tiles at a constant scale). */
 function box(w, h, d, T = 6) {
-  const g = new THREE.BoxGeometry(w, h, d);
-  const uv = g.attributes.uv;
-  const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
-  for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) {
-    const i = f * 4 + k;
-    uv.setXY(i, uv.getX(i) * dims[f][0] / T, uv.getY(i) * dims[f][1] / T);
-  }
-  return g.toNonIndexed();
+  const n = UB_P.length / 3, pos = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) { pos[i * 3] = UB_P[i * 3] * w; pos[i * 3 + 1] = UB_P[i * 3 + 1] * h; pos[i * 3 + 2] = UB_P[i * 3 + 2] * d; }
+  // 6 vertices per face in +x, -x, +y, -y, +z, -z order; u, v span the face's two extents
+  const du = [d, d, w, w, w, w], dv = [h, h, d, d, h, h];
+  for (let i = 0; i < n; i++) { const f = (i / 6) | 0; uv[i * 2] = UB_UV[i * 2] * du[f] / T; uv[i * 2 + 1] = UB_UV[i * 2 + 1] * dv[f] / T; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(UB_N.slice(), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
 }
 
-/** Cylinder (non-indexed) with UVs roughly in metres / T. */
+/** Cylinder (non-indexed) with UVs roughly in metres / T. Built once per shape, then copied. */
+const cylCache = new Map();
 function cyl(r0, r1, h, seg = 10, T = 4) {
-  const g = new THREE.CylinderGeometry(r0, r1, h, seg);
-  const uv = g.attributes.uv;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 6.28 * r1 / T, uv.getY(i) * h / T);
-  return g.toNonIndexed();
+  const key = `${r0},${r1},${h},${seg},${T}`;
+  let g = cylCache.get(key);
+  if (!g) {
+    g = new THREE.CylinderGeometry(r0, r1, h, seg);
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 6.28 * r1 / T, uv.getY(i) * h / T);
+    g = g.toNonIndexed(); g.clearGroups();
+    cylCache.set(key, g);
+  }
+  return g.clone();
 }
 
 /** Grid ribbon in road space: rows along s, columns across lats; yFn(s, lat, j) → world y.
  *  uvFn(s, lat, y, i, j) → [u, v]. colFn optional → THREE.Color. */
 function ribbon(ctx, ss, lats, yFn, uvFn, colFn) {
-  const pos = [], uv = [], col = [], idx = [];
+  const R = ss.length, C = lats.length, n = R * C;
+  const pos = new Float32Array(n * 3), uv = new Float32Array(n * 2), col = colFn ? new Float32Array(n * 3) : null;
   const p = new THREE.Vector3();
-  for (let i = 0; i < ss.length; i++) for (let j = 0; j < lats.length; j++) {
+  for (let i = 0, v = 0; i < R; i++) for (let j = 0; j < C; j++, v++) {
     const s = ss[i], l = lats[j], y = yFn(s, l, j);
     ctx.path.toWorld(s, l, p);
-    pos.push(p.x, y, p.z);
-    const t = uvFn(s, l, y, i, j); uv.push(t[0], t[1]);
-    if (colFn) { const c = colFn(s, l, y); col.push(c.r, c.g, c.b); }
+    pos[v * 3] = p.x; pos[v * 3 + 1] = y; pos[v * 3 + 2] = p.z;
+    const t = uvFn(s, l, y, i, j); uv[v * 2] = t[0]; uv[v * 2 + 1] = t[1];
+    if (col) { const c = colFn(s, l, y); col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b; }
   }
-  const C = lats.length;
-  for (let i = 1; i < ss.length; i++) for (let j = 1; j < C; j++) {
-    const a = (i - 1) * C + j - 1, b = a + 1, d = i * C + j - 1, e = d + 1;
-    idx.push(a, b, d, b, e, d);
-  }
+  const idx = gridIndex(R, C, false);
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  if (colFn) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  if (col) g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeVertexNormals();
   return g;
+}
+
+/** Two triangles per cell of an R x C vertex grid (rows along s). */
+function gridIndex(R, C, flip) {
+  const idx = new (R * C > 65535 ? Uint32Array : Uint16Array)(Math.max(0, (R - 1) * (C - 1) * 6));
+  let k = 0;
+  for (let i = 1; i < R; i++) for (let j = 1; j < C; j++) {
+    const a = (i - 1) * C + j - 1, b = a + 1, d = i * C + j - 1, e = d + 1;
+    if (flip) { idx[k++] = a; idx[k++] = d; idx[k++] = b; idx[k++] = b; idx[k++] = d; idx[k++] = e; }
+    else { idx[k++] = a; idx[k++] = b; idx[k++] = d; idx[k++] = b; idx[k++] = e; idx[k++] = d; }
+  }
+  return idx;
 }
 
 /** Sweep an open profile along the road: prof(s) → [[lat, y], …] (continuous, so no
  *  gaps between segments on curves). u = s / U, v = distance along the profile / V. */
 function sweep(ctx, ss, prof, U = 4, V = 4, flip = false) {
-  const pos = [], uv = [], idx = [], p = new THREE.Vector3();
-  let C = 0;
-  for (let i = 0; i < ss.length; i++) {
-    const pr = prof(ss[i]); C = pr.length;
+  const R = ss.length, p = new THREE.Vector3();
+  let C = 0, pos = null, uv = null;
+  for (let i = 0; i < R; i++) {
+    const pr = prof(ss[i]);
+    if (!pos) { C = pr.length; pos = new Float32Array(R * C * 3); uv = new Float32Array(R * C * 2); }
     let acc = 0;
-    for (let j = 0; j < C; j++) {
+    for (let j = 0, v = i * C; j < C; j++, v++) {
       if (j) acc += Math.hypot(pr[j][0] - pr[j - 1][0], pr[j][1] - pr[j - 1][1]);
       ctx.path.toWorld(ss[i], pr[j][0], p);
-      pos.push(p.x, pr[j][1], p.z); uv.push(ss[i] / U, acc / V);
+      pos[v * 3] = p.x; pos[v * 3 + 1] = pr[j][1]; pos[v * 3 + 2] = p.z;
+      uv[v * 2] = ss[i] / U; uv[v * 2 + 1] = acc / V;
     }
   }
-  for (let i = 1; i < ss.length; i++) for (let j = 1; j < C; j++) {
-    const a = (i - 1) * C + j - 1, b = a + 1, d = i * C + j - 1, e = d + 1;
-    if (flip) idx.push(a, d, b, b, d, e); else idx.push(a, b, d, b, e, d);
-  }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(new THREE.BufferAttribute(gridIndex(R, C, flip), 1));
   g.computeVertexNormals();
   return g.toNonIndexed();
 }
@@ -932,8 +954,7 @@ function buildVenue(ctx, M, K, group) {
       if (Math.abs(s - HS) < 8.2) continue;
       const len = 3.4 + R() * 1.4;
       for (let y = RT + 1.2; y > RT + 1.2 - len; y -= 0.42) {
-        const b = box(0.07, 0.07, 0.07, 1).toNonIndexed();
-        bulbs.push(tint(place(ctx, b, s, fl - 0.72, y), R() < 0.5 ? 0xffe2a0 : 0xffb458));
+        bulbs.push(tint(place(ctx, box(0.07, 0.07, 0.07, 1), s, fl - 0.72, y), R() < 0.5 ? 0xffe2a0 : 0xffb458));
       }
     }
     out.glow.push(merge(bulbs));

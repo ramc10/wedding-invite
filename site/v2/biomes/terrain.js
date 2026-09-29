@@ -61,9 +61,9 @@ const SAND = new THREE.Color(0xdcc7a0), ROCK = new THREE.Color(0x837a6c), DIRT =
   GRAVEL = new THREE.Color(0x9a927f), DRY = new THREE.Color(0xb09a52);
 const _a = new THREE.Color(), _b = new THREE.Color();
 
-/** Splat weights at a spot: grass tint (zone macro colour) + soil, sand, rock, gravel, wet. */
-function splat(s, lat, y, slope, o) {
-  const w = weightsAt(s);
+/** Splat weights at a spot: grass tint (zone macro colour) + soil, sand, rock, gravel, wet.
+ *  w: weightsAt(s), when the caller already has it (a ground row shares one). */
+function splat(s, lat, y, slope, o, w = weightsAt(s)) {
   const side = lat < 0 ? 'left' : 'right', d = Math.abs(lat);
   const patch = fbm(s * 0.018 + 7, lat * 0.022, 3);
   const fine = fbm(s * 0.09, lat * 0.09, 2);
@@ -117,8 +117,9 @@ function groundColor(s, lat, y, slope, out = new THREE.Color()) {
 }
 
 /* Turn rate at s from heading change over ±span (signed: + = turning left). */
+const _ts = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), right: new THREE.Vector3(), heading: 0, curvature: 0 };
 function turn(s, span = 14) {
-  const a = path.sample(Math.max(0, s - span)).heading, b = path.sample(Math.min(path.length, s + span)).heading;
+  const a = path.sample(Math.max(0, s - span), _ts).heading, b = path.sample(Math.min(path.length, s + span), _ts).heading;
   let dh = b - a; if (dh > Math.PI) dh -= 2 * Math.PI; else if (dh < -Math.PI) dh += 2 * Math.PI;
   return dh / (2 * span);
 }
@@ -449,7 +450,7 @@ let GMAT = null;
 function buildGround(ctx, from = 0, to = path.length) {
   const mat = GMAT || (GMAT = groundMaterial());
   const tmp = new THREE.Vector3(), cols = LAT.length, o = { tint: new THREE.Color() };
-  const A = new THREE.Vector3(), B = new THREE.Vector3(), Nn = new THREE.Vector3();
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), Nn = new THREE.Vector3(), along = new THREE.Vector3();
   for (let s0 = from; s0 < Math.min(to, path.length); s0 += CHUNK) {
     const s1 = Math.min(path.length, s0 + CHUNK);
     const rows = Math.ceil((s1 - s0) / DS) + 1;
@@ -469,26 +470,26 @@ function buildGround(ctx, from = 0, to = path.length) {
       spl = new Float32Array(n * 4), wet = new Float32Array(n), uv = new Float32Array(n * 2);
     const at = (g, c, v) => v.set(P[(g * cols + c) * 3], P[(g * cols + c) * 3 + 1], P[(g * cols + c) * 3 + 2]);
     for (let r = 0; r < rows; r++) {
-      const g = r + 1, s = rowS(r);
+      const g = r + 1, s = rowS(r), w = weightsAt(s);
       for (let c = 0; c < cols; c++) {
         const v = r * cols + c;
-        at(g + 1, c, A); at(g - 1, c, B); const along = A.sub(B).clone();
+        at(g + 1, c, A); at(g - 1, c, B); along.subVectors(A, B);
         at(g, Math.min(cols - 1, c + 1), A); at(g, Math.max(0, c - 1), B); A.sub(B);
         Nn.crossVectors(A, along).normalize(); if (Nn.y < 0) Nn.negate();
-        nor.set([Nn.x, Nn.y, Nn.z], v * 3);
+        nor[v * 3] = Nn.x; nor[v * 3 + 1] = Nn.y; nor[v * 3 + 2] = Nn.z;
         const gi = (g * cols + c) * 3;
         pos[v * 3] = P[gi]; pos[v * 3 + 1] = P[gi + 1]; pos[v * 3 + 2] = P[gi + 2];
         uv[v * 2] = P[gi] * BUMP_UV; uv[v * 2 + 1] = P[gi + 2] * BUMP_UV;
         const lat = LS[g * cols + c], slope = Math.sqrt(Math.max(0, 1 - Nn.y * Nn.y)) / Math.max(0.05, Nn.y);
-        splat(s, lat, P[gi + 1], slope, o);
+        splat(s, lat, P[gi + 1], slope, o, w);
         clr[v * 3] = o.tint.r; clr[v * 3 + 1] = o.tint.g; clr[v * 3 + 2] = o.tint.b;
         spl[v * 4] = o.soil; spl[v * 4 + 1] = o.sand; spl[v * 4 + 2] = o.rock; spl[v * 4 + 3] = o.gravel; wet[v] = o.wet;
       }
     }
-    const idx = [];
-    for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols - 1; c++) {
+    const idx = new (n > 65535 ? Uint32Array : Uint16Array)((rows - 1) * (cols - 1) * 6);
+    for (let r = 0, q = 0; r < rows - 1; r++) for (let c = 0; c < cols - 1; c++) {
       const a = r * cols + c, b = a + 1, d = a + cols, e = d + 1;
-      idx.push(a, b, d, b, e, d);
+      idx[q++] = a; idx[q++] = b; idx[q++] = d; idx[q++] = b; idx[q++] = e; idx[q++] = d;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -497,7 +498,7 @@ function buildGround(ctx, from = 0, to = path.length) {
     geo.setAttribute('aSplat', new THREE.BufferAttribute(spl, 4));
     geo.setAttribute('aWet', new THREE.BufferAttribute(wet, 1));
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    geo.setIndex(idx);
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.computeBoundingSphere();
     const m = new THREE.Mesh(geo, mat);
     m.receiveShadow = true;

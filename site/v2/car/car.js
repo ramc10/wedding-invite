@@ -11,9 +11,9 @@
  * Sub-objects and how each is dressed:
  *
  *   body paint   mesh_0_7. Ford "Ruby Red" metallic (a deep candy red
- *                factory colour): metallic base with a flake normal map, a
- *                clearcoat with a faint orange-peel normal. Box-projected
- *                UVs are generated for it (the palette UVs are one texel).
+ *                factory colour): metallic base under a glossy clearcoat.
+ *                The roof's modelled ribs are flattened, the spare-wheel
+ *                cover trued up, and normals rebuilt (see creased()).
  *   glass        mesh_0_1. Dark privacy tint, near-mirror clearcoat, env-lit.
  *   tyres        mesh_0 block 14 near an axle. Near-black rubber with a
  *                canvas normal map: sidewall ribs + raised lettering band, tread
@@ -50,13 +50,13 @@ import * as THREE from 'three';
 import { path } from '../core/path.js';
 import { world } from '../core/world.js';
 import { detour } from './detour.js';
-import { damp, clamp, smoothstep, rng } from '../core/noise.js';
+import { damp, clamp, smoothstep } from '../core/noise.js';
 
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const LENGTH = 4.25;     // metres, bumper to bumper
 const LANE = -1.8;
 const ROAD_LIFT = 0.02;  // the road strip sits this far above path.roadY (biomes/terrain.js)
-const PAINT = 0x9a0f16;  // Ford "Ruby Red" metallic (sRGB base coat)
+const PAINT = 0x930c15;  // Ford "Ruby Red" metallic (sRGB base coat)
 const WHEELBASE = 2.52;  // EcoSport, metres
 
 const S = path.sample(0);
@@ -71,7 +71,7 @@ const axleInfo = { list: [], r: 0.33 };
 const lamps = { head: [], tail: [] };   // {mat, side: +1 left / -1 right, glow}
 const lampPos = { head: new THREE.Vector3(0, 0.8, 2.1), tail: new THREE.Vector3(0, 0.9, -2.1) };
 let blink = null, blinkT = 0;
-let envTarget = null, pmrem = null, envScene = null, envU = null, envT = 9, renderer;
+let renderer;
 const envMats = [];
 let tier = 'high', spots = [], tailLight = null;
 
@@ -93,12 +93,6 @@ async function init(ctx) {
     const t2 = performance.now();
     object.add(contactShadow());
     Object.assign(T, { carLoad: Math.round(t1 - t0), carBuild: Math.round(t2 - t1) });
-    // The reflection environment (a PMREM prefilter) costs seconds on first
-    // use; build it just after the page shows rather than behind the loader.
-    addEventListener('v2:ready', () => setTimeout(() => {
-      buildEnv();
-      envMats.forEach(m => { m.envMap = envTarget.texture; m.needsUpdate = true; });
-    }, 800), { once: true });
     if (tier === 'high') buildLampLights();
   } catch (e) {
     console.error('[v2] car model failed to load', e);
@@ -128,18 +122,17 @@ function buildCar(root) {
   body.add(model);
   car.model = model;
 
-  // Metallic paint: a metallic base coat whose flakes (a fine random normal
-  // map) break up the highlight, under a glossy clearcoat with a faint
-  // orange-peel ripple. Box-projected UVs in metres (palette UVs are 1 texel).
-  const tex = paintTextures();
+  // Metallic paint: a metallic base coat under a glossy clearcoat.
   const paint = new THREE.MeshPhysicalMaterial({
-    color: PAINT, metalness: 0.4, roughness: 0.34,
+    color: PAINT, metalness: 0.6, roughness: 0.28,
     // No normal maps on the paint: the body's UVs are a colour-palette
     // layout, not an unwrap, so any normal map (flake, orange peel) sheared
     // into wavy "dents" across the doors and bonnet.
     clearcoat: 1, clearcoatRoughness: 0.03,
-    specularIntensity: 0.5, specularColor: new THREE.Color(0xffe2dc),
-    envMapIntensity: 1.25
+    // the base's own dielectric sheen is mostly the clearcoat's job: keep it
+    // low, or the red washes out to pink under an open sky
+    specularIntensity: 0.3, specularColor: new THREE.Color(0xffe2dc),
+    envMapIntensity: 1.0
   });
   // privacy-tinted glass: almost no transmission, strong clean reflections
   const glass = new THREE.MeshPhysicalMaterial({
@@ -156,8 +149,8 @@ function buildCar(root) {
   };
   if (byName.mesh_0_7) {
     const g = byName.mesh_0_7.geometry;
-    boxUV(g);
-    add(creased(g, 0.6), paint, 'paint').receiveShadow = true;
+    const skin = flattenRoof(g), fix = spareCover(skin);
+    add(creased(skin, 0.6, 2, fix), paint, 'paint').receiveShadow = true;
     footprint.setFromBufferAttribute(g.attributes.position);
   }
   if (byName.mesh_0_1) add(byName.mesh_0_1.geometry, glass, 'glass').renderOrder = 2;
@@ -387,30 +380,154 @@ function compactGeo(g, idx) {
   return n;
 }
 
+/* The model's roof carries five raised ribs, ~6 mm tall and 6 cm wide,
+ * built from long slivers: their 45° walls shade as dark and bright
+ * pinstripes (and self-shadow as dashed lines) along the roof. Fit a
+ * smooth height field y(x, z) to the roof skin (iteratively dropping the
+ * ribs from the fit) and lay the ribbed area back onto it, fading out before
+ * the roof rails and the roof's ends. Returns a new geometry. */
+function flattenRoof(g) {
+  const out = g.clone(), P = out.attributes.position, N = out.attributes.normal;
+  const inRoof = i => P.getY(i) > 1.45 && Math.abs(P.getX(i)) < 0.49 && P.getZ(i) > -1.5 && P.getZ(i) < 0.1;
+  const all = [];
+  for (let i = 0; i < P.count; i++) if (inRoof(i)) all.push(i);
+  const idx = all.filter(i => N.getY(i) > 0.2);   // the outer skin (the model's inner shell faces down)
+  if (idx.length < 50) return out;
+  const basis = (x, z) => [1, x * x, z, z * z, z * z * z, x * x * z, x * x * x * x];
+  const K = 7;
+  const fit = use => {
+    const A = Array.from({ length: K }, () => new Float64Array(K + 1));
+    for (const i of use) {
+      const b = basis(P.getX(i), P.getZ(i)), y = P.getY(i);
+      for (let r = 0; r < K; r++) { for (let c = 0; c < K; c++) A[r][c] += b[r] * b[c]; A[r][K] += b[r] * y; }
+    }
+    for (let c = 0; c < K; c++) {   // Gauss-Jordan with partial pivoting
+      let p = c;
+      for (let r = c + 1; r < K; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      [A[c], A[p]] = [A[p], A[c]];
+      for (let r = 0; r < K; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k <= K; k++) A[r][k] -= f * A[c][k]; }
+    }
+    const w = A.map((r, i) => r[K] / r[i]);
+    return (x, z) => basis(x, z).reduce((s, b, i) => s + b * w[i], 0);
+  };
+  let use = idx, f;
+  for (let it = 0; it < 4; it++) { f = fit(use); use = idx.filter(i => P.getY(i) - f(P.getX(i), P.getZ(i)) < 0.0015); }
+  for (const i of all) {   // inner shell too, so its ribs can't poke through the skin
+    const x = P.getX(i), z = P.getZ(i);
+    const w = smoothstep(0.47, 0.43, Math.abs(x)) * smoothstep(-1.48, -1.43, z) * smoothstep(-0.1, -0.15, z);
+    P.setY(i, P.getY(i) + (f(x, z) - P.getY(i)) * w);
+  }
+  return out;
+}
+
+/* The spare-wheel cover (the rearmost thing on the car) is a drum: a flat
+ * face, a chamfer and a barrel, built from few, long triangles, with a
+ * stray 1-7 mm dip in its face. Lays the face flat (in place, on g) and
+ * returns a normal fix for creased(): flat on the face (its outer 3 cm roll
+ * into the chamfer), and elsewhere on the drum the normal loses its
+ * component around the axis, so the 16-sided chamfer and barrel shade round. */
+function spareCover(g) {
+  const P = g.attributes.position;
+  let zmin = Infinity;
+  for (let i = 0; i < P.count; i++) zmin = Math.min(zmin, P.getZ(i));
+  const face = new THREE.Box3(), v = new THREE.Vector3();
+  for (let i = 0; i < P.count; i++) if (P.getZ(i) < zmin + 0.004) face.expandByPoint(v.fromBufferAttribute(P, i));
+  const c = face.getCenter(new THREE.Vector3()), R = (face.max.x - face.min.x) / 2;   // the face's rim
+  if (!(R > 0.15 && R < 0.5)) return null;
+  const rOf = (x, y) => Math.hypot(x - c.x, y - c.y);
+  for (let i = 0; i < P.count; i++) {
+    if (P.getZ(i) - zmin < 0.012 && rOf(P.getX(i), P.getY(i)) < R + 0.01) P.setZ(i, zmin);
+  }
+  const barrel = R * 1.25, depth = 0.215;
+  return (p, f, n) => {
+    const dx = p.x - c.x, dy = p.y - c.y, r = Math.hypot(dx, dy);
+    if (p.z > zmin + depth || r > barrel || f.z > 0) return;
+    if (p.z < zmin + 0.001 && f.z < -0.995 && r < R - 0.03) { n.set(0, 0, -1); return; }
+    if (r < 1e-3) return;
+    const tx = -dy / r, ty = dx / r, t = n.x * tx + n.y * ty;   // around-axis component
+    if (Math.abs(t) < 0.95) n.set(n.x - t * tx, n.y - t * ty, n.z).normalize();
+  };
+}
+
 // Crease-angle normals: a new non-indexed geometry whose corners average the
 // normals of faces sharing that position only when within `angle` radians,
-// so panels shade smoothly but hard edges stay crisp (no lumpy "dents").
-function creased(g, angle = 0.6) {
+// so panels shade smoothly but hard edges stay crisp.
+// Each face counts by its corner angle (not its area), so the long thin
+// slivers of this mesh don't drag a vertex's normal their way (the lumps and
+// facets on the doors and spare-wheel cover). `smooth` passes then average
+// each corner with the one-ring of faces in its own smoothing group, never
+// across a crease: that irons out the tessellation's ripple while the panel
+// gaps and edges stay sharp. fix(), if given, has the last word per corner.
+function creased(g, angle = 0.6, smooth = 0, fix = null) {
   const src = g.index ? g.toNonIndexed() : g.clone();
   const P = src.attributes.position, n = P.count, cos = Math.cos(angle);
-  const F = new Float32Array(n * 3), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const F = new Float32Array(n * 3), W = new Float32Array(n);
+  const p = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), fn = new THREE.Vector3();
   for (let i = 0; i < n; i += 3) {
-    a.fromBufferAttribute(P, i); b.fromBufferAttribute(P, i + 1); c.fromBufferAttribute(P, i + 2);
-    c.sub(b); a.sub(b); c.cross(a);          // area-weighted face normal
-    for (let k = 0; k < 3; k++) F.set([c.x, c.y, c.z], (i + k) * 3);
+    for (let k = 0; k < 3; k++) p[k].fromBufferAttribute(P, i + k);
+    fn.subVectors(p[2], p[1]).cross(e1.subVectors(p[0], p[1]));
+    // a sliver (under 0.2 mm across) has no trustworthy normal: it gets
+    // no say in its neighbours' normals and borrows theirs (below)
+    const long = Math.max(p[0].distanceTo(p[1]), p[1].distanceTo(p[2]), p[2].distanceTo(p[0]));
+    const sliver = fn.length() < 2e-4 * long;
+    if (sliver) fn.set(0, 0, 0); else fn.normalize();
+    for (let k = 0; k < 3; k++) {
+      e1.subVectors(p[(k + 1) % 3], p[k]); e2.subVectors(p[(k + 2) % 3], p[k]);
+      W[i + k] = !sliver && e1.lengthSq() && e2.lengthSq() ? e1.angleTo(e2) : 0;
+      F[(i + k) * 3] = fn.x; F[(i + k) * 3 + 1] = fn.y; F[(i + k) * 3 + 2] = fn.z;
+    }
   }
+  // weld corners by position (0.1 mm)
   const key = i => `${Math.round(P.getX(i) * 1e4)},${Math.round(P.getY(i) * 1e4)},${Math.round(P.getZ(i) * 1e4)}`;
   const buckets = new Map();
   for (let i = 0; i < n; i++) { const k = key(i); let l = buckets.get(k); if (!l) buckets.set(k, l = []); l.push(i); }
-  const N = new Float32Array(n * 3), u = new THREE.Vector3(), v = new THREE.Vector3();
+  // group[i]: the corners at i's position whose faces are within the crease of i's face
+  const group = new Array(n);
   for (const l of buckets.values()) for (const i of l) {
-    u.fromArray(F, i * 3).normalize(); let sx = 0, sy = 0, sz = 0;
-    for (const j of l) {
-      v.fromArray(F, j * 3); const len = v.length(); if (!len) continue;
-      if (u.dot(v) / len >= cos) { sx += v.x; sy += v.y; sz += v.z; }
+    const g = [];
+    if (W[i]) { for (const j of l) if (F[i * 3] * F[j * 3] + F[i * 3 + 1] * F[j * 3 + 1] + F[i * 3 + 2] * F[j * 3 + 2] >= cos) g.push(j); }
+    else g.push(...l);   // a sliver's corner: everything at its position
+    group[i] = g;
+  }
+  let N = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    let sx = 0, sy = 0, sz = 0;
+    for (const j of group[i]) { sx += F[j * 3] * W[j]; sy += F[j * 3 + 1] * W[j]; sz += F[j * 3 + 2] * W[j]; }
+    const l = Math.hypot(sx, sy, sz);
+    if (l < 1e-6) { sx = F[i * 3]; sy = F[i * 3 + 1]; sz = F[i * 3 + 2]; }
+    else { sx /= l; sy /= l; sz /= l; }
+    N[i * 3] = sx; N[i * 3 + 1] = sy; N[i * 3 + 2] = sz;
+  }
+  for (let it = 0; it < smooth; it++) {
+    // per face: the sum of its three corner normals (x, y, z in the face's
+    // three slots); per corner: the weighted mean over its group's faces
+    const S = new Float32Array(n);
+    for (let i = 0; i < n; i += 3) for (let c = 0; c < 3; c++) S[i + c] = N[i * 3 + c] + N[(i + 1) * 3 + c] + N[(i + 2) * 3 + c];
+    const M = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      let sx = 0, sy = 0, sz = 0;
+      for (const j of group[i]) { const f = j - j % 3; sx += S[f] * W[j]; sy += S[f + 1] * W[j]; sz += S[f + 2] * W[j]; }
+      const l = Math.hypot(sx, sy, sz);
+      if (l < 1e-6) { M[i * 3] = N[i * 3]; M[i * 3 + 1] = N[i * 3 + 1]; M[i * 3 + 2] = N[i * 3 + 2]; }
+      else { M[i * 3] = sx / l; M[i * 3 + 1] = sy / l; M[i * 3 + 2] = sz / l; }
     }
-    v.set(sx, sy, sz).normalize(); if (!v.lengthSq()) v.copy(u);
-    N[i * 3] = v.x; N[i * 3 + 1] = v.y; N[i * 3 + 2] = v.z;
+    N = M;
+  }
+  // fix(p, f, n): a last say over each corner's normal n (p its position, f its face's normal)
+  const pp = new THREE.Vector3(), ff = new THREE.Vector3(), nn = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    nn.fromArray(N, i * 3);
+    if (fix) { pp.fromBufferAttribute(P, i); ff.fromArray(F, i * 3); fix(pp, ff, nn); }
+    // never a zero or NaN normal: a collapsed sliver's would shade NaN, and
+    // bloom spreads one NaN pixel into a black octagon over the car
+    const l = nn.length();
+    if (!(l > 1e-4)) {
+      nn.set(0, 0, 0);
+      for (const j of buckets.get(key(i))) nn.x += F[j * 3], nn.y += F[j * 3 + 1], nn.z += F[j * 3 + 2];
+      if (!(nn.length() > 1e-4)) nn.set(0, 1, 0);
+    }
+    nn.normalize().toArray(N, i * 3);
   }
   src.setAttribute('normal', new THREE.BufferAttribute(N, 3));
   src.computeBoundingSphere();
@@ -442,19 +559,6 @@ function plateUV(g) {
     const x = (P.getX(i) - B.min.x) / w;
     uv[i * 2] = f ? x : 1 - x;
     uv[i * 2 + 1] = (P.getY(i) - B.min.y) / h;
-  }
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-}
-
-// Box-projected UVs in metres, by each vertex's dominant normal axis.
-function boxUV(g) {
-  const P = g.attributes.position, N = g.attributes.normal;
-  const uv = new Float32Array(P.count * 2);
-  for (let i = 0; i < P.count; i++) {
-    const ax = Math.abs(N.getX(i)), ay = Math.abs(N.getY(i)), az = Math.abs(N.getZ(i));
-    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
-    const [u, v] = ax >= ay && ax >= az ? [z, y] : ay >= az ? [x, z] : [x, y];
-    uv[i * 2] = u; uv[i * 2 + 1] = v;
   }
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
 }
@@ -497,36 +601,6 @@ function normalMap(hc, strength, wrapY = true) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = 4;
   return t;
-}
-
-// Paint: metallic flakes (per-texel random tilt) and orange peel (soft blobs).
-function paintTextures() {
-  const R = rng('paint'), N = 256;
-  const fc = document.createElement('canvas'); fc.width = fc.height = N;
-  const fg = fc.getContext('2d'), img = fg.createImageData(N, N);
-  for (let i = 0; i < N * N; i++) {
-    const a = R() * Math.PI * 2, t = R() * 0.5;
-    img.data[i * 4] = (Math.cos(a) * t * 0.5 + 0.5) * 255;
-    img.data[i * 4 + 1] = (Math.sin(a) * t * 0.5 + 0.5) * 255;
-    img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = 255;
-  }
-  fg.putImageData(img, 0, 0);
-  const flake = new THREE.CanvasTexture(fc);
-  flake.wrapS = flake.wrapT = THREE.RepeatWrapping; flake.repeat.set(9, 9);
-  const pc = document.createElement('canvas'); pc.width = pc.height = N;
-  const pg = pc.getContext('2d');
-  pg.fillStyle = '#808080'; pg.fillRect(0, 0, N, N);
-  for (let i = 0; i < 900; i++) {
-    const x = R() * N, y = R() * N, r = 3 + R() * 7, v = R() < 0.5 ? 255 : 0;
-    for (const [ox, oy] of [[0, 0], [N, 0], [-N, 0], [0, N], [0, -N]]) {
-      const gr = pg.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
-      gr.addColorStop(0, `rgba(${v},${v},${v},0.25)`); gr.addColorStop(1, `rgba(${v},${v},${v},0)`);
-      pg.fillStyle = gr; pg.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
-    }
-  }
-  const peel = normalMap(pc, 3);
-  peel.repeat.set(3, 3);
-  return { flake, peel };
 }
 
 // Tyre: a height canvas → normal map. Bottom half = sidewall (radius runs
@@ -621,65 +695,94 @@ function contactShadow() {
 }
 
 /* ------------------------------------------------------------ environment
- * A tiny scene — gradient dome from the live sky colours, a warm sun disc and
- * two soft white "softbox" strips overhead for the long highlight a real car
- * shows along its shoulder — prefiltered with PMREM. Rebuilt (throttled) as
- * the time of day moves, so the paint goes gold at the dam and dim at dusk. */
+ * The car's reflections: a gradient dome from the live sky colours plus two
+ * soft white "softbox" strips overhead for the long highlight a real car
+ * shows along its shoulder. The sun itself isn't in it: the sun light's own
+ * specular (clearcoat included) draws that highlight.
+ *
+ * The dome is linear in its colours, so instead of re-prefiltering it as the
+ * day moves (each PMREM rebuild ran on the main thread mid-drive: a hitch), two
+ * *weight* maps are prefiltered once, behind the loader:
+ *   A.rgb = how much horizon / zenith / ground each direction sees,
+ *   B.r   = the softbox strips,
+ * and the car's shaders mix them with the current colours per pixel:
+ *   env = hor·A.r + top·A.g + ground·A.b + strip·B.r
+ * — exact at every point of the drive, and free to change every frame. */
 
-function buildEnv() {
-  pmrem = new THREE.PMREMGenerator(renderer);
-  envScene = new THREE.Scene();
-  const U = world.U;
-  envU = {
-    top: { value: new THREE.Color() }, hor: { value: new THREE.Color() },
-    ground: { value: new THREE.Color(0x2b2620) }, sunDir: { value: new THREE.Vector3() },
-    sunCol: { value: new THREE.Color() }, dusk: { value: 0 }
-  };
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, uniforms: envU,
+let envA = null, envB = null;
+const envU = {
+  carEnvB: { value: null },
+  carEnvHor: { value: new THREE.Color() }, carEnvTop: { value: new THREE.Color() },
+  carEnvGround: { value: new THREE.Color() }, carEnvStrip: { value: new THREE.Color() }
+};
+
+/* Prefiltering costs seconds on first use, so main.js calls this behind the
+ * loader, before shaders compile: building it after the page showed froze
+ * the first drive. */
+function prepareEnv() {
+  if (envA || !envMats.length) return;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const scene = new THREE.Scene();
+  const basis = { value: 0 };
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(50, 64, 32), new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, uniforms: { basis },
     vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
     fragmentShader: /* glsl */`
-      uniform vec3 top, hor, ground, sunDir, sunCol; uniform float dusk;
+      uniform int basis;
       varying vec3 vD;
       void main(){
         vec3 d = normalize(vD);
-        vec3 c = mix(hor, top, pow(max(d.y, 0.0), 0.5));
-        c = mix(c, ground, smoothstep(0.02, -0.12, d.y));
-        float s = max(dot(d, normalize(sunDir)), 0.0);
-        c += sunCol * (pow(s, 400.0) * 40.0 + pow(s, 8.0) * 0.5) * (1.0 - dusk * 0.8);
+        float wTop = pow(max(d.y, 0.0), 0.5), wGround = smoothstep(0.02, -0.12, d.y);
         // softboxes: two long bright strips overhead, along the car's length
         float strip = smoothstep(0.93, 0.97, d.y) * (0.6 + 0.4 * smoothstep(0.1, 0.0, abs(abs(d.x) - 0.18)));
-        c += vec3(1.0) * strip * 1.4 * (1.0 - dusk * 0.7);
-        gl_FragColor = vec4(c, 1.0);
+        gl_FragColor = basis == 0
+          ? vec4((1.0 - wTop) * (1.0 - wGround), wTop * (1.0 - wGround), wGround, 1.0)
+          : vec4(strip, 0.0, 0.0, 1.0);
       }`
   }));
-  envScene.add(dome);
-  refreshEnv(true);
+  scene.add(dome);
+  envA = pmrem.fromScene(scene, 0.015, 0.1, 100);
+  basis.value = 1;
+  envB = pmrem.fromScene(scene, 0.015, 0.1, 100);
+  pmrem.dispose(); dome.geometry.dispose(); dome.material.dispose();
+  envU.carEnvB.value = envB.texture;
+  envMats.forEach(m => {
+    m.envMap = envA.texture;
+    m.userData.env0 = m.envMapIntensity;
+    m.onBeforeCompile = carEnvShader;
+    m.customProgramCacheKey = () => 'carEnv';
+    m.needsUpdate = true;
+  });
+  updateEnv();
 }
 
-const lastSky = new THREE.Color(-1, -1, -1), lastSun = new THREE.Vector3();
-function refreshEnv(force) {
-  const U = world.U;
-  const drift = Math.abs(lastSky.r - U.uSkyHor.value.r) + Math.abs(lastSky.g - U.uSkyHor.value.g) +
-    Math.abs(lastSky.b - U.uSkyHor.value.b) + lastSun.distanceTo(U.uSunDir.value);
-  if (!force && drift < 0.03) return;
-  lastSky.copy(U.uSkyHor.value); lastSun.copy(U.uSunDir.value);
-  envU.top.value.copy(U.uSkyTop.value);
-  envU.hor.value.copy(U.uSkyHor.value);
-  envU.sunDir.value.copy(U.uSunDir.value);
-  envU.sunCol.value.copy(U.uSunCol.value);
-  envU.dusk.value = U.uDusk.value;
-  envU.ground.value.copy(U.uFogCol.value).multiplyScalar(0.25);
-  const next = pmrem.fromScene(envScene, 0.015, 0.1, 100);
+// Every textureCubeUV(envMap, …) lookup in the IBL chunk becomes carEnv(…).
+function carEnvShader(sh) {
+  Object.assign(sh.uniforms, envU);
+  sh.fragmentShader = sh.fragmentShader.replace('#include <envmap_physical_pars_fragment>', /* glsl */`
+    #ifdef ENVMAP_TYPE_CUBE_UV
+      uniform sampler2D carEnvB;
+      uniform vec3 carEnvHor, carEnvTop, carEnvGround, carEnvStrip;
+      vec4 carEnv( vec3 dir, float rough ) {
+        vec3 a = textureCubeUV( envMap, dir, rough ).rgb;
+        float b = textureCubeUV( carEnvB, dir, rough ).r;
+        return vec4( carEnvHor * a.r + carEnvTop * a.g + carEnvGround * a.b + carEnvStrip * b, 1.0 );
+      }
+    #endif
+    ` + THREE.ShaderChunk.envmap_physical_pars_fragment.replaceAll('textureCubeUV( envMap, ', 'carEnv( '));
+}
+
+// Per frame: the dome's colours from the live sky (a few uniform copies).
+function updateEnv() {
+  const U = world.U, dusk = U.uDusk.value;
+  envU.carEnvHor.value.copy(U.uSkyHor.value);
+  envU.carEnvTop.value.copy(U.uSkyTop.value);
+  envU.carEnvGround.value.copy(U.uFogCol.value).multiplyScalar(0.25);
+  envU.carEnvStrip.value.setScalar(0.55 * (1 - dusk * 0.7));
   // the sky dims at dusk faster than the dome gradient suggests: keep the
   // car's reflections in step with the scene so it doesn't look self-lit
-  const dim = 1 - 0.85 * U.uDusk.value;
-  envMats.forEach(m => {
-    if (m.userData.env0 == null) m.userData.env0 = m.envMapIntensity;
-    m.envMap = next.texture; m.envMapIntensity = m.userData.env0 * dim;
-  });
-  if (envTarget) envTarget.dispose();
-  envTarget = next;
+  const dim = 1 - 0.85 * dusk;
+  for (const m of envMats) if (m.userData.env0 != null) m.envMapIntensity = m.userData.env0 * dim;
 }
 
 /* ------------------------------------------------------------ lamps */
@@ -764,13 +867,14 @@ function groundY(s, lat) {
 
 const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 
-// The car waits here through the title: far enough down the road that the
-// rear three-quarter title camera has road and ground behind it (s < 0 is
-// nothing). The first metres of scroll swing the camera round; then it drives.
-const PARK_S = 36;
+// The car starts here, far enough down the road that the rear three-quarter
+// title camera has road and ground behind it (s < 0 is nothing). It drives
+// from the very first scroll: the head start shrinks to nothing by CATCH_S,
+// so the car moves at ~0.4x scroll speed at first and 1x from CATCH_S on.
+const PARK_S = 36, CATCH_S = 120;
 
 function update(dt, s) {
-  s = Math.max(s, PARK_S);
+  if (s < CATCH_S) s += PARK_S * (1 - s / CATCH_S) ** 2;
   if (detour.carS != null) s = detour.carS;
   const prevS = state.s;
   state.s = s;
@@ -852,8 +956,7 @@ function update(dt, s) {
   }
 
   updateLamps(dt);
-  envT += dt;
-  if (envT > 0.5 && pmrem) { envT = 0; refreshEnv(false); }
+  if (envA) updateEnv();
 }
 
 const tmpL = new THREE.Vector3();
@@ -862,7 +965,7 @@ function lamp(name, out = new THREE.Vector3()) {
 }
 
 export const car = {
-  init, update, object, body, pos, fwd, LANE, model: null, indicate, lamp,
+  init, prepareEnv, update, object, body, pos, fwd, LANE, model: null, indicate, lamp,
   get heading() { return state.heading; },
   get lateral() { return state.lateral; },
   get s() { return state.s; },

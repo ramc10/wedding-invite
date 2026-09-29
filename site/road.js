@@ -734,6 +734,11 @@
     el.shadow = document.querySelector('.car-shadow');
     el.tint = $('tint'); el.dusk = $('dusk');
     el.legs = $('legs'); el.rail = $('rail'); el.cue = $('cue');
+    /* tapping the scroll hint shows what a swipe does: the car pulls away */
+    el.cue.addEventListener('click', function () {
+      window.scrollTo({ top: window.scrollY + S.vh * .6,
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
     el.title = $('title'); el.titleVenue = $('titleVenue');
     el.details = $('details'); el.venue = $('venue');
     el.damCaption = $('damCaption'); el.damVenue = $('damVenue');
@@ -830,6 +835,24 @@
       el.ribbon.appendChild(a);
       return { a: a, top: l.top, bottom: l.bottom, left: l.left, right: l.right };
     });
+
+    /* The button twin of whichever callout is on screen: tapping it is
+     * tapping the callout. IntersectionObserver sees the ribbon's transform,
+     * so this costs nothing per frame. */
+    var stopBtn = $('stopBtn'), shown = null;
+    if (stopBtn && 'IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) shown = e.target;
+          else if (shown === e.target) shown = null;
+        });
+        stopBtn.classList.toggle('on', !!shown);
+        stopBtn.tabIndex = shown ? 0 : -1;
+        if (shown) stopBtn.removeAttribute('aria-hidden'); else stopBtn.setAttribute('aria-hidden', 'true');
+      }, { threshold: 0.6 });
+      el.links.forEach(function (l) { io.observe(l.a); });
+      stopBtn.addEventListener('click', function () { if (shown) shown.click(); });
+    }
   }
 
   function legCount() {
@@ -1268,7 +1291,7 @@
 
     daylight(prog * DAY_SPAN);
 
-    el.cue.style.opacity = y > S.vh * .35 ? '0' : '1';
+    el.cue.classList.toggle('gone', y > S.vh * .35);
     /* Overlay hand-off, front to back: hidden at the very top, then the
      * title while the journey is still inside its own leg(s), then the
      * event details once the beach leg (TITLE_LAST_LEG) is behind us —

@@ -48,9 +48,11 @@ function rng(seed) {
   };
 }
 
+// CPU-backed (willReadFrequently) canvases: the height maps are read back for normals, and software
+// raster of these small canvases costs less main-thread time than recording and flushing to the GPU
 function canvas(w, h, draw) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
-  draw(c.getContext('2d'), w, h);
+  draw(c.getContext('2d', { willReadFrequently: true }), w, h);
   return c;
 }
 
@@ -83,15 +85,18 @@ function normalFrom(c, strength = 2) {
 }
 
 // value-noise blotches painted onto a context (cheap, tileable enough)
-function blotch(g, w, h, R, n, rMin, rMax, col, alpha) {
+// (vw, vh) = the visible area when it is larger than the w × h tile
+function blotch(g, w, h, R, n, rMin, rMax, col, alpha, vw = w, vh = h) {
   for (let i = 0; i < n; i++) {
     const x = R() * w, y = R() * h, r = rMin + R() * (rMax - rMin);
     const gr = g.createRadialGradient(x, y, 0, x, y, r);
     gr.addColorStop(0, col.replace('A', (alpha * (0.5 + R() * 0.5)).toFixed(3)));
     gr.addColorStop(1, col.replace('A', '0'));
     g.fillStyle = gr;
-    for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) {
-      g.save(); g.translate(ox, oy); g.fillRect(x - r, y - r, r * 2, r * 2); g.restore();
+    // wrapped copies only where the blotch actually crosses an edge (usually just the one)
+    for (const ox of [-w, 0, w]) if (x + ox + r > 0 && x + ox - r < vw) for (const oy of [-h, 0, h]) if (y + oy + r > 0 && y + oy - r < vh) {
+      if (ox || oy) { g.save(); g.translate(ox, oy); g.fillRect(x - r, y - r, r * 2, r * 2); g.restore(); }
+      else g.fillRect(x - r, y - r, r * 2, r * 2);
     }
   }
 }
@@ -130,9 +135,11 @@ function graniteTextures() {
     g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h);
     blotch(g, w, h, R, 70, 8, 40, 'rgba(255,255,255,A)', 0.18);
     blotch(g, w, h, R, 70, 8, 40, 'rgba(0,0,0,A)', 0.18);
+    let last = '';
     for (let i = 0; i < 5000; i++) {
-      const v = R() < 0.5 ? 30 : 220;
-      g.fillStyle = `rgba(${v},${v},${v},0.5)`; g.fillRect(R() * w, R() * h, 1 + R() * 2, 1 + R() * 2);
+      const st = R() < 0.5 ? 'rgba(30,30,30,0.5)' : 'rgba(220,220,220,0.5)';
+      if (st !== last) g.fillStyle = last = st;         // re-parse the colour only when it changes
+      g.fillRect(R() * w, R() * h, 1 + R() * 2, 1 + R() * 2);
     }
     g.strokeStyle = 'rgba(0,0,0,0.5)';
     for (let i = 0; i < 6; i++) {        // hairline joints
@@ -145,9 +152,10 @@ function graniteTextures() {
     g.fillStyle = '#a89c90'; g.fillRect(0, 0, w, h);
     blotch(g, w, h, R, 50, 10, 45, 'rgba(150,120,110,A)', 0.35);
     blotch(g, w, h, R, 40, 10, 40, 'rgba(90,88,84,A)', 0.3);
+    let last = '';
     for (let i = 0; i < 7000; i++) {
-      const t = R();
-      g.fillStyle = t < 0.4 ? 'rgba(30,28,28,0.7)' : t < 0.7 ? 'rgba(235,225,215,0.6)' : 'rgba(190,140,120,0.5)';
+      const t = R(), st = t < 0.4 ? 'rgba(30,28,28,0.7)' : t < 0.7 ? 'rgba(235,225,215,0.6)' : 'rgba(190,140,120,0.5)';
+      if (st !== last) g.fillStyle = last = st;
       g.fillRect(R() * w, R() * h, 1 + R() * 1.5, 1 + R() * 1.5);
     }
     blotch(g, w, h, R, 30, 3, 10, 'rgba(210,200,150,A)', 0.5);    // lichen rosettes
@@ -230,7 +238,7 @@ function atlasTexture() {
     cell('km', (w, h) => {
       wash(w, h);
       g.fillStyle = '#f0b81c'; g.fillRect(0, 0, w, h * 0.42);
-      blotch(g, w, h * 0.42, R, 15, 5, 25, 'rgba(150,100,20,A)', 0.25);
+      blotch(g, w, h * 0.42, R, 15, 5, 25, 'rgba(150,100,20,A)', 0.25, w, h);
       g.fillStyle = '#161616'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.font = 'bold 44px Arial, sans-serif'; g.fillText('NH 44', w / 2, h * 0.27);
       g.font = 'bold 30px Arial, sans-serif'; g.fillText('ಬೆಂಗಳೂರು', w / 2, h * 0.52);

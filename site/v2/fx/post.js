@@ -19,6 +19,9 @@
  *   6. FXAA when the scene target isn't multisampled.
  * renderer.toneMapping is forced to NoToneMapping so nothing tone-maps twice.
  * quality 'low': no bloom, no AO; grade and dither kept.
+ * Adaptive resolution (quality.scale): the scene and AO are drawn into a
+ * viewport of that size inside fixed targets; the passes that read them
+ * scale their uvs (uScale), so a scale step never reallocates a target.
  *
  * API: init(ctx), resize(w, h), render(renderer, scene, camera, dt)
  */
@@ -26,9 +29,9 @@ import * as THREE from 'three';
 import { world } from '../core/world.js';
 import { atmosphere } from './atmosphere.js';
 
-let R, tier = 'high', bloomOn = true, aoOn = true, msaa = 0;
+let R, Q = null, tier = 'high', bloomOn = true, aoOn = true, msaa = 0;
 let rtScene, rtLDR, rtAO, bloomRT = [];
-const size = new THREE.Vector2(), cur = new THREE.Vector2(-1, -1);
+const size = new THREE.Vector2(), cur = new THREE.Vector2(-1, -1), drawn = new THREE.Vector2();
 const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const quadGeo = new THREE.BufferGeometry();
 quadGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
@@ -49,10 +52,10 @@ function pass(frag, uniforms) {
 
 // ---- bloom ----------------------------------------------------------------
 const PREFILTER = /* glsl */`
-uniform sampler2D tSrc; uniform vec2 uTexel; uniform float uThresh, uExposure;
+uniform sampler2D tSrc; uniform vec2 uTexel, uScale; uniform float uThresh, uExposure;
 varying vec2 vUv;
 vec3 tap(vec2 o) {
-  vec3 c = texture2D(tSrc, vUv + o * uTexel).rgb;
+  vec3 c = texture2D(tSrc, min(vUv * uScale + o * uTexel, uScale - 0.5 * uTexel)).rgb;
   return c / (1.0 + max(c.r, max(c.g, c.b)) * uExposure * 0.25); // Karis-style: tame fireflies
 }
 void main() {
@@ -89,15 +92,21 @@ void main() {
 
 // ---- ambient occlusion (half res, depth only) ------------------------------
 const SAO = /* glsl */`
-uniform sampler2D tDepth; uniform mat4 uProjInv; uniform vec2 uTexel; uniform float uPx, uRadius;
+uniform sampler2D tDepth; uniform mat4 uProjInv; uniform vec2 uTexel, uScale; uniform float uPx, uRadius;
 varying vec2 vUv;
+// uv is in the drawn image's space; depth lives in the lower-left uScale of its texture
 vec3 vpos(vec2 uv) {
-  float d = texture2D(tDepth, uv).r;
+  uv = clamp(uv, 0.5 * uTexel, 1.0 - 0.5 * uTexel);
+  // Rebuild at the centre of the depth texel actually read. Half-res pixel
+  // centres sit on full-res texel corners, and on the road at a grazing angle
+  // that half-texel mismatch read as self-occlusion: dark bands across it.
+  uv = (floor(uv / uTexel - 0.25) + 0.5) * uTexel;
+  float d = texture2D(tDepth, uv * uScale).r;
   vec4 v = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
   return v.xyz / v.w;
 }
 void main() {
-  float d0 = texture2D(tDepth, vUv).r;
+  float d0 = texture2D(tDepth, vUv * uScale).r;
   if (d0 >= 0.99999) { gl_FragColor = vec4(1.0); return; }
   vec3 P = vpos(vUv);
   float dist = -P.z;
@@ -140,7 +149,7 @@ vec3 dither(vec3 c, vec2 px) {   // TPDF, +-1 LSB of 8-bit
 const COMPOSITE = /* glsl */`
 uniform sampler2D tScene, tBloom, tAO;
 uniform float uExposure, uBloom, uTime, uAspect, uGrain, uGolden, uRose, uDusk, uAoAmt;
-uniform vec2 uAoTexel;
+uniform vec2 uAoTexel, uAoScale, uScale, uSceneTexel;
 uniform vec2 uRes;
 uniform vec3 uSun, uSunCol;
 varying vec2 vUv;
@@ -159,12 +168,14 @@ vec3 aces(vec3 color) {
   return clamp(color, 0.0, 1.0);
 }
 vec3 toSRGB(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(0.41666)) - 0.055, step(0.0031308, c)); }
+// the scene and AO fill the lower-left uScale / uAoScale of their targets
+float aoAt(vec2 o) { return texture2D(tAO, min(vUv * uAoScale + o, uAoScale - 0.5 * uAoTexel)).r; }
 void main() {
-  vec3 col = texture2D(tScene, vUv).rgb;
+  vec3 col = texture2D(tScene, min(vUv * uScale, uScale - 0.5 * uSceneTexel)).rgb;
   #ifdef AO
   vec2 at = uAoTexel * 1.5;
-  float ao = texture2D(tAO, vUv).r * 0.4 + (texture2D(tAO, vUv + vec2(at.x, 0.0)).r + texture2D(tAO, vUv - vec2(at.x, 0.0)).r
-           + texture2D(tAO, vUv + vec2(0.0, at.y)).r + texture2D(tAO, vUv - vec2(0.0, at.y)).r) * 0.15;
+  float ao = aoAt(vec2(0.0)) * 0.4 + (aoAt(vec2(at.x, 0.0)) + aoAt(vec2(-at.x, 0.0))
+           + aoAt(vec2(0.0, at.y)) + aoAt(vec2(0.0, -at.y))) * 0.15;
   col *= mix(1.0, ao, uAoAmt);
   #endif
   #ifdef BLOOM
@@ -228,6 +239,7 @@ const rt = (w, h, o = {}) => new THREE.WebGLRenderTarget(w, h, {
 
 function init(ctx) {
   R = ctx.renderer;
+  Q = ctx.quality;
   tier = ctx.quality.tier;
   bloomOn = tier !== 'low';
   aoOn = tier !== 'low';
@@ -241,16 +253,17 @@ function init(ctx) {
   if (bloomOn) for (let i = 0; i < LEVELS * 2 - 1; i++) bloomRT.push(rt(8, 8));
 
   const texel = () => ({ value: new THREE.Vector2() });
-  M.pre = pass(PREFILTER, { tSrc: { value: null }, uTexel: texel(), uThresh: { value: 1.3 }, uExposure: { value: 1 } });
+  M.pre = pass(PREFILTER, { tSrc: { value: null }, uTexel: texel(), uScale: { value: new THREE.Vector2(1, 1) }, uThresh: { value: 1.3 }, uExposure: { value: 1 } });
   M.down = pass(DOWN, { tSrc: { value: null }, uTexel: texel() });
   M.up = pass(UP, { tSrc: { value: null }, tCur: { value: null }, uTexel: texel(), uScatter: { value: 0.85 } });
   if (aoOn) M.ao = pass(SAO, {
     tDepth: { value: rtScene.depthTexture }, uProjInv: { value: new THREE.Matrix4() },
-    uTexel: texel(), uPx: { value: 400 }, uRadius: { value: 0.9 }
+    uTexel: texel(), uScale: { value: new THREE.Vector2(1, 1) }, uPx: { value: 400 }, uRadius: { value: 0.9 }
   });
   M.comp = pass(COMPOSITE, {
     tScene: { value: rtScene.texture }, tBloom: { value: null },
-    tAO: { value: aoOn ? rtAO.texture : null }, uAoTexel: texel(), uAoAmt: { value: 0.75 },
+    tAO: { value: aoOn ? rtAO.texture : null }, uAoTexel: texel(), uAoScale: { value: new THREE.Vector2(1, 1) },
+    uScale: { value: new THREE.Vector2(1, 1) }, uSceneTexel: texel(), uAoAmt: { value: 0.75 },
     uGolden: { value: 0 }, uRose: { value: 0 }, uDusk: world.U.uDusk,
     uExposure: { value: 1 }, uBloom: { value: 0.1 }, uTime: world.U.uTime,
     uAspect: { value: 1 }, uGrain: { value: msaa ? 1 : 0 }, uRes: { value: new THREE.Vector2() },
@@ -263,18 +276,19 @@ function init(ctx) {
   sync();
 }
 
-// follow the drawing buffer (quality.tick changes the pixel ratio behind our back)
+// follow the drawing buffer (window resizes only; quality.scale is applied
+// per frame as a viewport inside these targets, see scaled())
 function sync() {
   R.getDrawingBufferSize(size);
   if (size.equals(cur)) return;
   cur.copy(size);
+  drawn.set(-1, -1);   // setSize resets the viewports scaled() sets
   const w = size.x, h = size.y;
   rtScene.setSize(w, h);
   rtLDR.setSize(w, h);
   if (aoOn) {
     const aw = Math.max(1, w >> 1), ah = Math.max(1, h >> 1);
     rtAO.setSize(aw, ah);
-    M.ao.uniforms.uTexel.value.set(1 / w, 1 / h);
     M.comp.uniforms.uAoTexel.value.set(1 / aw, 1 / ah);
   }
   let bw = w, bh = h;
@@ -285,6 +299,7 @@ function sync() {
       if (i < LEVELS - 1) bloomRT[LEVELS + i].setSize(bw, bh);     // up chain
     }
   }
+  M.comp.uniforms.uSceneTexel.value.set(1 / w, 1 / h);
   M.comp.uniforms.uAspect.value = w / h;
   M.comp.uniforms.uRes.value.set(w, h);
   M.fxaa.uniforms.uRes.value.set(w, h);
@@ -292,6 +307,28 @@ function sync() {
 }
 
 function resize() { if (R) sync(); }
+
+/* Adaptive resolution: draw the scene (and AO) into the lower-left
+ * quality.scale of the full-size targets, and let every reader scale its
+ * uvs to match. Changing the scale is a uniform write, never a reallocation. */
+function scaled() {
+  const k = Q ? Q.scale : 1;
+  const w = cur.x, h = cur.y;
+  const sw = Math.max(1, Math.round(w * k)), sh = Math.max(1, Math.round(h * k));
+  if (sw === drawn.x && sh === drawn.y && rtScene.viewport.z === sw && rtScene.viewport.w === sh) return;
+  drawn.set(sw, sh);
+  rtScene.viewport.set(0, 0, sw, sh);
+  const u = M.comp.uniforms;
+  u.uScale.value.set(sw / w, sh / h);
+  M.pre.uniforms.uScale.value.set(sw / w, sh / h);
+  if (aoOn) {
+    const aw = Math.max(1, sw >> 1), ah = Math.max(1, sh >> 1);
+    rtAO.viewport.set(0, 0, aw, ah);
+    M.ao.uniforms.uTexel.value.set(1 / sw, 1 / sh);
+    M.ao.uniforms.uScale.value.set(sw / w, sh / h);
+    u.uAoScale.value.set(aw / rtAO.width, ah / rtAO.height);
+  }
+}
 
 function draw(mat, target) {
   quad.material = mat;
@@ -324,12 +361,13 @@ function bloom() {
 function render(renderer, scene, camera) {
   if (!R) { renderer.render(scene, camera); return; }
   sync();
+  scaled();
   const exposure = renderer.toneMappingExposure;
   renderer.setRenderTarget(rtScene);
   renderer.render(scene, camera);
   if (aoOn) {
     M.ao.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse);
-    M.ao.uniforms.uPx.value = camera.projectionMatrix.elements[5] * 0.5 * cur.y; // metres at 1 m → pixels
+    M.ao.uniforms.uPx.value = camera.projectionMatrix.elements[5] * 0.5 * drawn.y; // metres at 1 m → pixels
     draw(M.ao, rtAO);
   }
   M.comp.uniforms.uGolden.value = atmosphere.day.golden || 0;

@@ -9,6 +9,8 @@ import { OVERLAYS, STOPS, END_S } from '../core/timeline.js';
 import { smoothstep } from '../core/noise.js';
 
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
+let rm = RM.matches;   // cached: reading .matches every frame can make the browser re-evaluate styles
+RM.addEventListener('change', () => { rm = RM.matches; });
 const RISE = 14;   // px the text travels while fading
 const BLUR = 6;    // px of blur at zero opacity
 
@@ -21,7 +23,7 @@ function init(ctx) {
   scroll = ctx && ctx.scroll;
   OVERLAYS.forEach(o => o.els.forEach(id => {
     const el = document.getElementById(id);
-    if (el) blocks.push({ el, o, last: -1 });
+    if (el) blocks.push({ el, o, last: -1, vis: null, tf: null, fl: null });
   }));
 
   STOPS.forEach(stop => {
@@ -55,7 +57,6 @@ async function go(stop, el) {
 }
 
 function update(dt, s) {
-  const rm = RM.matches;
   for (const b of blocks) {
     const o = b.o;
     const a = Math.min(smoothstep(o.from - o.fade, o.from, s), 1 - smoothstep(o.to, o.to + o.fade, s));
@@ -64,13 +65,17 @@ function update(dt, s) {
     b.last = q;
     const st = b.el.style;
     st.opacity = q.toFixed(3);
-    st.visibility = q > 0.002 ? 'visible' : 'hidden';
+    // the other properties are written only when their strings change
+    const vis = q > 0.002 ? 'visible' : 'hidden';
+    if (vis !== b.vis) st.visibility = b.vis = vis;
     if (rm) continue;
     const k = 1 - q;
     // leaving (past `to`) drifts up, arriving rises from below — a sense of travel
     const dir = s > o.to ? -1 : 1;
-    st.transform = k > 0.002 ? `translate3d(0, ${(dir * k * RISE).toFixed(2)}px, 0)` : '';
-    st.filter = k > 0.02 ? `blur(${(k * k * BLUR).toFixed(2)}px)` : '';
+    const tf = k > 0.002 ? `translate3d(0, ${(dir * k * RISE).toFixed(2)}px, 0)` : '';
+    const fl = k > 0.02 ? `blur(${(k * k * BLUR).toFixed(2)}px)` : '';
+    if (tf !== b.tf) st.transform = b.tf = tf;
+    if (fl !== b.fl) st.filter = b.fl = fl;
   }
 
   const detourOn = !!(detourMod && detourMod.active);

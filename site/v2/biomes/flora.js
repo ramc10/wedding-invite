@@ -21,6 +21,7 @@
  *                    z instance-tint weight). Optional 'uv' (cell-local, may exceed 1 to tile) and
  *                    'aCell' (atlas cell origin); without them the plain white cell is used.
  *   kindGeometry(kind) → shared indexed BufferGeometry of a kind (for your own InstancedMesh).
+ *   floraReady()     → Promise, resolves once the atlas workers are done (optional: await before compile).
  *   KINDS            list of kind names.
  *
  * Look: one procedural 2048² atlas (bark, plated pine bark, ringed palm bark, leaf-cluster cards,
@@ -33,7 +34,7 @@
 import * as THREE from 'three';
 import { path } from '../core/path.js';
 import { world } from '../core/world.js';
-import { rng as makeRng, fbm, noise2 } from '../core/noise.js';
+import { rng as makeRng, fbm, noise2, hash2 } from '../core/noise.js';
 
 const U = world.U;
 
@@ -305,52 +306,56 @@ function paintFLeaf(g, R) { // flower-bed foliage: stems with pinnate (marigold)
 }
 
 /* ---------- atlas assembly ---------- */
-const PAINT = [[C.LEAF, paintLeaf, 1], [C.LEAF2, paintLeaf2, 1], [C.BUSH, paintBush, 1], [C.BLOSSOM, paintBlossom, 2],
+// mask mode: 1 all tintable, 0 none, 2 non-green only
+const paintList = () => [[C.LEAF, paintLeaf, 1], [C.LEAF2, paintLeaf2, 1], [C.BUSH, paintBush, 1], [C.BLOSSOM, paintBlossom, 2],
   [C.AMALTAS, paintAmaltas, 2], [C.NEEDLE, paintNeedle, 1], [C.FROND, paintFrond, 1], [C.FERN, paintFern, 1],
-  [C.HEADS, paintHeads, 2], [C.FLEAF, paintFLeaf, 0]]; // mask mode: 1 all tintable, 0 none, 2 non-green only
+  [C.HEADS, paintHeads, 2], [C.FLEAF, paintFLeaf, 0]];
 const BUMP = { [C.BARK]: 5, [C.PINEBARK]: 6, [C.PALMBARK]: 4, [C.ROCK]: 4, [C.GRASS]: 0.5 };
-let ATLAS = null;
 const NB4 = [4, -4, AS * 4, -AS * 4];
-function atlas() {
-  if (ATLAS) return ATLAS;
-  const tA = performance.now();
-  const cv = document.createElement('canvas'); cv.width = cv.height = AS;
-  const g = cv.getContext('2d', { willReadFrequently: true });
-  for (const [i, fn] of PAINT) {
-    g.save(); g.setTransform(1, 0, 0, 1, (i % 4) * CS, (3 - (i >> 2)) * CS);
-    g.beginPath(); g.rect(4, 4, CS - 8, CS - 8); g.clip();
-    fn(g, makeRng(1000 + i)); g.restore();
+const NOISE = [C.BARK, C.PINEBARK, C.PALMBARK, C.ROCK, C.GRASS];
+// the atlas pixels: colour + data (normal xy, tint mask, height), rows bottom-up.
+// part 0 = canvas-painted cells + plain (cv = a 2048² 2D canvas), 1 = noise cells, undefined = all
+function atlasPixels(cv, part) {
+  const PAINT = paintList(), A = { col: new Uint8Array(AS * AS * 4), dat: new Uint8Array(AS * AS * 4) }, { col, dat } = A;
+  if (part !== 1) {
+    const g = cv.getContext('2d', { willReadFrequently: true });
+    for (const [i, fn] of PAINT) {
+      g.save(); g.setTransform(1, 0, 0, 1, (i % 4) * CS, (3 - (i >> 2)) * CS);
+      g.beginPath(); g.rect(4, 4, CS - 8, CS - 8); g.clip();
+      fn(g, makeRng(1000 + i)); g.restore();
+    }
+    const img = g.getImageData(0, 0, AS, AS).data;
+    for (let y = 0; y < AS; y++) col.set(img.subarray((AS - 1 - y) * AS * 4, (AS - y) * AS * 4), y * AS * 4);
+    cellPx(C.PLAIN, (x, y, o) => { col[o] = col[o + 1] = col[o + 2] = col[o + 3] = 255; dat[o + 2] = 255; dat[o + 3] = 128; });
+    // painted cells: tint mask, height from luminance, bleed colour into transparent texels (no dark mip fringes)
+    for (const [i, , mode] of PAINT) {
+      let sr = 0, sg = 0, sb = 0, sn = 0;
+      cellPx(i, (x, y, o) => {
+        const r = col[o], gg = col[o + 1], b = col[o + 2], a = col[o + 3];
+        if (a > 128) { sr += r; sg += gg; sb += b; sn++; }
+        const green = gg > r * 1.12 && gg > b * 1.2;
+        dat[o + 2] = mode === 1 ? 255 : mode === 0 ? 0 : green ? 0 : 255;
+        dat[o + 3] = (r + gg + b) / 3;
+      });
+      const avg = [sr / sn, sg / sn, sb / sn];
+      for (let pass = 0; pass < 3; pass++) cellPx(i, (x, y, o) => {
+        if (col[o + 3] !== 0 || x === 0 || y === 0 || x === CS - 1 || y === CS - 1) return;
+        for (let j = 0; j < 4; j++) { const d = NB4[j]; if (col[o + d + 3] > 0) {
+          col[o] = col[o + d]; col[o + 1] = col[o + d + 1]; col[o + 2] = col[o + d + 2]; col[o + 3] = 1; return;
+        } }
+      });
+      cellPx(i, (x, y, o) => { const a = col[o + 3]; if (a === 0) { col[o] = avg[0]; col[o + 1] = avg[1]; col[o + 2] = avg[2]; } else if (a === 1) col[o + 3] = 0; });
+    }
   }
-  const img = g.getImageData(0, 0, AS, AS).data;
-  const col = new Uint8Array(AS * AS * 4), dat = new Uint8Array(AS * AS * 4);
-  for (let y = 0; y < AS; y++) col.set(img.subarray((AS - 1 - y) * AS * 4, (AS - y) * AS * 4), y * AS * 4);
-  const A = { col, dat };
-  cellPx(C.PLAIN, (x, y, o) => { col[o] = col[o + 1] = col[o + 2] = col[o + 3] = 255; dat[o + 2] = 255; dat[o + 3] = 128; });
-  barkCell(A, C.BARK, { base: [150, 128, 108], dark: [70, 56, 46], ridge: 7, seed: 1 });
-  barkCell(A, C.PINEBARK, { base: [150, 105, 80], dark: [55, 42, 38], plates: true, seed: 2 });
-  barkCell(A, C.PALMBARK, { base: [165, 150, 130], dark: [85, 75, 62], rings: true, seed: 3 });
-  rockCell(A, C.ROCK); grassCell(A, C.GRASS);
-  // painted cells: tint mask, height from luminance, bleed colour into transparent texels (no dark mip fringes)
-  for (const [i, , mode] of PAINT) {
-    let sr = 0, sg = 0, sb = 0, sn = 0;
-    cellPx(i, (x, y, o) => {
-      const r = col[o], gg = col[o + 1], b = col[o + 2], a = col[o + 3];
-      if (a > 128) { sr += r; sg += gg; sb += b; sn++; }
-      const green = gg > r * 1.12 && gg > b * 1.2;
-      dat[o + 2] = mode === 1 ? 255 : mode === 0 ? 0 : green ? 0 : 255;
-      dat[o + 3] = (r + gg + b) / 3;
-    });
-    const avg = [sr / sn, sg / sn, sb / sn];
-    for (let pass = 0; pass < 3; pass++) cellPx(i, (x, y, o) => {
-      if (col[o + 3] !== 0 || x === 0 || y === 0 || x === CS - 1 || y === CS - 1) return;
-      for (let j = 0; j < 4; j++) { const d = NB4[j]; if (col[o + d + 3] > 0) {
-        col[o] = col[o + d]; col[o + 1] = col[o + d + 1]; col[o + 2] = col[o + d + 2]; col[o + 3] = 1; return;
-      } }
-    });
-    cellPx(i, (x, y, o) => { const a = col[o + 3]; if (a === 0) { col[o] = avg[0]; col[o + 1] = avg[1]; col[o + 2] = avg[2]; } else if (a === 1) col[o + 3] = 0; });
+  if (part !== 0) {
+    barkCell(A, C.BARK, { base: [150, 128, 108], dark: [70, 56, 46], ridge: 7, seed: 1 });
+    barkCell(A, C.PINEBARK, { base: [150, 105, 80], dark: [55, 42, 38], plates: true, seed: 2 });
+    barkCell(A, C.PALMBARK, { base: [165, 150, 130], dark: [85, 75, 62], rings: true, seed: 3 });
+    rockCell(A, C.ROCK); grassCell(A, C.GRASS);
   }
   // normals from height (wrapping inside each cell so tiling cells stay seamless)
   for (let i = 0; i < 16; i++) {
+    if (part !== undefined && NOISE.includes(i) !== (part === 1)) continue;
     const k = BUMP[i] ?? 0.8, cx = (i % 4) * CS, cy = (i >> 2) * CS;
     const kk = k / 255, M = CS - 1;
     for (let y = 0; y < CS; y++) {
@@ -363,16 +368,84 @@ function atlas() {
       }
     }
   }
+  return A;
+}
+
+/* The atlas is ~4 M texels of canvas painting and noise (~5-9 s on the main thread). It is
+ * generated in two workers (painted cells on an OffscreenCanvas, noise cells; same
+ * functions, same seeds → identical bytes, except flower5's Math.random spin) from the moment
+ * this module loads, while terrain and the legs build on the main thread. If the first
+ * shader compile needs it before they are done (or there are no workers /
+ * OffscreenCanvas 2D), it is made here instead, so its pixels are always in before ready. */
+function atlasJob() {
+  const fns = [cellPx, tfbm, barkCell, rockCell, grassCell, gray, rgb, leafPath, leaf, twig, walk, leafSpray,
+    paintLeaf, paintLeaf2, paintBush, flower5, paintBlossom, paintAmaltas, paintNeedle, paintFrond, paintFern,
+    paintHeads, paintFLeaf, atlasPixels];
+  // a classic worker with everything inline: it starts without module fetches, which in
+  // Chrome wait for the (busy) main thread and held a module worker back for ~90 s
+  const src = `const fade = t => t * t * (3 - 2 * t);
+${hash2}\n${noise2}\n${fbm}\nconst makeRng = ${makeRng};
+const AS = ${AS}, CS = ${CS}, C = ${JSON.stringify(C)}, BUMP = ${JSON.stringify(BUMP)}, NB4 = ${JSON.stringify(NB4)}, NOISE = ${JSON.stringify(NOISE)};
+const paintList = ${paintList};
+${fns.join('\n')}
+postMessage(['boot', performance.timeOrigin + performance.now()]); onmessage = e => { postMessage(['start', performance.timeOrigin + performance.now()]); const A = atlasPixels(e.data ? null : new OffscreenCanvas(AS, AS), e.data); postMessage(A, [A.col.buffer, A.dat.buffer]); postMessage(['end', performance.timeOrigin + performance.now()]); };`;
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return Promise.resolve(null);
+  let url;
+  try { url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' })); } catch (e) { return Promise.resolve(null); }
+  // two workers: painted cells (canvas) and noise cells, merged here by cell rows
+  const run = part => new Promise((res, rej) => {
+    const w = new Worker(url); WORKERS.push(w);
+    w.onmessage = e => { (globalThis.__fdbg = globalThis.__fdbg || []).push([part, Array.isArray(e.data) ? e.data[0] : 'done', Math.round(Array.isArray(e.data) ? e.data[1] - performance.timeOrigin : performance.now())]); if (Array.isArray(e.data)) return; res(PART[part] = e.data); w.terminate(); };
+    w.onerror = e => { rej(e); w.terminate(); };
+    w.postMessage(part);
+  });
+  return Promise.all([run(0), run(1)]).then(merge).catch(() => null).finally(() => URL.revokeObjectURL(url));
+}
+// painted cells from A, noise cells from B, copied by cell rows
+function merge([A, B]) {
+  for (const i of NOISE) for (let y = 0, cx = (i % 4) * CS, cy = (i >> 2) * CS; y < CS; y++) {
+    const o = ((cy + y) * AS + cx) * 4, e = o + CS * 4;
+    A.col.set(B.col.subarray(o, e), o); A.dat.set(B.dat.subarray(o, e), o);
+  }
+  return A;
+}
+// the main-thread fallback: only the parts no worker has delivered yet
+const local = () => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = AS;
+  if (!PART[0] && !PART[1]) return atlasPixels(cv);
+  return merge([PART[0] || atlasPixels(cv, 0), PART[1] || atlasPixels(null, 1)]);
+};
+const tA = performance.now(), WORKERS = [], PART = [null, null];
+let PIX = null;
+const JOB = atlasJob().then(r => {
+  if (PIX || !r) return;
+  PIX = r;
+  // buildTimes.atlas = worker wall time from module load (off the main thread)
+  const bt = globalThis.__v2 && globalThis.__v2.buildTimes; if (bt) bt.atlas = Math.round(performance.now() - tA);
+});
+let ATLAS = null;
+function atlas() {
+  if (ATLAS) return ATLAS;
+  // first needed (shader compile) before the workers are done: make it here, so the
+  // pixels are in before ready without main having to wait on the workers
+  if (!PIX) {
+    (globalThis.__fdbg = globalThis.__fdbg || []).push(['fallback', Math.round(performance.now())]);
+    const t0 = performance.now();
+    for (const w of WORKERS) w.terminate();
+    PIX = local();
+    const bt = globalThis.__v2 && globalThis.__v2.buildTimes; if (bt) bt.atlasMain = Math.round(performance.now() - t0);
+  }
   const mk = (arr, srgb) => {
     const t = new THREE.DataTexture(arr, AS, AS, THREE.RGBAFormat);
     t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
     t.anisotropy = 4; t.needsUpdate = true; return t;
   };
-  ATLAS = { map: mk(col, true), data: mk(dat, false) };
-  const bt = globalThis.__v2 && globalThis.__v2.buildTimes; if (bt) bt.atlas = Math.round(performance.now() - tA);
+  ATLAS = { map: mk(PIX.col, true), data: mk(PIX.dat, false) };
   return ATLAS;
 }
+/** Resolves when the atlas workers are done (awaiting it before compile avoids the main-thread fallback). */
+export const floraReady = () => PIX ? Promise.resolve() : JOB;
 
 /* ---------- indexed geometry builder ---------- */
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -924,7 +997,8 @@ export function plant(ctx, opts) {
   const sink = opts.sink ?? def.sink;
   const colors = (opts.colors || def.colors).map(h => new THREE.Color(h));
   const R = makeRng(typeof seed === 'string' ? seed + ':' + kind : seed);
-  const mats = [], tints = [];
+  const mats = new Float32Array(Math.max(1, count) * 16), tints = new Float32Array(Math.max(1, count) * 3);
+  let n = 0;
   const clearRoad = world.VERGE + 1;
   for (let i = 0; i < count; i++) {
     const at = place(R, i);
@@ -947,21 +1021,23 @@ export function plant(ctx, opts) {
     _sc.setScalar(sc);
     if (kind === 'palm') _sc.y *= 0.7 + 0.75 * R();     // 7–18 m trunks from one 10 m model
     if (kind === 'boulder') _sc.set(sc * (0.8 + 0.4 * R()), sc * (0.7 + 0.5 * R()), sc * (0.8 + 0.4 * R()));
-    mats.push(_m.compose(_p, _q, _sc).clone());
-    tints.push(at.tint !== undefined ? new THREE.Color(at.tint) : colors[Math.floor(R() * colors.length)].clone()
-      .multiplyScalar(0.88 + 0.24 * R()));
+    _m.compose(_p, _q, _sc).toArray(mats, n * 16);
+    (at.tint !== undefined ? _c.set(at.tint) : _c.copy(colors[Math.floor(R() * colors.length)])
+      .multiplyScalar(0.88 + 0.24 * R())).toArray(tints, n * 3);
+    n++;
   }
-  const mesh = new THREE.InstancedMesh(geo, floraMaterial({ sway: def.sway !== false, rough: kind === 'boulder' ? 0.92 : 0.78 }), Math.max(1, mats.length));
-  mesh.count = mats.length;
-  for (let i = 0; i < mats.length; i++) { mesh.setMatrixAt(i, mats[i]); mesh.setColorAt(i, tints[i]); }
-  if (!mats.length) mesh.setColorAt(0, _c.set(1, 1, 1));
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  // instance buffers written in place above (no per-instance Matrix4/Color objects)
+  const mesh = new THREE.InstancedMesh(geo, floraMaterial({ sway: def.sway !== false, rough: kind === 'boulder' ? 0.92 : 0.78 }), 1);
+  const N = Math.max(1, n);
+  if (!n) tints.fill(1, 0, 3);
+  mesh.instanceMatrix = new THREE.InstancedBufferAttribute(mats.length === N * 16 ? mats : mats.slice(0, N * 16), 16);
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(tints.length === N * 3 ? tints : tints.slice(0, N * 3), 3);
+  mesh.count = n;
   mesh.computeBoundingSphere();
   mesh.receiveShadow = true;
   if (def.shadow) { mesh.castShadow = true; mesh.customDepthMaterial = floraDepth(); }
   mesh.name = 'flora:' + kind;
-  mesh.userData.tris = (geo.index ? geo.index.count : geo.attributes.position.count) / 3 * mats.length;
+  mesh.userData.tris = (geo.index ? geo.index.count : geo.attributes.position.count) / 3 * n;
   return mesh;
 }
 /** debug: the generated atlas textures { map, data } */

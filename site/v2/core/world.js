@@ -50,7 +50,7 @@ const PROFILES = {
 
 // distant ridge line so the horizon isn't a hard terrain edge (not over water)
 function far(d, s, lat, prof) {
-  if (prof === 'sea') return 0;
+  if (prof === 'sea' || d <= 130) return 0;   // smoothstep(130, …) is 0 there: skip the fbm
   return smoothstep(130, 230, d) * 38 * (0.55 + 0.45 * fbm(s * 0.004 + (lat > 0 ? 50 : 0), 0.5));
 }
 
@@ -58,8 +58,11 @@ function rawHeightSL(s, lateral) {
   const b = path.roadY(s) - 0.12;
   const d = Math.max(0, Math.abs(lateral) - VERGE);
   if (d === 0) return b;
+  return rawOff(s, lateral, d, b, weightsAt(s));
+}
+// off-road part, with the per-s terms (road height b, zone weights w) passed in
+function rawOff(s, lateral, d, b, w) {
   const side = lateral < 0 ? 'left' : 'right';
-  const w = weightsAt(s);
   let h = 0;
   for (let i = 0; i < ZONES.length; i++) {
     if (!w[i]) continue;
@@ -76,12 +79,16 @@ function rawHeightSL(s, lateral) {
  * across — bilinearly interpolated, each corner computed once. On the road
  * (|lateral| ≤ VERGE) the exact value is cheap and returned directly. */
 const GS = 1, GL = 0.5, GMAX = 300, GW = Math.round(2 * GMAX / GL) + 1;
-const rows = new Map();
+// row i (s = i·GS): its corner heights, plus road height and zone weights shared by the row
+const rows = [], rowB = new Float64Array(Math.ceil(path.length / GS) + 2), rowW = [];
 function corner(i, j) {
-  let r = rows.get(i);
-  if (!r) { r = new Float32Array(GW).fill(NaN); rows.set(i, r); }
+  let r = rows[i];
+  if (!r) { r = rows[i] = new Float32Array(GW).fill(NaN); rowB[i] = path.roadY(i * GS) - 0.12; rowW[i] = weightsAt(i * GS); }
   let v = r[j];
-  if (v !== v) v = r[j] = rawHeightSL(i * GS, j * GL - GMAX);
+  if (v !== v) {
+    const lateral = j * GL - GMAX, d = Math.max(0, Math.abs(lateral) - VERGE);
+    v = r[j] = d === 0 ? rowB[i] : rawOff(i * GS, lateral, d, rowB[i], rowW[i]);
+  }
   return v;
 }
 function heightSL(s, lateral) {
@@ -89,8 +96,12 @@ function heightSL(s, lateral) {
   if (Math.abs(lateral) >= GMAX - GL || s < 0 || s > path.length) return rawHeightSL(s, lateral);
   const fs = s / GS, fl = (lateral + GMAX) / GL;
   const i = Math.floor(fs), j = Math.floor(fl), ts = fs - i, tl = fl - j;
-  const a = corner(i, j), b = corner(i, j + 1), c = corner(i + 1, j), d = corner(i + 1, j + 1);
-  return (a + (b - a) * tl) * (1 - ts) + (c + (d - c) * tl) * ts;
+  // on a grid line (integer s: terrain rows, many placements) the far corners
+  // get zero weight, so they aren't computed; the result is the same
+  const a = corner(i, j), ab = tl ? a + (corner(i, j + 1) - a) * tl : a;
+  if (!ts) return ab;
+  const c = corner(i + 1, j), cd = tl ? c + (corner(i + 1, j + 1) - c) * tl : c;
+  return ab * (1 - ts) + cd * ts;
 }
 
 function heightAt(x, z) {

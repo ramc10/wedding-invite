@@ -38,7 +38,7 @@ const CHASE = { yaw: 0.2, dist: 7.6, h: 2.7, lookH: 1.05, lookF: 7 };
 // rear three-quarter, looking down the road ahead: the first frame is the
 // car and the tree-lined road it's about to drive, never the empty ground
 // behind where the road begins
-const TITLE = { yaw: 0.62, dist: 8.4, h: 1.7, lookH: 1.9, lookF: 9 };
+const TITLE = { yaw: 0.62, dist: 8.4, h: 2.04, lookH: 1.9, lookF: 9 };
 // crane up and back, but keep the parked car small in the lower frame with
 // the road running on into the dusk above it
 const END = { yaw: 0.45, dist: 18, h: 6, lookH: 2, lookF: 55 };

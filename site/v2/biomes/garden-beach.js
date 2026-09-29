@@ -416,15 +416,43 @@ function paint(g, hex, jitter = 0, R = Math.random) {
 export function seaWall(ctx, { s0, s1, lat, seed = 5 }) {
   const { path, world, rng } = ctx;
   const R = rng(seed);
-  const parts = [];
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1);
-  const up = new THREE.Vector3(0, 1, 0);
-  const put = (g, s, l, y, yaw) => {
-    path.toWorld(s, l, p); p.y = y;
-    q.setFromAxisAngle(up, yaw);
-    parts.push(g.applyMatrix4(m.compose(p, q, sc)));
+  // every segment is the same few shapes: each is made (smooth normals, non-indexed) once, then
+  // copied in scaled (y only), yawed and placed, with paint()'s per-triangle colour jitter
+  const protos = new Map();
+  const shape = (key, make) => {
+    let g = protos.get(key);
+    if (!g) { g = make(); g.deleteAttribute('uv'); g.computeVertexNormals(); g = g.toNonIndexed(); protos.set(key, g); }
+    return g;
+  };
+  let cap = 1 << 15, n = 0;
+  let P = new Float32Array(cap * 3), NR = new Float32Array(cap * 3), C = new Float32Array(cap * 3);
+  const c = new THREE.Color();
+  const put = (g, hex, jitter, s, l, y, yaw, sy = 1) => {
+    const gp = g.attributes.position.array, gn = g.attributes.normal.array, cnt = gp.length / 3;
+    if (n + cnt > cap) {
+      while (n + cnt > cap) cap *= 2;
+      const grow = A => { const B = new Float32Array(cap * 3); B.set(A); return B; };
+      P = grow(P); NR = grow(NR); C = grow(C);
+    }
+    const w = path.toWorld(s, l, _wp), cy = Math.cos(yaw), sn = Math.sin(yaw);
+    c.set(hex);
+    let k = 1;
+    for (let i = 0; i < cnt; i++, n++) {
+      if (i % 3 === 0) k = 1 + (R() - 0.5) * jitter;
+      const x = gp[i * 3], yy = gp[i * 3 + 1] * sy, z = gp[i * 3 + 2];
+      P[n * 3] = cy * x + sn * z + w.x; P[n * 3 + 1] = yy + y; P[n * 3 + 2] = -sn * x + cy * z + w.z;
+      const nx = gn[i * 3], ny = gn[i * 3 + 1], nz = gn[i * 3 + 2];
+      NR[n * 3] = cy * nx + sn * nz; NR[n * 3 + 1] = ny; NR[n * 3 + 2] = -sn * nx + cy * nz;
+      C[n * 3] = c.r * k; C[n * 3 + 1] = c.g * k; C[n * 3 + 2] = c.b * k;
+    }
   };
   const SEG = 2.4, H = 0.62, T = 0.32;
+  const wall = shape('wall', () => new THREE.BoxGeometry(T, 1, SEG + 0.01));
+  const coping = shape('coping', () => new THREE.BoxGeometry(T + 0.1, 0.08, SEG + 0.01));
+  const foot = shape('foot', () => new THREE.BoxGeometry(T + 0.02, 0.18, SEG + 0.01));
+  const post = shape('post', () => new THREE.CylinderGeometry(0.035, 0.035, 0.62, 6));
+  const rail = shape('rail', () => new THREE.CylinderGeometry(0.028, 0.028, SEG, 6).rotateX(Math.PI / 2));
+  const step = shape('step', () => new THREE.BoxGeometry(0.5, 1, SEG - 0.2));
   let s = s0;
   while (s < s1) {
     const gap = ((s - s0) % 110) > 104;
@@ -434,31 +462,33 @@ export function seaWall(ctx, { s0, s1, lat, seed = 5 }) {
     const bot = Math.min(world.heightSL(sm, lat - 0.5), world.heightSL(sm, lat + 0.3)) - 0.25;
     if (!gap) {
       const hh = top - bot;
-      put(paint(new THREE.BoxGeometry(T, hh, SEG + 0.01), 0xd8d2c4, 0.08, R), sm, lat, bot + hh / 2, yaw);
-      put(paint(new THREE.BoxGeometry(T + 0.1, 0.08, SEG + 0.01), 0xe8e3d8, 0.04, R), sm, lat, top + 0.04, yaw);
-      put(paint(new THREE.BoxGeometry(T + 0.02, 0.18, SEG + 0.01), 0x9a9486, 0.1, R), sm, lat, bot + 0.2, yaw); // grimy foot
+      put(wall, 0xd8d2c4, 0.08, sm, lat, bot + hh / 2, yaw, hh);
+      put(coping, 0xe8e3d8, 0.04, sm, lat, top + 0.04, yaw);
+      put(foot, 0x9a9486, 0.1, sm, lat, bot + 0.2, yaw); // grimy foot
       // railing post + two pipe rails
-      put(paint(new THREE.CylinderGeometry(0.035, 0.035, 0.62, 6), 0x2f5e78, 0.05, R), s, lat, top + 0.39, yaw);
-      for (const hy of [0.4, 0.68]) {
-        const rail = new THREE.CylinderGeometry(0.028, 0.028, SEG, 6).rotateX(Math.PI / 2);
-        put(paint(rail, 0x2f5e78, 0.05, R), sm, lat, top + hy, yaw);
-      }
+      put(post, 0x2f5e78, 0.05, s, lat, top + 0.39, yaw);
+      for (const hy of [0.4, 0.68]) put(rail, 0x2f5e78, 0.05, sm, lat, top + hy, yaw);
     } else {
       // steps down through the gap
       for (let k = 0; k < 4; k++) {
         const l = lat - 0.4 - k * 0.45, y0 = world.heightSL(sm, l) - 0.3, y1 = path.roadY(sm) - 0.18 - k * 0.3;
         if (y1 <= y0) break;
-        put(paint(new THREE.BoxGeometry(0.5, y1 - y0, SEG - 0.2), 0xcfc8b8, 0.08, R), sm, l, (y0 + y1) / 2, yaw);
+        put(step, 0xcfc8b8, 0.08, sm, l, (y0 + y1) / 2, yaw, y1 - y0);
       }
     }
     s += SEG;
   }
-  const geo = mergeSimple(parts);
+  protos.forEach(g => g.dispose());
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(P.slice(0, n * 3), 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(NR.slice(0, n * 3), 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(C.slice(0, n * 3), 3));
   const mesh = new THREE.Mesh(geo, weatheredConcrete());
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.name = 'sea-wall';
   return mesh;
 }
+const _wp = new THREE.Vector3();
 
 /* Bleached driftwood logs with a stub branch, half sunk in the sand. */
 function driftGeo() {
@@ -529,15 +559,21 @@ export default {
     const s0 = z.s0, s1 = z.s1;
     const WALL = -(world.VERGE + 0.35);
     const R = rng('gb-layout');
+    // sub-step times (ms) into ctx.buildTimes as 'gb:<step>', like terrain.js's 't:' keys
+    let tb = performance.now();
+    const T = k => { if (ctx.buildTimes) ctx.buildTimes['gb:' + k] = Math.round(performance.now() - tb); tb = performance.now(); };
 
     // the sea: from under the verge out to the horizon; the cove continues it from s1
     group.add(makeWater(ctx, { s0: s0 - 40, s1, lateral0: -world.VERGE, lateral1: -460, y: world.waterAt(s0 + 1) ?? 0, kind: 'sea', extend: [700, 0] }));
 
+    T('sea');
     // sand skin from the wall toe down under the surf, dissolving into the neighbours
     group.add(sandBeach(ctx, { s0: s0 - 25, s1: s1 + 20, wallLat: WALL - 0.2, fadeIn: 30, fadeOut: 25 }));
+    T('sand');
     // Beach Road parapet + railing
     group.add(seaWall(ctx, { s0: s0 + 8, s1: s1 + 10, lat: WALL }));
 
+    T('wall');
     // coconut palms in loose clumps on the dunes, leaning seaward; a grove on the right
     const clumps = [];
     for (let s = s0 + 5; s < s1; s += 26 + R() * 30) clumps.push(s);
@@ -552,6 +588,7 @@ export default {
     }));
     group.add(plant(ctx, { kind: 'palm', count: Math.round(34 * K), seed: 'gb-grove', scale: [0.9, 1.4], place: band(s0, s1, 10, 60, 'right') }));
 
+    T('palms');
     // garden spilling on to the right
     group.add(plant(ctx, { kind: 'flowers', count: Math.round(260 * K), seed: 'gb-fl', place: band(s0 - 30, s0 + (s1 - s0) * 0.55, 7, 30, 'right') }));
     group.add(plant(ctx, { kind: 'bush', count: Math.round(60 * K), seed: 'gb-bush', place: band(s0, s1, 8, 45, 'right') }));
@@ -561,6 +598,7 @@ export default {
     group.add(plant(ctx, { kind: 'pine', count: Math.round(26 * K), seed: 'gb-casuarina', scale: [0.55, 0.8],
       colors: [0x5a6a45, 0x66744c, 0x4f5f40], place: band(s0, s1, 30, 90, 'right') }));
 
+    T('garden');
     // spinifex on the dunes (clumped), sparse near the wall
     group.add(duneGrass(ctx, {
       count: Math.round(1100 * K), seed: 11, minY: 0.9,
@@ -574,13 +612,16 @@ export default {
     }));
     group.add(duneGrass(ctx, { count: Math.round(400 * K), seed: 12, place: band(s0, s1, 6, 40, 'right') }));
 
+    T('dune');
     // the city side of Beach Road, and its street lamps
     group.add(beachBlocks(ctx, { s0: s0 + 20, s1: s1 - 10 }));
     group.add(promenadeLamps(ctx, { s0: s0 + 16, s1, lat: WALL + 0.45 }));
 
+    T('city');
     // rocks at the tide line, clustered in a couple of reefs
     group.add(coastRocks(ctx, { s0: s0 + 40, s1: s1 - 20, count: Math.round(36 * K), seed: 'gb-rocks' }));
 
+    T('rocks');
     // driftwood above the swash line
     const drift = [];
     for (let i = 0; i < Math.round(14 * K); i++) {
@@ -604,6 +645,7 @@ export default {
     }
     group.add(umbrellas(ctx, spots));
 
+    T('props');
     return { group };
   }
 };

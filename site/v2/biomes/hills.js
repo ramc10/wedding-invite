@@ -83,11 +83,11 @@ export default {
       Math.abs(Math.abs(lat) - BAR_LAT) < 1.2);
 
     const env = { THREE, ctx, path, world, gH, cutTop, inFace, nearBarrier, s0, s1, n, k, group, terrain };
-    buildCuttings(env);
-    buildTrees(env);
-    buildGround(env);
-    buildFurniture(env);
-    buildRidges(env);
+    const bt = ctx.buildTimes || {};
+    for (const [key, fn] of [['cuttings', buildCuttings], ['trees', buildTrees], ['ground', buildGround], ['furniture', buildFurniture], ['ridges', buildRidges]]) {
+      const t0 = performance.now(); fn(env); bt['h:' + key] = Math.round(performance.now() - t0);
+    }
+    _lat.clear();                                    // noise lattice memo is only needed while baking
     return { group };
   }
 };
@@ -167,12 +167,29 @@ function normalFromHeight(src, strength = 2) {
 
 /* ---------- 1. road cuttings ---------- */
 
-// tileable value noise (period P lattice cells)
+// tileable value noise (period P lattice cells). The texture bakers call it ~1M times over a few
+// hundred lattice points, so lattice values are memoised per (P, seed) for 0 ≤ cell < LN.
+const LN = 272, _lat = new Map();
+function lattice(xi, yi, P, seed) {
+  const x = ((xi % P) + P) % P, y = ((yi % P) + P) % P;
+  return noise2(x * 1.013 + seed * 31.7, y * 0.987 + seed * 17.3);
+}
 function pnoise(x, y, P, seed = 0) {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
-  const f = t => t * t * (3 - 2 * t), u = f(xf), v = f(yf);
-  const h = (a, b) => { a = ((a % P) + P) % P; b = ((b % P) + P) % P; return noise2(a * 1.013 + seed * 31.7, b * 0.987 + seed * 17.3); };
-  const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  let a, b, c, d;
+  if (xi >= 0 && yi >= 0 && xi < LN - 1 && yi < LN - 1) {
+    const key = P * 1024 + seed;
+    let T = _lat.get(key);
+    if (!T) _lat.set(key, T = new Float64Array(LN * LN).fill(NaN));
+    const i = yi * LN + xi;
+    a = T[i]; if (a !== a) a = T[i] = lattice(xi, yi, P, seed);
+    b = T[i + 1]; if (b !== b) b = T[i + 1] = lattice(xi + 1, yi, P, seed);
+    c = T[i + LN]; if (c !== c) c = T[i + LN] = lattice(xi, yi + 1, P, seed);
+    d = T[i + LN + 1]; if (d !== d) d = T[i + LN + 1] = lattice(xi + 1, yi + 1, P, seed);
+  } else {
+    a = lattice(xi, yi, P, seed); b = lattice(xi + 1, yi, P, seed); c = lattice(xi, yi + 1, P, seed); d = lattice(xi + 1, yi + 1, P, seed);
+  }
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
@@ -211,9 +228,10 @@ function strataTextures() {
     hv -= 0.28 * drill + 0.45 * joint;
     const streak = pnoise(px / 4, py / 110, 128, 6), wash = smoothstep(0.45, 0.8, streak) * (0.4 + 0.6 * ty);
     const tone = bd.tone * 0.6 + 0.4 * bn, rust = smoothstep(0.55, 0.85, big) * 0.6;
-    const t = [0, 1, 2].map(i => A[i] + (B[i] - A[i]) * smoothstep(0.55, 0.9, tone) + (C[i] - A[i]) * rust);
+    const tt = smoothstep(0.55, 0.9, tone);
     const sh = (0.8 + 0.25 * fine + 0.2 * (mid - 0.5)) * (1 - 0.35 * wash) * (1 - 0.12 * drill) * (0.92 + 0.16 * bn);
-    let r = t[0] * sh, g = t[1] * sh, b = t[2] * sh;
+    let r = (A[0] + (B[0] - A[0]) * tt + (C[0] - A[0]) * rust) * sh, g = (A[1] + (B[1] - A[1]) * tt + (C[1] - A[1]) * rust) * sh,
+      b = (A[2] + (B[2] - A[2]) * tt + (C[2] - A[2]) * rust) * sh;
     const moss = joint * smoothstep(0.35, 0.65, pnoise(px / 20, py / 20, 25.6, 7));
     r += (52 - r) * (joint * 0.55 + moss * 0.3); g += (56 - g) * (joint * 0.5 + moss * 0.1); b += (36 - b) * joint * 0.55;
     const i = (iy * W + ix) * 4;
@@ -324,7 +342,8 @@ function buildCuttings(env) {
       }
     }
   }
-  const tex = strataTextures();
+  const t0 = performance.now(), tex = strataTextures();
+  if (env.ctx.buildTimes) env.ctx.buildTimes['h:strata'] = Math.round(performance.now() - t0);
   const face = new THREE.BufferGeometry();
   face.setAttribute('position', new THREE.Float32BufferAttribute(fP, 3));
   face.setAttribute('uv', new THREE.Float32BufferAttribute(fU, 2));
@@ -348,7 +367,9 @@ function buildCuttings(env) {
 // plant() grounds on world.heightSL, so keep its instances off the raised cutting tops,
 // off the rock faces and clear of the barrier line.
 function freeGround(env, s, lat) {
-  return !env.inFace(s, lat) && !env.nearBarrier(s, lat) && env.cutTop(s, lat) < env.world.heightSL(s, lat) + 0.08;
+  if (env.nearBarrier(s, lat) || env.inFace(s, lat)) return false;
+  const ct = env.cutTop(s, lat);
+  return ct === -Infinity || ct < env.world.heightSL(s, lat) + 0.08;       // no cutting here: skip the height query
 }
 
 // grove-clustered place fn: centres drawn once, members scattered round them (tighter near the core)
@@ -722,7 +743,12 @@ function buildPoles(env) {
   group.add(wires);
 }
 
-function buildFurniture(env) { buildBarriers(env); buildSigns(env); buildPoles(env); }
+function buildFurniture(env) {
+  const bt = env.ctx.buildTimes || {};
+  for (const [key, fn] of [['barriers', buildBarriers], ['signs', buildSigns], ['poles', buildPoles]]) {
+    const t0 = performance.now(); fn(env); bt['h:' + key] = Math.round(performance.now() - t0);
+  }
+}
 
 /* ---------- 12. distant ridgelines ---------- */
 

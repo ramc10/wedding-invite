@@ -46,17 +46,33 @@ const BLD_DX = -6; // and set back from the road so the gate, forecourt and driv
 
 /* ---------- geometry helpers ---------- */
 
-/** Non-indexed, normals, flat vertex colour; drops uv (re-projected later). */
+/** Non-indexed, flat normals, flat vertex colour; drops uv (re-projected later).
+ *  Indexed primitives are split and get faceted normals; already non-indexed
+ *  input (boxGeo) keeps the face normals it carries. */
 function colored(g, hex) {
-  g = g.index ? g.toNonIndexed() : g;
+  if (g.index) { g = g.toNonIndexed(); g.computeVertexNormals(); }
+  else if (!g.attributes.normal) g.computeVertexNormals();
   if (g.attributes.uv) g.deleteAttribute('uv');
-  g.computeVertexNormals();
   const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3);
+  for (let i = 0; i < n * 3; i += 3) { a[i] = c.r; a[i + 1] = c.g; a[i + 2] = c.b; }
   g.setAttribute('color', new THREE.BufferAttribute(a, 3));
   return g;
 }
-const box = (w, h, d, x, y, z, hex) => colored(new THREE.BoxGeometry(w, h, d).translate(x, y, z), hex);
+/* Unit box, non-indexed, with face normals: the hotel and plot are ~2000
+ * boxes, and building each as an indexed BoxGeometry, splitting it and
+ * recomputing its normals was most of the leg's build time. */
+let UNIT = null;
+/** Non-indexed w×h×d box centred at (x, y, z): position + normal only. */
+function boxGeo(w, h, d, x = 0, y = 0, z = 0) {
+  if (!UNIT) { const u = new THREE.BoxGeometry(1, 1, 1).toNonIndexed(); UNIT = { p: u.attributes.position.array, n: u.attributes.normal.array }; }
+  const up = UNIT.p, p = new Float32Array(up.length);
+  for (let i = 0; i < up.length; i += 3) { p[i] = up[i] * w + x; p[i + 1] = up[i + 1] * h + y; p[i + 2] = up[i + 2] * d + z; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(UNIT.n.slice(), 3));
+  return g;
+}
+const box = (w, h, d, x, y, z, hex) => colored(boxGeo(w, h, d, x, y, z), hex);
 const cyl = (r0, r1, h, seg, x, y, z, hex) => colored(new THREE.CylinderGeometry(r0, r1, h, seg).translate(x, y, z), hex);
 
 /** Concatenate non-indexed geometries (attributes of the first one). */
@@ -93,14 +109,21 @@ function boxUV(g, scale = 3) {
 function fbmTile(N, seed, octs = [[4, 0.36], [8, 0.26], [16, 0.18], [32, 0.12], [64, 0.08]]) {
   const R = makeRng(seed), out = new Float32Array(N * N);
   for (const [cells, amp] of octs) {
-    const g = new Float32Array(cells * cells).map(() => R());
+    const g = new Float32Array(cells * cells);
+    for (let i = 0; i < g.length; i++) g[i] = R();
+    // the x lattice terms are the same on every row
+    const X0 = new Int32Array(N), X1 = new Int32Array(N), SX = new Float64Array(N);
+    for (let x = 0; x < N; x++) {
+      const fx = (x / N) * cells, ix = Math.floor(fx), tx = fx - ix;
+      X0[x] = ix; X1[x] = (ix + 1) % cells; SX[x] = tx * tx * (3 - 2 * tx);
+    }
     for (let y = 0; y < N; y++) {
       const fy = (y / N) * cells, iy = Math.floor(fy), ty = fy - iy, sy = ty * ty * (3 - 2 * ty);
+      const r0 = iy * cells, r1 = ((iy + 1) % cells) * cells, o = y * N;
       for (let x = 0; x < N; x++) {
-        const fx = (x / N) * cells, ix = Math.floor(fx), tx = fx - ix, sx = tx * tx * (3 - 2 * tx);
-        const x1 = (ix + 1) % cells, y1 = (iy + 1) % cells;
-        const a = g[iy * cells + ix], b = g[iy * cells + x1], c = g[y1 * cells + ix], d = g[y1 * cells + x1];
-        out[y * N + x] += amp * ((a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy);
+        const ix = X0[x], x1 = X1[x], sx = SX[x];
+        const a = g[r0 + ix], b = g[r0 + x1], c = g[r1 + ix], d = g[r1 + x1];
+        out[o + x] += amp * ((a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy);
       }
     }
   }
@@ -116,12 +139,13 @@ function canvasTex(c, srgb = true, repeat = true) {
 }
 function mkCanvas(w, h = w) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 
-/** Paint a per-pixel function into a canvas. f(x, y, i) → [r, g, b] 0..255 */
+/** Paint a per-pixel function into a canvas. f(x, y, i, o) writes r, g, b (0..255) to o[0..2] */
 function paint(N, f) {
-  const c = mkCanvas(N), g = c.getContext('2d'), im = g.createImageData(N, N);
+  const c = mkCanvas(N), g = c.getContext('2d'), im = g.createImageData(N, N), d = im.data, px = [0, 0, 0];
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const i = y * N + x, [r, gg, b] = f(x, y, i);
-    im.data.set([r, gg, b, 255], i * 4);
+    const i = y * N + x, o = i * 4;
+    f(x, y, i, px);
+    d[o] = px[0]; d[o + 1] = px[1]; d[o + 2] = px[2]; d[o + 3] = 255;
   }
   g.putImageData(im, 0, 0);
   return c;
@@ -133,12 +157,12 @@ function textures() {
   if (TEX) return TEX;
   const N = 256;
   const n1 = fbmTile(N, 'grain'), n2 = fbmTile(N, 'grain2', [[64, 0.5], [128, 0.5]]);
-  const grain = paint(N, (x, y, i) => { const v = 226 + 22 * n1[i] + 10 * (n2[i] - 0.5); return [v, v, v]; });
-  const bump = paint(N, (x, y, i) => { const v = 128 + 70 * (n2[i] - 0.5) + 60 * (n1[i] - 0.5); return [v, v, v]; });
+  const grain = paint(N, (x, y, i, o) => { const v = 226 + 22 * n1[i] + 10 * (n2[i] - 0.5); o[0] = v; o[1] = v; o[2] = v; });
+  const bump = paint(N, (x, y, i, o) => { const v = 128 + 70 * (n2[i] - 0.5) + 60 * (n1[i] - 0.5); o[0] = v; o[1] = v; o[2] = v; });
   const gl = fbmTile(N, 'lawn', [[8, 0.35], [32, 0.25], [128, 0.4]]);
-  const lawn = paint(N, (x, y, i) => {
+  const lawn = paint(N, (x, y, i, o) => {
     const v = gl[i], blade = ((x * 7 + y * 13) % 5) / 5 * 0.06;
-    return [70 + 60 * v + 30 * blade, 112 + 58 * v, 42 + 26 * v];
+    o[0] = 70 + 60 * v + 30 * blade; o[1] = 112 + 58 * v; o[2] = 42 + 26 * v;
   });
   TEX = {
     grain: canvasTex(grain), bump: canvasTex(bump, false), lawn: canvasTex(lawn),
@@ -152,7 +176,7 @@ function textures() {
 function paverCanvas() {
   const N = 512, n = fbmTile(N, 'pavers', [[8, 0.4], [32, 0.3], [128, 0.3]]), R = makeRng('paver-tone');
   const tone = Array.from({ length: 16 * 8 * 2 }, () => R());
-  return paint(N, (x, y, i) => {
+  return paint(N, (x, y, i, o) => {
     const row = y >> 5, off = (row & 1) * 32, col = ((x + off) & 511) >> 6;
     const lx = (x + off) & 63, ly = y & 31;
     const edge = Math.min(lx, 63 - lx, ly, 31 - ly);
@@ -160,13 +184,13 @@ function paverCanvas() {
     let r = 150 + 30 * t, g = 144 + 26 * t, b = 134 + 22 * t;
     if (red) { r = 150 + 25 * t; g = 92 + 15 * t; b = 72 + 12 * t; }
     const v = (0.8 + 0.35 * n[i]) * (edge < 1 ? 0.45 : edge < 3 ? 0.82 + 0.06 * edge : 1);
-    return [r * v, g * v, b * v];
+    o[0] = r * v; o[1] = g * v; o[2] = b * v;
   });
 }
 
 /** Coursed laterite/granite blocks with recessed mortar: 256 px ≙ 4 m. */
 function stoneCanvas() {
-  const N = 256, c = mkCanvas(N), g = c.getContext('2d'), R = makeRng('stone');
+  const N = 256, c = mkCanvas(N), g = c.getContext('2d', { willReadFrequently: true }), R = makeRng('stone');   // read back below
   g.fillStyle = '#6d6356'; g.fillRect(0, 0, N, N);
   const rows = 8, rh = N / rows;
   for (let r = 0; r < rows; r++) {
@@ -177,6 +201,7 @@ function stoneCanvas() {
       const k = 0.8 + R() * 0.35;
       const col = base.map(v => Math.round(v * k));
       for (const off of [0, N]) {        // wrap horizontally
+        if (off && x + w - 1.5 <= N) continue;                        // the wrapped copy would be off-canvas
         g.fillStyle = `rgb(${col})`; g.fillRect(x + 1.5 - off, r * rh + 1.5, w - 3, rh - 3);
         g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(x + 1.5 - off, r * rh + 1.5, w - 3, 3);
         g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(x + 1.5 - off, r * rh + rh - 5, w - 3, 3.5);
@@ -199,12 +224,12 @@ function stoneCanvas() {
 function rockCanvas() {
   const N = 256, n = fbmTile(N, 'rock', [[4, 0.3], [16, 0.3], [64, 0.25], [128, 0.15]]);
   const l = fbmTile(N, 'lichen', [[8, 0.6], [32, 0.4]]);
-  return paint(N, (x, y, i) => {
+  return paint(N, (x, y, i, o) => {
     let v = 0.55 + 0.6 * n[i];
     const crack = Math.abs(n[i] - 0.5) < 0.012 ? 0.55 : 1;
     const li = smoothstep(0.62, 0.72, l[i]);
     const r = (132 * v) * (1 - li) + 160 * li, gg = (122 * v) * (1 - li) + 150 * li, b = (110 * v) * (1 - li) + 96 * li;
-    return [r * crack, gg * crack, b * crack];
+    o[0] = r * crack; o[1] = gg * crack; o[2] = b * crack;
   });
 }
 
@@ -275,10 +300,10 @@ function signTexture(board = true) {
 /** Pool: aqua mosaic tiles with a dark lane line. */
 function poolTexture() {
   const N = 128, n = fbmTile(N, 'pool', [[8, 0.5], [32, 0.5]]);
-  return canvasTex(paint(N, (x, y, i) => {
+  return canvasTex(paint(N, (x, y, i, o) => {
     const grout = (x % 16 < 1 || y % 16 < 1) ? 0.86 : 1, lane = (x > 60 && x < 68) ? 0.55 : 1;
     const v = (0.9 + 0.12 * n[i]) * grout * lane;
-    return [70 * v, 190 * v, 205 * v];
+    o[0] = 70 * v; o[1] = 190 * v; o[2] = 205 * v;
   }));
 }
 
@@ -370,7 +395,7 @@ function balconyGeos() {
 function loungers(parts, x0, z0, z1, flip) {
   for (let z = z0; z <= z1; z += 3.1) {
     parts.push(box(0.72, 0.28, 1.35, x0, 0.14, z + 0.3, 0xf0ece4), box(0.66, 0.07, 1.3, x0, 0.31, z + 0.3, 0x2f5f8a));
-    const back = new THREE.BoxGeometry(0.72, 0.08, 0.75).rotateX(flip * 0.9).translate(x0, 0.52, z - 0.62);
+    const back = boxGeo(0.72, 0.08, 0.75).rotateX(flip * 0.9).translate(x0, 0.52, z - 0.62);
     parts.push(colored(back, 0x2f5f8a));
   }
 }
@@ -414,7 +439,7 @@ export function buildHotel(ctx, venue) {
   // head, lightning finials and a dish on the tower
   for (const sz of [-1, 1]) for (let r = 0; r < 3; r++) for (let q = 0; q < 2; q++) {
     const pz = sz * (TL / 2 + 6 + q * 4.2), px = MX + 1.2 + r * 1.9;
-    S.parts.push(colored(new THREE.BoxGeometry(1.7, 0.05, 3.9).rotateZ(-0.22).translate(px, top + 0.75, pz), 0x1d2a3e));
+    S.parts.push(colored(boxGeo(1.7, 0.05, 3.9).rotateZ(-0.22).translate(px, top + 0.75, pz), 0x1d2a3e));
     for (const oz of [-1.6, 1.6]) S.parts.push(box(0.06, 0.6, 0.06, px + 0.6, top + 0.42, pz + oz, 0x9a9a9a));
   }
   for (const sz of [-1, 1]) S.parts.push(box(3.2, 2.6, 3, MX + 3.5, top + 1.3, sz * (TL / 2 + wl - 2), CREAM), box(3.5, 0.18, 3.3, MX + 3.5, top + 2.68, sz * (TL / 2 + wl - 2), SLAB));
@@ -511,12 +536,12 @@ function wallAlong(parts, pts, h, t, hex, capHex, piers = 0) {
     if (len < 0.05) continue;
     const yaw = Math.atan2(dx, dz), base = Math.min(a.y, b.y) - 0.4, mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
     const top = Math.max(a.y, b.y) + h;
-    const g = new THREE.BoxGeometry(t, top - base, len + t * 0.5).rotateY(yaw).translate(mx, (top + base) / 2, mz);
+    const g = boxGeo(t, top - base, len + t * 0.5).rotateY(yaw).translate(mx, (top + base) / 2, mz);
     parts.push(colored(g, hex));
-    parts.push(colored(new THREE.BoxGeometry(t + 0.1, 0.08, len + t * 0.5).rotateY(yaw).translate(mx, top + 0.04, mz), capHex));
+    parts.push(colored(boxGeo(t + 0.1, 0.08, len + t * 0.5).rotateY(yaw).translate(mx, top + 0.04, mz), capHex));
     if (piers && i % piers === 0) {
-      parts.push(colored(new THREE.BoxGeometry(t + 0.25, top - base + 0.35, t + 0.25).rotateY(yaw).translate(a.x, (top + base + 0.35) / 2, a.z), hex));
-      parts.push(colored(new THREE.BoxGeometry(t + 0.4, 0.1, t + 0.4).rotateY(yaw).translate(a.x, top + 0.4, a.z), capHex));
+      parts.push(colored(boxGeo(t + 0.25, top - base + 0.35, t + 0.25).rotateY(yaw).translate(a.x, (top + base + 0.35) / 2, a.z), hex));
+      parts.push(colored(boxGeo(t + 0.4, 0.1, t + 0.4).rotateY(yaw).translate(a.x, top + 0.4, a.z), capHex));
     }
   }
 }
@@ -656,41 +681,41 @@ function buildSite(ctx, venue, H) {
   for (let i = 0; i < sea.length; i += 2) parts.push(box(0.05, 0.4, 0.05, sea[i].x, sea[i].y + 1.0, sea[i].z, STEEL));
   for (let i = 0; i + 2 < sea.length; i += 2) {
     const a = sea[i], b = sea[i + 2], len = Math.hypot(b.x - a.x, b.z - a.z);
-    parts.push(colored(new THREE.BoxGeometry(0.06, 0.06, len).rotateY(Math.atan2(b.x - a.x, b.z - a.z)).translate((a.x + b.x) / 2, (a.y + b.y) / 2 + 1.2, (a.z + b.z) / 2), STEEL));
+    parts.push(colored(boxGeo(0.06, 0.06, len).rotateY(Math.atan2(b.x - a.x, b.z - a.z)).translate((a.x + b.x) / 2, (a.y + b.y) / 2 + 1.2, (a.z + b.z) / 2), STEEL));
   }
   const PH = 4.6;                                                    // pier height
   for (const s of [g0 - 0.7, g1 + 0.7]) {
-    parts.push(rf(new THREE.BoxGeometry(1.3, 0.7, 1.3), s, latP, 0.15, STONE));
-    parts.push(rf(new THREE.BoxGeometry(1.1, PH, 1.1), s, latP, PH / 2, CREAM));
-    for (const y of [1.6, 3.0]) parts.push(rf(new THREE.BoxGeometry(1.16, 0.06, 1.16), s, latP, y, 0xd9ccb4)); // rustication grooves
-    parts.push(rf(new THREE.BoxGeometry(1.35, 0.16, 1.35), s, latP, PH + 0.08, TERRA));
+    parts.push(rf(boxGeo(1.3, 0.7, 1.3), s, latP, 0.15, STONE));
+    parts.push(rf(boxGeo(1.1, PH, 1.1), s, latP, PH / 2, CREAM));
+    for (const y of [1.6, 3.0]) parts.push(rf(boxGeo(1.16, 0.06, 1.16), s, latP, y, 0xd9ccb4)); // rustication grooves
+    parts.push(rf(boxGeo(1.35, 0.16, 1.35), s, latP, PH + 0.08, TERRA));
   }
   // overhead name board spanning the piers (the lit sign plane is added below)
   const span = g1 - g0 + 2.5, bs = (g0 + g1) / 2;
-  parts.push(rf(new THREE.BoxGeometry(0.55, 1.25, span), bs, latP, PH + 0.78, 0x2b2a28));
-  parts.push(rf(new THREE.BoxGeometry(0.7, 0.14, span + 0.2), bs, latP, PH + 1.47, TERRA));
+  parts.push(rf(boxGeo(0.55, 1.25, span), bs, latP, PH + 0.78, 0x2b2a28));
+  parts.push(rf(boxGeo(0.7, 0.14, span + 0.2), bs, latP, PH + 1.47, TERRA));
   // open gate leaves swung inward against the splay: steel frame + pickets
   for (const [s, sg] of [[g0 - 0.2, 1], [g1 + 0.2, -1]]) {
     const L = 4.2;
-    for (const y of [0.12, 0.9, 1.75]) parts.push(rf(new THREE.BoxGeometry(L, 0.07, 0.06), s, latP - L / 2 - 0.2, y, STEEL));
-    for (let k = 0; k <= 26; k++) parts.push(rf(new THREE.BoxGeometry(0.035, 1.75, 0.035), s, latP - 0.3 - k * (L - 0.2) / 26, 0.95, STEEL));
+    for (const y of [0.12, 0.9, 1.75]) parts.push(rf(boxGeo(L, 0.07, 0.06), s, latP - L / 2 - 0.2, y, STEEL));
+    for (let k = 0; k <= 26; k++) parts.push(rf(boxGeo(0.035, 1.75, 0.035), s, latP - 0.3 - k * (L - 0.2) / 26, 0.95, STEEL));
     parts.push(rf(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), s, latP - L + 0.1, 0.04, 0x3a3a3a));
   }
   // guard cabin just inside, right of the drive
   { const s = g1 + 3.4, l = latP - 3.2;
-    parts.push(rf(new THREE.BoxGeometry(2.4, 2.5, 2.2), s, l, 1.25, CREAM));
-    parts.push(rf(new THREE.BoxGeometry(2.9, 0.18, 2.7), s, l, 2.6, TERRA));
-    parts.push(rf(new THREE.BoxGeometry(0.04, 0.9, 1.3), s, l + 1.21, 1.5, 0x39434a));  // window toward the gate
-    parts.push(rf(new THREE.BoxGeometry(2.5, 0.25, 2.3), s, l, 0.12, STONE)); }
+    parts.push(rf(boxGeo(2.4, 2.5, 2.2), s, l, 1.25, CREAM));
+    parts.push(rf(boxGeo(2.9, 0.18, 2.7), s, l, 2.6, TERRA));
+    parts.push(rf(boxGeo(0.04, 0.9, 1.3), s, l + 1.21, 1.5, 0x39434a));  // window toward the gate
+    parts.push(rf(boxGeo(2.5, 0.25, 2.3), s, l, 0.12, STONE)); }
   // gate pier capitals: stepped cornice, a lantern on a plinth, and a granite
   // base course (the piers above are the rusticated shafts)
   for (const s of [g0 - 0.7, g1 + 0.7]) {
-    parts.push(rf(new THREE.BoxGeometry(1.25, 0.12, 1.25), s, latP, PH - 0.35, 0xe9dfcb));
-    parts.push(rf(new THREE.BoxGeometry(1.2, 0.08, 1.2), s, latP, PH - 0.55, 0xd9ccb4));
+    parts.push(rf(boxGeo(1.25, 0.12, 1.25), s, latP, PH - 0.35, 0xe9dfcb));
+    parts.push(rf(boxGeo(1.2, 0.08, 1.2), s, latP, PH - 0.55, 0xd9ccb4));
     // wall-lantern bracketed on the road face of each pier
-    parts.push(rf(new THREE.BoxGeometry(0.3, 0.42, 0.3), s, latP + 0.75, 2.6, 0xf3ecd8));
-    parts.push(rf(new THREE.BoxGeometry(0.36, 0.06, 0.36), s, latP + 0.75, 2.84, 0x2b2a28));
-    parts.push(rf(new THREE.BoxGeometry(0.2, 0.06, 0.06), s, latP + 0.62, 2.45, 0x2b2a28));
+    parts.push(rf(boxGeo(0.3, 0.42, 0.3), s, latP + 0.75, 2.6, 0xf3ecd8));
+    parts.push(rf(boxGeo(0.36, 0.06, 0.36), s, latP + 0.75, 2.84, 0x2b2a28));
+    parts.push(rf(boxGeo(0.2, 0.06, 0.06), s, latP + 0.62, 2.45, 0x2b2a28));
   }
   // entrance apron + drive: pavers from the asphalt edge (the shoulder the car
   // pulls onto), flaring back toward the approach, through the gate to the porte-cochère
@@ -725,7 +750,7 @@ function buildSite(ctx, venue, H) {
     const sH = sMid + sg * (halfAt(lm) + 0.75);
     const pa = W(sH, l0), pb = W(sH, l1), len = Math.hypot(pb.x - pa.x, pb.z - pa.z);
     const pm = W(sH, lm);
-    parts.push(colored(new THREE.BoxGeometry(0.75, 0.8, len).rotateY(Math.atan2(pb.x - pa.x, pb.z - pa.z)).translate(pm.x, pm.y + 0.36, pm.z), 0x5a8a3c));
+    parts.push(colored(boxGeo(0.75, 0.8, len).rotateY(Math.atan2(pb.x - pa.x, pb.z - pa.z)).translate(pm.x, pm.y + 0.36, pm.z), 0x5a8a3c));
     const bl = W(sMid + sg * (halfAt(l0) + 0.2), l0 - 1.4);
     parts.push(cyl(0.09, 0.1, 0.8, 8, bl.x, bl.y + 0.4, bl.z, 0x2e2e2e), cyl(0.12, 0.12, 0.12, 8, bl.x, bl.y + 0.84, bl.z, 0xf3efe2));
   }
@@ -733,7 +758,7 @@ function buildSite(ctx, venue, H) {
     const p = W(g0 - 7 + k * 1.8, latP - 3.5);
     parts.push(cyl(0.06, 0.08, 9.5, 8, p.x, p.y + 4.75, p.z, 0xdcdcdc), cyl(0.3, 0.35, 0.3, 10, p.x, p.y + 0.15, p.z, STONE), colored(new THREE.SphereGeometry(0.1, 8, 6).translate(p.x, p.y + 9.55, p.z), 0xc9a44a));
     const hd = path.sample(g0).heading, fv = new THREE.Vector3(0, 0, -0.8).applyAxisAngle(UP, hd);
-    parts.push(colored(new THREE.BoxGeometry(0.03, 1.0, 1.5).rotateY(hd).translate(p.x + fv.x, p.y + 8.9, p.z + fv.z), [0x23355e, 0xefe6d2, 0xb4623c][k]));
+    parts.push(colored(boxGeo(0.03, 1.0, 1.5).rotateY(hd).translate(p.x + fv.x, p.y + 8.9, p.z + fv.z), [0x23355e, 0xefe6d2, 0xb4623c][k]));
   }
   // lit name boards: overhead on the gate (road face) + the monument sign
   const signGeo = (w, h, s, lat, y, yaw = 0) => { const p = W(s, lat); return new THREE.PlaneGeometry(w, h).rotateY(Math.PI / 2 + yaw).translate(0, 0, 0).rotateY(path.sample(s).heading).translate(p.x, p.y + y, p.z).toNonIndexed(); };
@@ -745,9 +770,9 @@ function buildSite(ctx, venue, H) {
   site.name = 'hotel-site';
 
   // landscaping spots (world), kept off the building, pool deck and drive
-  const L = new THREE.Vector3(), D = H.dims;
+  const L = new THREE.Vector3(), D = H.dims, toBld = H.bld.matrixWorld.clone().invert();
   const clear = p => {
-    H.bld.worldToLocal(L.copy(p));
+    L.copy(p).applyMatrix4(toBld);
     if (Math.abs(L.x - D.MX) < D.TW / 2 + 2.5 && Math.abs(L.z) < D.ML / 2 + 2.5) return false;
     if (Math.abs(L.x - D.dx) < 8 && Math.abs(L.z) < 16.5) return false;
     if (L.x > D.MX && L.x < D.px1 + 2 && Math.abs(L.z) < 8) return false;
@@ -913,16 +938,16 @@ function boatGeometry() {
   const T0 = g => { g.setAttribute('aTint', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count), 1)); return g; };
   const add = (g, hex) => parts.push(T0(colored(g, hex)));
   // stem and stern posts, thwarts, a floor board
-  add(new THREE.BoxGeometry(0.12, 1.1, 0.16).rotateX(-0.35).translate(0, 1.45, -Lb / 2 + 0.05), dark);
-  add(new THREE.BoxGeometry(0.12, 0.8, 0.16).rotateX(0.3).translate(0, 1.2, Lb / 2 - 0.05), dark);
-  for (const z of [-1.8, -0.2, 1.6]) add(new THREE.BoxGeometry(st(z / (Lb / 2)).w * 2 - 0.08, 0.06, 0.28).translate(0, 0.86, z), wood);
-  add(new THREE.BoxGeometry(0.9, 0.04, 5.6).translate(0, 0.32, 0), wood);
+  add(boxGeo(0.12, 1.1, 0.16).rotateX(-0.35).translate(0, 1.45, -Lb / 2 + 0.05), dark);
+  add(boxGeo(0.12, 0.8, 0.16).rotateX(0.3).translate(0, 1.2, Lb / 2 - 0.05), dark);
+  for (const z of [-1.8, -0.2, 1.6]) add(boxGeo(st(z / (Lb / 2)).w * 2 - 0.08, 0.06, 0.28).translate(0, 0.86, z), wood);
+  add(boxGeo(0.9, 0.04, 5.6).translate(0, 0.32, 0), wood);
   // outrigger: two booms to a float log on the starboard side
   for (const z of [-1.3, 1.3]) add(new THREE.CylinderGeometry(0.055, 0.055, 3.3, 6).rotateZ(Math.PI / 2).translate(1.45, 1.02, z), wood);
   add(new THREE.CylinderGeometry(0.15, 0.15, 4.4, 8).rotateX(Math.PI / 2).translate(3.0, 0.42, 0), 0x5e4a36);
   for (const z of [-1.3, 1.3]) add(new THREE.CylinderGeometry(0.04, 0.04, 0.62, 5).translate(3.0, 0.72, z), wood);
   // outboard on a transom bracket, nets heaped amidships
-  add(new THREE.BoxGeometry(0.36, 0.5, 0.5).translate(0.25, 1.35, Lb / 2 + 0.1), 0x2d2f33);
+  add(boxGeo(0.36, 0.5, 0.5).translate(0.25, 1.35, Lb / 2 + 0.1), 0x2d2f33);
   add(new THREE.CylinderGeometry(0.05, 0.05, 1.0, 6).translate(0.25, 0.75, Lb / 2 + 0.18), 0x2d2f33);
   add(new THREE.SphereGeometry(0.6, 10, 6).scale(1, 0.35, 1.4).translate(0, 0.55, 0.6), 0x5d6b52);
   const g = mergeGeo(parts.map(p => { if (p.attributes.uv) p.deleteAttribute('uv'); if (!p.attributes.normal) p.computeVertexNormals(); return p; }));

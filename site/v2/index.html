@@ -199,7 +199,7 @@
     var c = document.createElement('canvas');
     if (!(c.getContext('webgl2') || c.getContext('webgl'))) fail(false);
   } catch (e) { fail(false); }
-  setTimeout(function () { fail(true); }, 45000);
+  setTimeout(function () { fail(true); }, 180000);
 })();
 </script>
 <script type="module" src="main.js"></script>

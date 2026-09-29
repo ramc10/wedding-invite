@@ -144,15 +144,19 @@ export default {
     const k = TIER[quality.tier] ?? 1;
     const n = v => Math.max(1, Math.round(v * k));
     const s0 = z.s0 - z.blend / 2, s1 = Math.min(path.length ?? z.s1, z.s1) + z.blend / 2;
+    // sub-step times (ms) into ctx.buildTimes as 'cr:<step>', like terrain.js's 't:' keys
+    let tb = performance.now();
+    const T = (k, v) => { if (ctx.buildTimes) ctx.buildTimes['cr:' + k] = Math.round(performance.now() - tb); tb = performance.now(); return v; };
     const ext = extFrame(ctx);
 
-    buildFlora(ctx, group, s0, s1, n, ext);
-    const segs = buildCreek(ctx, group, Math.max(z.s0 - 20, CREEK_S0), s1);
-    buildChannel(ctx, group, segs, Math.max(z.s0 - 20, CREEK_S0), s1);
-    buildBanks(ctx, group, Math.max(z.s0 - 20, CREEK_S0), Math.min(s1, path.length), n);
-    const lamps = buildLamps(ctx, group, z.s0 + 10, z.s1 - 4);
-    const flies = buildFireflies(ctx, group, z.s0, z.s1, lamps.spots);
-    buildExtension(ctx, group, ext);
+    T('ext', 0);
+    buildFlora(ctx, group, s0, s1, n, ext, T);
+    const segs = T('creek', buildCreek(ctx, group, Math.max(z.s0 - 20, CREEK_S0), s1));
+    T('channel', buildChannel(ctx, group, segs, Math.max(z.s0 - 20, CREEK_S0), s1));
+    T('banks', buildBanks(ctx, group, Math.max(z.s0 - 20, CREEK_S0), Math.min(s1, path.length), n));
+    const lamps = T('lamps', buildLamps(ctx, group, z.s0 + 10, z.s1 - 4));
+    const flies = T('flies', buildFireflies(ctx, group, z.s0, z.s1, lamps.spots));
+    T('extension', buildExtension(ctx, group, ext));
 
     return {
       group,
@@ -199,22 +203,20 @@ function extFrame(ctx) {
 
 // re-seat the instances of a plant() mesh (all planted at s ≈ L) onto the extension frame
 function seatOnExt(mesh, ext, spots, sink) {
-  const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  // only the translation moves: write it straight into the instance matrices
+  const a = mesh.instanceMatrix.array, p = new THREE.Vector3();
   for (let i = 0; i < mesh.count; i++) {
-    mesh.getMatrixAt(i, m);
-    m.decompose(p, q, sc);
-    const { d, lat } = spots[i];
+    const { d, lat } = spots[i], o = i * 16;
     ext.toWorld(d, lat, p);
-    p.y = ext.height(d, lat) - sink * sc.y;
-    m.compose(p, q, sc);
-    mesh.setMatrixAt(i, m);
+    const sy = Math.hypot(a[o + 4], a[o + 5], a[o + 6]);         // the instance's y scale
+    a[o + 12] = p.x; a[o + 13] = ext.height(d, lat) - sink * sy; a[o + 14] = p.z;
   }
   mesh.instanceMatrix.needsUpdate = true;
   mesh.computeBoundingSphere();
 }
 
 /* ---------- trees, grove, field, understorey ---------- */
-function buildFlora(ctx, group, s0, s1, n, ext) {
+function buildFlora(ctx, group, s0, s1, n, ext, T = () => {}) {
   const L = ctx.path.length;
   s1 = Math.min(s1, L);
   const add = o => group.add(o);
@@ -243,6 +245,7 @@ function buildFlora(ctx, group, s0, s1, n, ext) {
       return { s, lateral: lat };
     }),
     scale: [1.8, 2.7], colors: [0x3a5636, 0x46603c, 0x2f4a32] }));
+  T('trees');
   // past the end: trees lining the road on as it bends away, clumped, with gaps (fields)
   const spots = [];
   const Rx = makeRng('cr-ext');
@@ -314,7 +317,9 @@ function buildFlora(ctx, group, s0, s1, n, ext) {
     scale: [0.9, 1.5], colors: [0x8e9a4c, 0x9a9a52, 0x7e8c44, 0xa89a58], allowRoad: true });
   seatOnExt(extCrop, ext, crop, 0.02);
   add(extCrop);
+  T('extFlora');
   buildHamlet(ctx, group, ext, HEDGE);
+  T('hamlet');
   // the open field: rows of ripening crop parallel to the stream
   add(plant(ctx, { kind: 'grass', count: n(2600), seed: 'cr-field',
     place: R => {
@@ -324,6 +329,7 @@ function buildFlora(ctx, group, s0, s1, n, ext) {
       return { s, lateral: lat };
     },
     scale: [1.5, 2.1], colors: [0x9a9a52, 0x8e9a4c, 0xa89a58, 0x869246] }));
+  T('field');
   // understorey
   add(plant(ctx, { kind: 'fern', count: n(200), seed: 'cr-fern',
     place: clustered(s0, s1, 6.2, 40, { side: 'left', freq: 0.06, thresh: -0.2, bias: 1.6 }),
@@ -335,6 +341,7 @@ function buildFlora(ctx, group, s0, s1, n, ext) {
   add(plant(ctx, { kind: 'flowers', count: n(110), seed: 'cr-fl',
     place: offCreek(clustered(s0, s1, 6.2, 34, { side: 'right', freq: 0.08, thresh: 0.05, bias: 1.4, seed: 17 })),
     colors: [0xf6cad4, 0xfff0d0, 0xd8a8e0, 0xffd070] }));
+  T('under');
 }
 
 
@@ -617,31 +624,54 @@ function woodTexture() {
   return t;
 }
 
+// part prototypes, made once and shared: every lamp is the same boxes, cones and lathes
+const PROTO = new Map();
+function proto(key, make) {
+  let g = PROTO.get(key);
+  if (!g) { g = make(); if (g.index) { const n = g.toNonIndexed(); g.dispose(); g = n; } PROTO.set(key, g); }
+  return g;
+}
+const box = (w, h, d) => proto(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d));
+
 function builder() {
-  const P = [], N = [], UV = [], C = [];
-  const nm = new THREE.Matrix3();
+  // growable typed buffers: the lamps and bridge come to ~40k vertices
+  let cap = 4096, n = 0;
+  let P = new Float32Array(cap * 3), N = new Float32Array(cap * 3), UV = new Float32Array(cap * 2), C = new Float32Array(cap * 3);
+  const grow = need => {
+    while (cap < need) cap *= 2;
+    const g = (A, k) => { const B = new Float32Array(cap * k); B.set(A); return B; };
+    P = g(P, 3); N = g(N, 3); UV = g(UV, 2); C = g(C, 3);
+  };
+  const col = new THREE.Color();
   return {
-    P, C,
+    // append a (shared, non-indexed) part transformed by m; the matrices are rigid, so normals take its 3×3
     add(geo, m, hex, flat) {
-      const g = geo.index ? geo.toNonIndexed() : geo;
-      g.applyMatrix4(m);
-      const p = g.attributes.position, nr = g.attributes.normal, uv = g.attributes.uv;
-      const col = new THREE.Color(hex);
-      for (let i = 0; i < p.count; i++) {
-        P.push(p.getX(i), p.getY(i), p.getZ(i));
-        if (nr) N.push(nr.getX(i), nr.getY(i), nr.getZ(i));
-        UV.push(flat || !uv ? 0.97 : uv.getX(i) * 0.9, flat || !uv ? 0.03 : 0.05 + uv.getY(i) * 0.85);
-        C.push(col.r, col.g, col.b);
+      const p = geo.attributes.position.array, nr = geo.attributes.normal?.array, uv = geo.attributes.uv?.array;
+      const e = m.elements, cnt = p.length / 3;
+      if (n + cnt > cap) grow(n + cnt);
+      col.set(hex);
+      for (let i = 0; i < cnt; i++, n++) {
+        const i3 = i * 3, o3 = n * 3, o2 = n * 2;
+        const x = p[i3], y = p[i3 + 1], z = p[i3 + 2];
+        P[o3] = e[0] * x + e[4] * y + e[8] * z + e[12];
+        P[o3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+        P[o3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+        if (nr) {
+          const a = nr[i3], b = nr[i3 + 1], c = nr[i3 + 2];
+          const nx = e[0] * a + e[4] * b + e[8] * c, ny = e[1] * a + e[5] * b + e[9] * c, nz = e[2] * a + e[6] * b + e[10] * c;
+          const l = Math.hypot(nx, ny, nz) || 1;
+          N[o3] = nx / l; N[o3 + 1] = ny / l; N[o3 + 2] = nz / l;
+        }
+        UV[o2] = flat || !uv ? 0.97 : uv[i * 2] * 0.9; UV[o2 + 1] = flat || !uv ? 0.03 : 0.05 + uv[i * 2 + 1] * 0.85;
+        C[o3] = col.r; C[o3 + 1] = col.g; C[o3 + 2] = col.b;
       }
-      if (g !== geo) g.dispose();
-      geo.dispose();
     },
     geometry(withNormals = true) {
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-      if (withNormals) g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2));
-      g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+      g.setAttribute('position', new THREE.BufferAttribute(P.slice(0, n * 3), 3));
+      if (withNormals) g.setAttribute('normal', new THREE.BufferAttribute(N.slice(0, n * 3), 3));
+      g.setAttribute('uv', new THREE.BufferAttribute(UV.slice(0, n * 2), 2));
+      g.setAttribute('color', new THREE.BufferAttribute(C.slice(0, n * 3), 3));
       g.computeBoundingSphere();
       return g;
     }
@@ -655,9 +685,10 @@ function frameAt(ctx, s, lat, y) {
   const o = ctx.path.toWorld(s, lat, new THREE.Vector3()); o.y = y;
   const F = new THREE.Matrix4().makeBasis(X, up, Z).setPosition(o);
   const tmp = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1);
-  // matrix for a part at local (x, y, z) with local rotation (rx, ry, rz)
+  const at = new THREE.Vector3(), out = new THREE.Matrix4();
+  // matrix for a part at local (x, y, z) with local rotation (rx, ry, rz); reused, so use it before the next call
   return (x, yy, z, rx = 0, ry = 0, rz = 0) =>
-    F.clone().multiply(tmp.compose(new THREE.Vector3(x, yy, z), q.setFromEuler(e.set(rx, ry, rz)), one));
+    out.multiplyMatrices(F, tmp.compose(at.set(x, yy, z), q.setFromEuler(e.set(rx, ry, rz)), one));
 }
 
 const WOOD = 0x5c4232, WOOD2 = 0x6e5440, STONE = 0x7a746a, IRON = 0x2a2622, CLAY = 0x9c5230;
@@ -689,11 +720,10 @@ function buildLamps(ctx, group, s0, s1) {
   const B = builder(), G = builder();
   const pools = [];                                  // {s, lat, r, k}
   const spots = [];                                  // lantern glass centres (for halos)
-  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const diya = (M, x, y, z, yaw) => {
-    B.add(new THREE.LatheGeometry(DIYA, 10), M(x, y, z, 0, yaw), CLAY, true);
-    B.add(new THREE.ConeGeometry(0.018, 0.05, 6), M(x + Math.cos(yaw) * 0.085, y + 0.04, z - Math.sin(yaw) * 0.085, 0, yaw, -(Math.PI / 2 - 0.3)), CLAY, true);
-    G.add(new THREE.LatheGeometry(FLAME, 6), M(x + Math.cos(yaw) * 0.1, y + 0.05, z - Math.sin(yaw) * 0.1), 0xffc868, true);
+    B.add(proto('diya', () => new THREE.LatheGeometry(DIYA, 10)), M(x, y, z, 0, yaw), CLAY, true);
+    B.add(proto('spout', () => new THREE.ConeGeometry(0.018, 0.05, 6)), M(x + Math.cos(yaw) * 0.085, y + 0.04, z - Math.sin(yaw) * 0.085, 0, yaw, -(Math.PI / 2 - 0.3)), CLAY, true);
+    G.add(proto('flame', () => new THREE.LatheGeometry(FLAME, 6)), M(x + Math.cos(yaw) * 0.1, y + 0.05, z - Math.sin(yaw) * 0.1), 0xffc868, true);
   };
   const R = makeRng('cr-lamps');
   for (const { s, lat, side } of lampSpots(ctx, s0, s1)) {
@@ -708,11 +738,11 @@ function buildLamps(ctx, group, s0, s1) {
     const lx = inX * 0.8;
     B.add(box(0.015, 0.16, 0.015), M(lx, 2.6, 0), IRON, true);                         // hook
     // lantern: pyramid cap, rim, corner bars, base plate, finial
-    B.add(new THREE.ConeGeometry(0.15, 0.11, 4), M(lx, 2.47, 0, 0, Math.PI / 4), IRON, true);
+    B.add(proto('lcap', () => new THREE.ConeGeometry(0.15, 0.11, 4)), M(lx, 2.47, 0, 0, Math.PI / 4), IRON, true);
     B.add(box(0.21, 0.02, 0.21), M(lx, 2.41, 0), IRON, true);
     for (const [cx, cz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) B.add(box(0.02, 0.27, 0.02), M(lx + cx * 0.088, 2.27, cz * 0.088), IRON, true);
     B.add(box(0.2, 0.03, 0.2), M(lx, 2.125, 0), IRON, true);
-    B.add(new THREE.ConeGeometry(0.03, 0.05, 6), M(lx, 2.09, 0, Math.PI), IRON, true);
+    B.add(proto('finial', () => new THREE.ConeGeometry(0.03, 0.05, 6)), M(lx, 2.09, 0, Math.PI), IRON, true);
     G.add(box(0.165, 0.25, 0.165), M(lx, 2.27, 0), 0xffb45a, true);                    // glass
     spots.push(M(lx, 2.27, 0).elements.slice(12, 15));
     pools.push({ s, lat: lat + inX * 0.8, r: 4.2, k: 1 });
@@ -753,19 +783,18 @@ function buildBridge(ctx, B, G, pools, diya) {
   const R = makeRng('cr-bridge');
   const dy = x => 0.28 + 0.22 * (1 - (x / SPAN) ** 2);           // deck top above the banks
   const slope = x => -0.44 * x / (SPAN * SPAN);
-  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   // stone abutments bedded into each bank
   for (const sx of [-1, 1]) B.add(box(1.1, 0.55, 1.8), M(sx * (SPAN + 0.35), 0.0, 0, 0, R() * 0.06), STONE, true);
   // log stringers, in segments following the arch
   for (let x = -SPAN - 0.6; x < SPAN + 0.6 - 0.01; x += 1.2) {
     const xm = x + 0.6, xa = Math.max(-SPAN, Math.min(SPAN, xm));
     for (const z of [-0.48, 0.48]) {
-      const g = new THREE.CylinderGeometry(0.1, 0.1, 1.24, 7).rotateZ(Math.PI / 2);
+      const g = proto('stringer', () => new THREE.CylinderGeometry(0.1, 0.1, 1.24, 7).rotateZ(Math.PI / 2));
       B.add(g, M(xm, dy(xa) - 0.15, z, 0, 0, Math.atan(slope(xa))), WOOD);
     }
   }
   // piles into the stream bed
-  for (const x of [-1.2, 1.2]) for (const z of [-0.5, 0.5]) B.add(new THREE.CylinderGeometry(0.08, 0.09, 1.3, 7), M(x, dy(x) - 0.75, z), WOOD);
+  for (const x of [-1.2, 1.2]) for (const z of [-0.5, 0.5]) B.add(proto('pile', () => new THREE.CylinderGeometry(0.08, 0.09, 1.3, 7)), M(x, dy(x) - 0.75, z), WOOD);
   // plank deck: slightly irregular boards with small gaps
   for (let x = -SPAN - 0.4; x <= SPAN + 0.4; x += 0.2) {
     const xa = Math.max(-SPAN, Math.min(SPAN, x));

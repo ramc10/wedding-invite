@@ -82,11 +82,18 @@ const state = { s: 0, sTarget: 0, v: 0, progress: 0, cut: false };
 let locked = false, lockY = 0, auto = false, autoFns = [], autoPause = 0;
 let lastY = 0;
 
-// scrollY is cached from the scroll event: reading it in the frame loop, after
-// the overlays have written styles, forces a synchronous layout every frame.
-let curY = 0;
-addEventListener('scroll', () => { curY = scrollY; }, { passive: true });
-function readTarget() { state.sTarget = pxToS(Math.max(0, curY)); }
+// The scroll event only marks the position stale; scrollY is read once, at
+// the top of the next frame (scroll.update runs before anything writes
+// styles, so layout is still clean and the read is free). Reading it inside
+// the event forced a synchronous layout on every scroll. While autoplaying,
+// the position is the one stepAutoplay just set, so it isn't read at all.
+let curY = 0, stale = false;
+addEventListener('scroll', () => { stale = true; }, { passive: true });
+function readTarget() {
+  if (stale && !auto) curY = scrollY;
+  stale = false;
+  state.sTarget = pxToS(Math.max(0, curY));
+}
 
 function update(dt) {
   if (!locked) readTarget();
@@ -131,20 +138,29 @@ function goTo(s, smooth = true) {
 }
 
 // Autoplay: advance the page scroll at cruising speed, pause at each stop.
+// s follows curY every frame; the page itself is scrolled there ~10 times a
+// second (and at stops, and when autoplay ends): scrollTo every frame made
+// the browser lay out and dispatch a scroll event each frame.
 const CRUISE = 22; // m/s
+let syncT = 0, pageY = 0;
+function syncPage() { syncT = 0; if (Math.abs(pageY - curY) > 0.5) { pageY = curY; scrollTo(0, curY); } }
 function stepAutoplay(dt) {
   if (autoPause > 0) { autoPause -= dt; return; }
   const s = state.sTarget;
   const stop = STOPS.find(st => s < st.s && s + CRUISE * dt >= st.s);
   const next = Math.min(END_S, s + CRUISE * dt * (PACING.some(p => s >= p.from && s < p.to) ? 0.45 : 1));
   lastY = sToPx(stop ? stop.s : next);
-  scrollTo(0, lastY);
+  curY = lastY;
+  syncT += dt;
+  if (stop || syncT > 0.1) syncPage();
   if (stop) autoPause = 4;
   if (next >= END_S) autoplay(false);
 }
 function autoplay(on) {
   if (auto === !!on) return;
   auto = !!on; autoPause = 0;
+  if (auto) { curY = pageY = scrollY; stale = false; syncT = 0; }   // start from where the page is
+  else syncPage();                                           // leave the page where the car is
   autoFns.forEach(f => f(auto));
 }
 ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(ev =>
