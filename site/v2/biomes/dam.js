@@ -176,25 +176,6 @@ function paddyTex() {
 }
 
 // curtain-wall glass: blue-grey panes, aluminium mullions, warm interior with chandeliers
-function glassTex() {
-  return canvasTex(512, 256, (g, w, h) => {
-    const gr = g.createLinearGradient(0, 0, 0, h);
-    gr.addColorStop(0, '#6f7f93'); gr.addColorStop(0.5, '#a88f78'); gr.addColorStop(1, '#e0a868');
-    g.fillStyle = gr; g.fillRect(0, 0, w, h);
-    const r = makeRng('glass');
-    for (let i = 0; i < 14; i++) { // chandeliers / downlights
-      const x = r() * w, y = h * (0.15 + 0.3 * r());
-      const rg = g.createRadialGradient(x, y, 0, x, y, 18 + r() * 14);
-      rg.addColorStop(0, 'rgba(255,236,190,0.95)'); rg.addColorStop(1, 'rgba(255,200,120,0)');
-      g.fillStyle = rg; g.fillRect(x - 40, y - 40, 80, 80);
-    }
-    g.fillStyle = 'rgba(60,40,30,0.35)'; // silhouettes of chairs / people
-    for (let i = 0; i < 60; i++) g.fillRect(r() * w, h * (0.72 + 0.2 * r()), 3 + r() * 4, 10 + r() * 16);
-    g.fillStyle = '#9aa0a6';
-    for (let x = 0; x < w; x += 64) g.fillRect(x, 0, 4, h);
-    for (const y of [0, h * 0.5, h - 4]) g.fillRect(0, y, w, 4);
-  });
-}
 
 // churning foam for the stilling basin
 function foamTex() {
@@ -210,17 +191,6 @@ function foamTex() {
 }
 
 // lawn: mottled grass
-function lawnTex() {
-  return canvasTex(256, 256, (g, w, h) => {
-    g.fillStyle = '#56803a'; g.fillRect(0, 0, w, h);
-    const r = makeRng('lawn');
-    for (let i = 0; i < 9000; i++) {
-      const v = r();
-      g.fillStyle = `rgba(${60 + v * 70 | 0},${100 + v * 60 | 0},${30 + v * 30 | 0},0.5)`;
-      g.fillRect(r() * w, r() * h, 1, 2 + r() * 3);
-    }
-  });
-}
 
 // paving for the parking court: grey interlock pavers; stalls drawn at 2.5 m (u = s/10, v = lat/10)
 function paveTex() {
@@ -257,15 +227,7 @@ function signTex() {
     g.fillText('LOWER MANAIR DAM', w / 2, b * 0.38);
     g.font = '30px Arial, sans-serif'; g.fillText('KARIMNAGAR  ·  I & CAD DEPT.', w / 2, b * 0.76);
     g.strokeStyle = '#fff'; g.lineWidth = 5; g.strokeRect(8, 8, w - 16, b - 16);
-    g.fillStyle = '#1c1a1c'; g.fillRect(0, b, w, b);
-    g.fillStyle = '#ffd27a'; g.font = 'bold 78px Georgia, serif';
-    g.shadowColor = '#ffb040'; g.shadowBlur = 16;
-    g.fillText('AMR UNNATI CONVENTION', w / 2, b * 1.5 + 4);
-    g.fillStyle = '#6a1424'; g.shadowBlur = 0; g.fillRect(0, 2 * b, w, b);
-    g.fillStyle = '#ffe2a0'; g.font = 'bold 64px Georgia, serif';
-    g.fillText('AMR UNNATI CONVENTION', w / 2, b * 2.42);
-    g.font = '28px Georgia, serif'; g.fillText('WELCOME', w / 2, b * 2.8);
-    g.strokeStyle = '#e8b85a'; g.lineWidth = 6; g.strokeRect(10, 2 * b + 10, w - 20, b - 20);
+    // (the lower two thirds were the old AMR Unnati boards; the venue now has one name, in venue-amr.js)
   }, false);
 }
 /* ---------- geometry helpers (road frame: +x = right/lateral, -z = forward/s) ---------- */
@@ -435,6 +397,11 @@ const bayS = i => pierS(i) + (SP.bay + SP.pier) / 2;
 const OPEN = [1, 3];                          // bays spilling
 const TOE = 32, BASIN = [30, 46], RIVER = [52, 68];
 const LOT = { s0: CREST_BR + 1.5, s1: VENUE.s + 46, l0: 11, l1: VENUE.lateral + 26 };
+/** AMR Unnati layout for biomes/venue-amr*.js: lot (s0..s1 along the road, l0..l1 lateral, right
+ *  side), gate opening (s G0..G1 in the front wall at lateral wallL), hall footprint (centre s HS,
+ *  width HW along s; front face at lateral front, depth HD), pad level = road level at VENUE.s. */
+export const AMR = { LOT, VENUE, GATE: { s0: GATE_C - 5, s1: GATE_C + 5, c: GATE_C }, wallL: LOT.l0 - 0.4,
+  hall: { s: VENUE.s + 2, w: 44, front: 25, d: 22 } };
 
 function makeMats() {
   const conc = concreteTex();
@@ -449,14 +416,10 @@ function makeMats() {
     paddy: new THREE.MeshStandardMaterial({ map: paddyTex(), roughness: 0.9, vertexColors: true, side: THREE.DoubleSide }),
     hills: new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true, side: THREE.DoubleSide }),
     plaster: new THREE.MeshStandardMaterial({ map: plasterTex(), roughness: 0.8, vertexColors: true }),
-    glass: new THREE.MeshStandardMaterial({ map: glassTex(), roughness: 0.15, metalness: 0.3, emissive: 0xffffff, emissiveIntensity: 0.4 }),
     pave: new THREE.MeshStandardMaterial({ map: paveTex(), roughness: 0.85 }),
-    lawn: new THREE.MeshStandardMaterial({ map: lawnTex(), roughness: 0.95 }),
   };
-  M.glass.emissiveMap = M.glass.map; M.glass.emissive.set(0xffd9a8);
   const sign = signTex();
   M.sign = new THREE.MeshStandardMaterial({ map: sign, emissiveMap: sign, emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.6 });
-  M.lawn.map.repeat.set(1, 1);
   return M;
 }
 
@@ -857,8 +820,7 @@ function buildVenue(ctx, M, K, group) {
   const pave = new THREE.Mesh(ribbon(ctx, ssl, range(LOT.l0 - 0.4, LOT.l1, 2), () => PY, (s, l) => [s / 10, (l - LOT.l0) / 10]), M.pave);
   pave.receiveShadow = true; pave.name = 'venue:pad'; group.add(pave);
   const LW = { s0: VENUE.s + 27, s1: LOT.s1 - 1.5, l0: 20, l1: LOT.l1 - 1.5 };
-  const lawn = new THREE.Mesh(ribbon(ctx, range(LW.s0, LW.s1, 3), range(LW.l0, LW.l1, 3), () => PY + 0.04, (s, l) => [s / 8, l / 8]), M.lawn);
-  lawn.receiveShadow = true; lawn.name = 'venue:lawn'; group.add(lawn);
+  // lawns and planting: biomes/venue-amr-grounds.js
 
   // 17b. frontage: past the dam abutment the parapet stops. A flush paved apron runs from the road
   //      edge to the boundary wall along the whole lot; the car turns in across it at the gate.
@@ -891,159 +853,11 @@ function buildVenue(ctx, M, K, group) {
   const G0 = GATE_C - 5, G1 = GATE_C + 5;              // 10 m gate opening facing the pull-over apron
   wallS(LOT.s0, G0 - 0.7, LOT.l0 - 0.4); wallS(G1 + 0.7, LOT.s1, LOT.l0 - 0.4); wallS(LOT.s0, LOT.s1, LOT.l1 + 0.1);
 
-  // 19. entrance gate: pillars with lamp globes, arch board, open steel leaves
-  for (const s of [G0, G1]) {
-    out.plaster.push(tint(place(ctx, box(1.3, 4.2, 1.3, 2), s, LOT.l0 - 0.4, PY + 2.1), 0xd8b98a));
-    out.plaster.push(tint(place(ctx, box(1.6, 0.3, 1.6, 2), s, LOT.l0 - 0.4, PY + 4.35), 0xf4ecdc));
-    out.glow.push(tint(place(ctx, new THREE.SphereGeometry(0.34, 14, 10).toNonIndexed(), s, LOT.l0 - 0.4, PY + 4.85), 0xffe2a8));
-  }
-  const arch = new THREE.PlaneGeometry(G1 - G0 + 1.3, 1.4).rotateY(-Math.PI / 2);
-  { const uv = arch.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, uv.getY(k) / 3); }
-  out.sign.push(place(ctx, arch, (G0 + G1) / 2, LOT.l0 - 0.45 - 0.4, PY + 5.5));
-  out.steel.push(tint(place(ctx, box(0.3, 1.6, G1 - G0 + 1.5, 2), (G0 + G1) / 2, LOT.l0 - 0.4, PY + 5.5), 0x5a1020));
-  for (const [s, dir] of [[G0 + 0.6, 1], [G1 - 0.6, -1]]) {
-    const leaf = [];
-    for (let k = 0; k <= 8; k++) leaf.push(box(0.05, 1.8, 0.05, 1).translate(k * 0.45, 0.9, 0));
-    for (const y of [0.1, 0.9, 1.75]) leaf.push(box(3.7, 0.08, 0.06, 1).translate(1.8, y, 0));
-    out.steel.push(tint(place(ctx, merge(leaf), s, LOT.l0 - 0.3, PY, dir * 0.25), 0x2b2b2e));
-  }
+  // 19. the gate piers are biomes/venue-amr-grounds.js; the wall leaves a 10 m opening
 
-  // 20. the hall: two storeys on a stone plinth, maroon floor band, glazed ground floor,
-  //     windowed upper floor between pilasters, roof parapet with LED outline, serial-light curtains
-  const HS = VENUE.s + 2, HL = 36, HW = 44, HD = 22, fl = HL - HD / 2; // front line
-  const G = PY + 0.7, F1 = 5.2, F2 = 4.6, RT = G + F1 + 0.45 + F2;      // ground floor, first floor, roof top
-  const maroon = 0x7e2c24, stone = 0xa8957a, trim = 0xf6efe2, dark = 0x2f2926;
-  const HB = (w, h, d, s, l, y, col, T = 3, j = 0) => out.plaster.push(tint(place(ctx, box(w, h, d, T), s, l, y), col, j, s + l));
-  const LED = (w, h, d, s, l, y, col = 0xffe6b0) => out.glow.push(tint(place(ctx, box(w, h, d, 1), s, l, y), col));
-  HB(HD + 1.2, 0.7, HW + 1.2, HS, HL, PY + 0.35, stone, 2, 0.08);                 // plinth
-  HB(HD, F1, HW, HS, HL, G + F1 / 2, cream, 4, 0.04);                              // ground storey
-  HB(HD + 0.9, 0.45, HW + 0.9, HS, HL, G + F1 + 0.22, maroon, 3);                  // floor band / chajja
-  HB(HD, F2, HW, HS, HL, G + F1 + 0.45 + F2 / 2, 0xf1e7d3, 4, 0.04);               // first storey
-  HB(HD + 0.3, 1.2, HW + 0.3, HS, HL, RT + 0.6, 0xe7dcc6, 3);                      // roof parapet
-  HB(HD + 0.7, 0.2, HW + 0.7, HS, HL, RT + 1.3, 0xd2c3a6, 3);                      // coping
-  // LED outline: coping edges (front + sides), floor band underside, building corners
-  LED(0.06, 0.07, HW + 0.7, HS, fl - 0.37, RT + 1.44);
-  LED(0.06, 0.06, HW + 0.9, HS, fl - 0.47, G + F1 - 0.03);
-  for (const sd of [-1, 1]) {
-    LED(HD + 0.7, 0.07, 0.06, HS + sd * (HW / 2 + 0.37), HL, RT + 1.44);
-    LED(0.06, RT + 1.4 - G, 0.06, HS + sd * (HW / 2 + 0.17), fl - 0.17, (RT + 1.4 + G) / 2);
-  }
-  // ground floor glazing: tall central entrance + two flanking shopfront bays, dark mullions
-  const glass = (w, h, s, l, y, ry = -Math.PI / 2) => out.glass.push(place(ctx, new THREE.PlaneGeometry(w, h).rotateY(ry), s, l, y));
-  const mull = (h, s, y, n, w) => { for (let k = 0; k <= n; k++) out.steel.push(tint(place(ctx, box(0.14, h, 0.12, 1), s - w / 2 + k * w / n, fl - 0.1, y), dark)); };
-  glass(14, 4.3, HS, fl - 0.05, G + 2.25); mull(4.3, HS, G + 2.25, 7, 14);
-  out.steel.push(tint(place(ctx, box(0.16, 0.14, 14, 1), HS, fl - 0.1, G + 3.3), dark));  // transom
-  for (const sd of [-1, 1]) {
-    const s = HS + sd * 14.5;
-    glass(11, 3.2, s, fl - 0.05, G + 1.9); mull(3.2, s, G + 1.9, 5, 11);
-    HB(0.5, 0.18, 11.6, s, fl - 0.25, G + 0.3, stone);                           // sill
-    HB(0.6, 0.2, 11.8, s, fl - 0.3, G + 3.6, trim);                               // lintel
-  }
-  // first floor: window strip between pilasters, sill band
-  glass(HW - 2, 2.5, HS, fl - 0.05, G + F1 + 0.45 + 2.3);
-  HB(0.55, 0.22, HW - 1, HS, fl - 0.27, G + F1 + 0.45 + 0.95, trim);
-  for (let k = 0; k <= 10; k++) HB(0.7, F2, 0.7, HS - HW / 2 + 1 + k * (HW - 2) / 10, fl - 0.3, G + F1 + 0.45 + F2 / 2, trim);
-  // side elevations: two rows of windows each
-  for (const sd of [-1, 1]) for (const [y, h] of [[G + 1.9, 2.6], [G + F1 + 0.45 + 2.3, 2.2]]) {
-    glass(HD - 5, h, HS + sd * (HW / 2 + 0.05), HL, y, sd > 0 ? 0 : Math.PI);
-  }
-  // serial-light curtains down the upper facade (warm white + gold), clear of the porch sign
-  {
-    const bulbs = [], R = makeRng('serial');
-    for (let s = HS - HW / 2 + 0.6; s < HS + HW / 2 - 0.4; s += 0.8) {
-      if (Math.abs(s - HS) < 8.2) continue;
-      const len = 3.4 + R() * 1.4;
-      for (let y = RT + 1.2; y > RT + 1.2 - len; y -= 0.42) {
-        bulbs.push(tint(place(ctx, box(0.07, 0.07, 0.07, 1), s, fl - 0.72, y), R() < 0.5 ? 0xffe2a0 : 0xffb458));
-      }
-    }
-    out.glow.push(merge(bulbs));
-  }
-  // grand porte-cochère: six columns (base, fluted-look shaft, capital), deep canopy slab with a
-  // maroon fascia and LED edge, downlights, and a raised sign wall carrying the lit name board
-  const PC = { l0: fl - 10, l1: fl - 0.3, w: 18 }, PT = PY + 6.4, pm = (PC.l0 + PC.l1) / 2;
-  for (const [l, ds] of [[PC.l0 + 0.9, -8], [PC.l0 + 0.9, -3], [PC.l0 + 0.9, 3], [PC.l0 + 0.9, 8], [fl - 1.4, -8], [fl - 1.4, 8]]) {
-    HB(1.2, 0.5, 1.2, HS + ds, l, PY + 0.25, stone, 1);
-    out.plaster.push(tint(place(ctx, cyl(0.4, 0.46, PT - PY - 0.95, 20, 2), HS + ds, l, PY + 0.5 + (PT - PY - 0.95) / 2), 0xfaf5ea));
-    HB(1.15, 0.45, 1.15, HS + ds, l, PT - 0.22, trim, 1);
-  }
-  HB(PC.l1 - PC.l0, 0.75, PC.w, HS, pm, PT + 0.37, 0xf3ead8);                          // canopy slab
-  HB(0.4, 0.95, PC.w + 0.4, HS, PC.l0 - 0.1, PT + 0.47, maroon);                        // fascia front
-  for (const sd of [-1, 1]) HB(PC.l1 - PC.l0, 0.95, 0.4, HS + sd * (PC.w / 2 + 0.1), pm, PT + 0.47, maroon);
-  LED(0.06, 0.06, PC.w + 0.4, HS, PC.l0 - 0.33, PT + 0.96);
-  LED(0.06, 0.06, PC.w + 0.4, HS, PC.l0 - 0.33, PT + 0.0);
-  for (let l = PC.l0 + 2; l < PC.l1 - 1; l += 2.6) for (let ds = -6; ds <= 6; ds += 3) LED(0.4, 0.03, 0.4, HS + ds, l, PT - 0.02, 0xfff0d0);
-  // sign wall on the canopy front, name board on it, LED frame
-  HB(0.45, 2.6, 15, HS, PC.l0 + 0.4, PT + 0.95 + 1.3, cream, 3);
-  HB(0.6, 0.18, 15.3, HS, PC.l0 + 0.4, PT + 0.95 + 2.69, 0xd2c3a6);
-  const fas = new THREE.PlaneGeometry(13.6, 1.75).rotateY(-Math.PI / 2);
-  { const uv = fas.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, 1 / 3 + uv.getY(k) / 3); }
-  out.sign.push(place(ctx, fas, HS, PC.l0 + 0.16, PT + 0.95 + 1.3));
-  LED(0.05, 0.05, 14.2, HS, PC.l0 + 0.14, PT + 0.95 + 2.25);
-  LED(0.05, 0.05, 14.2, HS, PC.l0 + 0.14, PT + 0.95 + 0.35);
-  for (const sd of [-1, 1]) LED(0.05, 1.95, 0.05, HS + sd * 7.1, PC.l0 + 0.14, PT + 0.95 + 1.3);
-  // under-porch floor (polished stone) and three broad steps up to the entrance
-  HB(PC.l1 - PC.l0, 0.06, PC.w, HS, pm, PY + 0.03, 0xcbbfae, 2);
-  for (let k = 0; k < 3; k++) HB(1.1 + 0.9 * (2 - k), 0.235 * (k + 1), 15, HS, fl - 0.55 - (1.1 + 0.9 * (2 - k)) / 2, PY + 0.235 * (k + 1) / 2, 0xd8ccb8, 2);
-  // wall lanterns flanking the flank bays
-  for (const ds of [-20.5, -9, 9, 20.5]) LED(0.25, 0.4, 0.25, HS + ds, fl - 0.25, G + 3.9, 0xffd08a);
+  // 20. the hall, its canopy and the grounds are biomes/venue-amr*.js (layout: AMR below)
+  const HS = VENUE.s + 2, HL = 36, HW = 44, HD = 22, fl = HL - HD / 2;
   return { out, PY, LW, HS, HL, HW, fl };
-}
-
-/* 21–23: parking, lawn with string lights + mandap, palms */
-function dressVenue(ctx, M, K, group, V) {
-  const { path } = ctx;
-  const { out, PY, LW } = V;
-  // 21. a few parked cars nose-in along the front wall
-  const cols = [0xf2f2ee, 0x9b1b22, 0x3c3f44, 0xc0c4c8, 0x1f3f6e, 0xe9e6dc];
-  const R = makeRng('cars');
-  let n = 0;
-  for (let s = LOT.s0 + 4; s < LOT.s1 - 20 && n < 6; s += 2.5) {
-    if (s > GATE_C - 9 && s < GATE_C + 9) continue;      // keep the gate throat clear
-    if (s > V.HS - V.HW / 2 - 3) break;                  // stop before the hall's side
-    if (R() < 0.45) continue;
-    out.steel.push(place(ctx, car(cols[n % cols.length]), s + 1.25, LOT.l0 + 2.8, PY, Math.PI + (R() - 0.5) * 0.06));
-    n++;
-  }
-  // second row nose-in to the hall, right of the porch
-  for (let k = 0; k < 4; k++) out.steel.push(place(ctx, car(cols[(k + 2) % cols.length]), V.HS + 11.5 + k * 2.7, V.fl - 11.5, PY, (R() - 0.5) * 0.08));
-  // 22. lawn: string lights between poles, lantern posts, lit mandap
-  const poles = [];
-  for (const s of [LW.s0 + 1, LW.s1 - 1]) for (const l of [LW.l0 + 1, (LW.l0 + LW.l1) / 2, LW.l1 - 1]) {
-    out.steel.push(tint(place(ctx, cyl(0.05, 0.07, 5, 6), s, l, PY + 2.5), 0x2a2a2a));
-    poles.push(path.toWorld(s, l).setY(PY + 4.9));
-  }
-  const bulbs = [], wire = [];
-  const pairs = [[0, 3], [1, 4], [2, 5], [0, 1], [1, 2], [3, 4], [4, 5], [0, 4], [2, 4]];
-  for (const [a, b] of pairs) {
-    const pts = []; catenary(pts, poles[a], poles[b], 14, 0.9);
-    for (let k = 0; k < pts.length; k += 3) {
-      if (k) wire.push(pts[k - 3], pts[k - 2], pts[k - 1], pts[k], pts[k + 1], pts[k + 2]);
-      bulbs.push(new THREE.SphereGeometry(0.07, 6, 4).toNonIndexed().translate(pts[k], pts[k + 1] - 0.08, pts[k + 2]));
-    }
-  }
-  out.glow.push(tint(merge(bulbs), 0xffd890));
-  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
-  group.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x222222 })));
-  for (let s = LW.s0 + 4; s < LW.s1 - 2; s += 6) for (const l of [LW.l0 + 0.5, LW.l1 - 0.5]) {
-    out.steel.push(tint(place(ctx, cyl(0.05, 0.06, 1.2, 6), s, l, PY + 0.6), 0x2a2a2a));
-    out.glow.push(tint(place(ctx, box(0.22, 0.3, 0.22, 1), s, l, PY + 1.35), 0xffc070));
-  }
-  // mandap: four carved posts, stepped platform, marigold-draped canopy glowing from within
-  const ms = (LW.s0 + LW.s1) / 2, ml = (LW.l0 + LW.l1) / 2 + 6;
-  out.plaster.push(tint(place(ctx, box(6.5, 0.45, 6.5, 2), ms, ml, PY + 0.25), 0xe9dcc0));
-  for (const ds of [-2.6, 2.6]) for (const dl of [-2.6, 2.6]) {
-    out.plaster.push(tint(place(ctx, cyl(0.16, 0.2, 3.4, 10), ms + ds, ml + dl, PY + 0.45 + 1.7), 0xd9a441));
-  }
-  out.plaster.push(tint(place(ctx, box(6.4, 0.35, 6.4, 2), ms, ml, PY + 4.0), 0xc8442a));
-  out.plaster.push(tint(place(ctx, new THREE.ConeGeometry(4.3, 1.8, 4).rotateY(Math.PI / 4).toNonIndexed(), ms, ml, PY + 5.05), 0xe07a1f));
-  for (const dl of [-2.6, 2.6]) out.glow.push(tint(place(ctx, box(0.08, 0.9, 5.4, 1), ms, ml + dl, PY + 3.4), 0xffa030)); // marigold strings
-  out.glow.push(tint(place(ctx, box(5.6, 0.05, 5.6, 1), ms, ml, PY + 3.8), 0xffc880));
-  // 23. palms along the front wall and round the lawn
-  group.add(plant(ctx, { kind: 'palm', count: 10, seed: 'venue-palms', scale: [0.9, 1.15], place: (R, i) => {
-    if (i < 5) return { s: LOT.s0 + 3 + i * 4.2 + (i > 1 ? 14 : 0), lateral: LOT.l1 - 2 - R() * 6 };
-    return { s: LW.s0 + 2 + (i - 5) * 4, lateral: LW.l1 - 1.2 };
-  } }));
 }
 
 /* ---------- assembly ---------- */
@@ -1078,7 +892,6 @@ export default {
     const F = buildFurniture(ctx, M, K);
     buildSetting(ctx, M, K, group);
     const V = buildVenue(ctx, M, K, group);
-    dressVenue(ctx, M, K, group, V);
 
     group.add(meshOf([...B.conc, ...S.out.conc, ...F.out.conc, ...V.out.conc], M.conc, 'dam:concrete'));
     group.add(meshOf(B.riprap, M.riprap, 'dam:riprap', false));
@@ -1087,7 +900,6 @@ export default {
     group.add(meshOf([...B.path, ...V.out.path], M.path, 'dam:footpath', false));
     group.add(meshOf([...B.steel, ...S.out.steel, ...F.out.steel, ...V.out.steel], M.steel, 'dam:steel'));
     group.add(meshOf(V.out.plaster, M.plaster, 'venue:hall'));
-    group.add(meshOf(V.out.glass, M.glass, 'venue:glass', false));
     group.add(meshOf([...F.out.sign, ...V.out.sign], M.sign, 'dam:signs', false));
     const glow = meshOf([...F.out.glow, ...V.out.glow], M.glow, 'dam:glow', false); group.add(glow);
 
@@ -1119,7 +931,6 @@ export default {
         M.glow.color.copy(base).multiplyScalar(k);
         // a real sodium lamp pool is a soft warm patch a few metres across, not a floodlit road
         poolMat.opacity = 0.03 + 0.19 * smoothstep(0.3, 0.9, d);
-        M.glass.emissiveIntensity = 0.35 + 1.4 * d;
         M.sign.emissiveIntensity = 0.45 + 1.3 * d;
         st.offset.y -= dt * 1.1;
         ft.offset.x += dt * 0.05; ft.offset.y -= dt * 0.12;
