@@ -7,7 +7,8 @@
  * the tilt following the swing, slow tumbling, and a light ride on the shared
  * wind. They wrap inside a small box ahead of the camera and shrink to
  * nothing at its faces and near the lens, so none ever pops. The layer fades
- * out entirely past the garden (s ≈ 560–610) and is hidden elsewhere.
+ * out entirely as the garden ends (core/zones.js) and is hidden elsewhere.
+ * Deliberately sparse: a petal or two drifting through the frame, not a shower.
  * fog:true with the shared height-fog chunks. prefers-reduced-motion removes
  * the layer.
  *
@@ -15,11 +16,12 @@
  */
 import * as THREE from 'three';
 import { world } from '../core/world.js';
+import { byId } from '../core/zones.js';
 
 const U = world.U;
-const BOX = new THREE.Vector3(16, 8, 22);
-const COUNT = { high: 70, med: 45, low: 24 };
-const S_FADE0 = 560, S_FADE1 = 610;   // garden ends at 597
+const BOX = new THREE.Vector3(12, 6, 15);   // close to the lens, so the few there are can be seen
+const COUNT = { high: 26, med: 18, low: 12 };
+const S_FADE1 = byId.garden.s1 + 10, S_FADE0 = S_FADE1 - 45;   // gone as the garden gives way to the beach
 let mesh = null, cam = null;
 const amount = { value: 1 };
 const center = new THREE.Vector3(), fwd = new THREE.Vector3();
@@ -131,11 +133,13 @@ void main() {
   if (dot(N, V) < 0.0) N = -N;
   // blossom: deep pink base → near-white tip; marigold: saffron → gold
   float k = vUv.y;
-  vec3 alb = mix(vec3(0.78, 0.42, 0.50), vec3(0.93, 0.80, 0.83), smoothstep(0.0, 0.7, k)) * vTone;
+  vec3 alb = mix(vec3(0.86, 0.44, 0.58), vec3(0.98, 0.76, 0.84), smoothstep(0.0, 0.7, k)) * vTone;
   float ndl = abs(dot(N, uSunDir));
   float back = pow(max(dot(-V, uSunDir), 0.0), 5.0);
   vec3 amb = mix(uSkyHor, uSkyTop, N.y * 0.5 + 0.5) * 0.55;
   vec3 col = alb * (amb + uSunCol * (ndl * 0.55 + back * 0.9 + 0.05) * (1.0 - 0.7 * uDusk));
+  // thin petals pass light: a soft floor so they still read as pink in the forest shade
+  col = max(col, alb * 0.62);
   gl_FragColor = vec4(col, 1.0);
   #include <fog_fragment>
 }`;
@@ -164,7 +168,7 @@ function init(ctx) {
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       uTime: U.uTime, uWind: U.uWind, uSunDir: U.uSunDir, uSunCol: U.uSunCol,
       uSkyHor: U.uSkyHor, uSkyTop: U.uSkyTop, uDusk: U.uDusk,
-      uBox: { value: BOX }, uCenter: { value: center }, uSize: { value: 0.03 }, uAmount: amount,
+      uBox: { value: BOX }, uCenter: { value: center }, uSize: { value: 0.15 }, uAmount: amount,   // petals a touch over life size, so the handful in view read from the chase camera
       tPetal: { value: petalTexture() }
     },
     vertexShader: VERT,
