@@ -24,19 +24,70 @@ const at = (id, u) => Z[id].s0 + (Z[id].s1 - Z[id].s0) * u;
 // and the beach legs keep their palms, grass and props off these footprints.
 export const EVENTS = {
   board:     { s: 442, lateral: 9.5 },
-  reception: { s: 600, lat: [-7.4, -21], len: 30 },
-  haldi:     { s: 860, lat: [-7.4, -21], len: 26 },
-  muhurtham: { s: 1070, lat: [-7.4, -21], len: 28 }
-};
-/** Each beach event has a paved forecourt (court) at road level just before
+  reception: { s: 600, lat: [-6.8, -20.2], len: 30 },
+  haldi:     { s: 860, lat: [-6.8, -20.2], len: 26 },
+  muhurtham: { s: 1070, lat: [-6.8, -20.2], len: 28 }
+};/** Each beach event has a paved forecourt (court) at road level just before
  *  its deck, where "Take me here" drives the car in (car/detour.js): off the
  *  road at s0, round to a stop facing the deck, and back out onto the road
  *  before the deck. The deck's entrance faces the court from the deck's near
  *  end (s = deck start). lat: road-relative, negative = sea side. */
-export const COURTS = {};
+/* SITES: each beach venue is one site laid out on a single procession
+ * axis along the road, at lateral AX. From the road: a 30 m arrival forecourt
+ * (a looped drive round a planted island, drop-off on the axis), then the
+ * entrance arch at the deck's edge, the aisle down the deck, and the stage
+ * at the far end, the sea on the left. Every module builds from these numbers
+ * (road coords: s along the road, lateral negative = sea side):
+ *   ax        axis lateral
+ *   a, d0, d1 arrival start, deck start (arch line), deck end
+ *   gateIn, gateOut  gate centres (s) in the road wall at lateral WALL
+ *   stop      drop-off, on the axis (the car's nose points at the arch, 16 m on)
+ *   island    {s, l, rs, rl}: the planted oval inside the loop (road side of the axis)
+ *   garden    {s0, s1, l0, l1}: welcome garden, sea side of the drive
+ *   stage     {s, depth}: stage / mandap centre on the axis and its depth along s
+ *   aisle     width of the aisle on the axis */
+/** A drivable route from straights and circular arcs, as dense [s, lateral] points (every ~1 m),
+ *  starting at (s, l) heading along the road (+s). ops: ['S', metres] straight, ['A', radius, degrees]
+ *  an arc (positive degrees turn toward +lateral, the right). A real car's turning circle is ~5.3 m. */
+export function arcRoute(s, l, ops) {
+  const pts = [[s, l]]; let h = 0;
+  for (const op of ops) {
+    if (op[0] === 'S') { const n = Math.max(1, Math.round(op[1])); for (let i = 0; i < n; i++) { s += Math.cos(h) * op[1] / n; l += Math.sin(h) * op[1] / n; pts.push([s, l]); } }
+    else { const [, R, deg] = op, th = deg * Math.PI / 180, n = Math.max(2, Math.round(Math.abs(th) * R)); for (let i = 0; i < n; i++) { h += th / n; s += Math.cos(h) * Math.abs(th) * R / n; l += Math.sin(h) * Math.abs(th) * R / n; pts.push([s, l]); } }
+  }
+  return pts;
+}
+// an S-bend of two equal arcs, radius R, moving the car D metres sideways (sign = direction) while
+// keeping its heading: returns the ops and its length along the road
+function sBend(D, R) {
+  const th = Math.acos(1 - Math.abs(D) / (2 * R)), deg = th * 180 / Math.PI * Math.sign(D);
+  return { ops: [['A', R, deg], ['A', R, -deg]], len: 2 * R * Math.sin(th) };
+}
+
+export const SITE_WALL = -5.75;
+export const SITES = {};
 for (const k of ['reception', 'haldi', 'muhurtham']) {
-  const e = EVENTS[k], d0 = e.s - e.len / 2;
-  COURTS[k] = { s0: d0 - 25, s1: d0 - 1, lat: [-5.9, -16.5] };
+  const e = EVENTS[k], d0 = e.s - e.len / 2, a = d0 - 30, ax = (e.lat[0] + e.lat[1]) / 2;
+  // in: an S-bend off the lane (R 7.5 m) onto the axis, straight to the drop-off; out: straight on, an
+  // S-bend back to the lane. Gates stand where each bend crosses the wall line (from the arc geometry).
+  const R = 7.5, bend = sBend(ax + 1.8, R), sIn = a - 0.6, sOut = a + 17;
+  const cross = D => R * Math.sin(Math.acos(1 - Math.abs(D) / R));        // along-road distance into a bend to lateral D
+  const gIn = sIn + cross(SITE_WALL + 1.8), gOut = sOut + bend.len - cross(SITE_WALL + 1.8);
+  SITES[k] = { ax, a, d0, d1: d0 + e.len, lat: e.lat,
+    gateIn: gIn, gateOut: gOut, stop: { s: a + 16, l: ax },
+    island: { s: (gIn + gOut) / 2, l: -8.3, rs: (gOut - gIn) / 2 - 3.2, rl: 2 },
+    garden: { s0: a + 1, s1: d0 - 1, l0: ax - 2.6, l1: e.lat[1] },
+    route: {
+      in: arcRoute(a - 14, -1.8, [['S', sIn - (a - 14)], ...bend.ops, ['S', a + 16 - (sIn + bend.len)]]),
+      out: arcRoute(a + 16, ax, [['S', sOut - (a + 16)], ...sBend(-(ax + 1.8), R).ops, ['S', 16]])
+    },
+    stage: { s: d0 + e.len - 4.2, depth: 6 }, aisle: 2.2 };
+}
+/** the arrival forecourt of each beach venue (its drive, island and garden): s0 … s1, lat */
+export const COURTS = {};
+for (const k of Object.keys(SITES)) {
+  const S = SITES[k];
+  COURTS[k] = { s0: S.a, s1: S.d0 - 0.5, lat: [-3.7, S.lat[1]] };
 }
 
 /** metres from (s, lateral) to the nearest event deck or court footprint (0 inside) */
@@ -76,16 +127,13 @@ const karimS = Z.dam.s1 - 25;
  * car drives in and out ({s, lateral, h} above the road), aimed between the
  * car and focus (the venue). The callout ends before the route's first point. */
 const eventStop = (id, label, sheet) => {
-  const e = EVENTS[id], c = COURTS[id].s0, d0 = e.s - e.len / 2;
-  return { id, s: e.s, slow: [c - 110, e.s + 20], callout: [c - 95, c - 20], sheet, label,
-    venue: { s: e.s + 3, lateral: (e.lat[0] + e.lat[1]) / 2 }, pullover: { side: 'left', lateral: -4.9 },
-    route: {
-      // both legs meet at the stop with a short straight run along the road, so the car parks square
-      // and pulls away without a snap; the out leg ends straight in the lane for the same reason
-      in: [[c - 14, -1.8], [c - 4, -2.4], [c + 3, -6.6], [c + 7.5, -10.2], [c + 10.5, -10.8], [c + 14, -10.8]],
-      out: [[c + 14, -10.8], [c + 17.5, -10.8], [c + 20, -9.8], [c + 22, -7.6], [c + 24.5, -4.4], [c + 30, -2.4], [c + 37, -1.85], [c + 45, -1.8], [c + 54, -1.8]]
-    },
-    cam: { s: c - 7, lateral: 4.2, h: 6.2 }, focus: { s: d0 + 6, lateral: -12.5, h: 1.8 },
+  const e = EVENTS[id], S = SITES[id], a = S.a, ax = S.ax, W = SITE_WALL;
+  return { id, s: e.s, slow: [a - 110, e.s + 20], callout: [a - 95, a - 20], sheet, label,
+    venue: { s: e.s + 3, lateral: ax }, pullover: { side: 'left', lateral: -4.9 },
+    // in: off the lane through the first gate onto the axis, straight to the drop-off (parks square);
+    // out: straight on, through the second gate, and a straight run in the lane (no snap at hand-back)
+    route: S.route,
+    cam: { s: a - 7, lateral: 4.2, h: 6.2 }, focus: { s: S.d0 + 4, lateral: ax, h: 1.8 },
     // surface the car drives on (car/car.js): the compound drive (biomes/events/compound.js) is road + 0.03
     ground: (s, l) => path.roadY(s) + (l < -3.35 ? 0.031 : 0.02) };
 };
@@ -104,7 +152,11 @@ export const STOPS = [
     route: (G => ({
       // stops at the portal steps (portal centre ≈ G + 2.5), nose +s
       // (both legs meet square to the road at the stop: no snap when the car pulls away)
-      in: [[G - 16, -1.8], [G - 8, -0.6], [G - 4, 3.5], [G - 1.5, 8.5], [G - 0.2, 13], [G + 2, 17], [G + 4.5, 18.7], [G + 7, 18.8]],
+      in: (() => {   // lane → R 7 m to 70° → straight through the gate → R 7 m back → straight to the stop
+        const R = 7, th = 70, rise = 2 * R * (1 - Math.cos(th * Math.PI / 180)), run = (18.8 + 1.8 - rise) / Math.sin(th * Math.PI / 180);
+        const fwd = 2 * R * Math.sin(th * Math.PI / 180) + run * Math.cos(th * Math.PI / 180), s0 = G + 7 - 2.5 - fwd;
+        return arcRoute(G - 22, -1.8, [['S', s0 - (G - 22)], ['A', R, th], ['S', run], ['A', R, -th], ['S', 2.5]]);
+      })(),
       out: [[G + 7, 18.8], [G + 10, 18.8], [G + 13, 19.2], [G + 17, 19.6], [G + 23, 18], [G + 27, 14.5], [G + 29, 10.6], [G + 31, 6], [G + 35, 1.4], [G + 41, -1.2], [G + 49, -1.8], [G + 58, -1.8]]
     }))(karimS + 48),
     cam: { s: karimS + 48 - 8, lateral: -4.6, h: 6.8 }, focus: { s: karimS + 60, lateral: 26, h: 3.5 },
