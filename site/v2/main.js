@@ -22,7 +22,7 @@ import { car } from './car/car.js';
 import { cam } from './car/camera.js';
 import { detour } from './car/detour.js';
 import { fx as petals } from './fx/petals.js';
-import { ambience } from './fx/ambience.js';
+import { sound } from './audio/index.js';
 import { ui } from './ui/index.js';
 import { quality } from './core/quality.js';
 import { GLTFLoader } from './vendor/addons/loaders/GLTFLoader.js';
@@ -146,7 +146,7 @@ async function warmUp() {
   const n = built.length;
   for (let i = 0; i < n; i++) {
     const z = built[i];
-    for (const u of [0.25]) {   // one frame per built zone: uploads + shadow/post programs
+    for (const u of [0.25, 0.75]) {   // two frames per built zone: uploads + shadow/post programs
       const s = z.s0 + (z.s1 - z.s0) * u;
       path.sample(s, S);
       camera.position.copy(S.pos).addScaledVector(S.fwd, -8); camera.position.y += 3.5;
@@ -167,6 +167,20 @@ async function warmUp() {
     progress(0.82 + 0.18 * (i + 1) / n);
     await new Promise(r => setTimeout(r));
   }
+  // and each "Take me here" arrival view (the raised crane at the venue), with that leg's sky, so the
+  // first tap never meets a texture or program it hasn't drawn yet
+  const { STOPS } = await import('./core/timeline.js');
+  for (const st of STOPS) {
+    if (!st.cam) continue;
+    path.toWorld(st.cam.s, st.cam.lateral, camera.position); camera.position.y = path.roadY(st.cam.s) + st.cam.h;
+    path.toWorld(st.focus.s, st.focus.lateral, look); look.y = path.roadY(st.focus.s) + st.focus.h;
+    camera.lookAt(look);
+    atmosphere.update(0, st.s); terrain.update(0, st.s, camera);
+    for (const g of zoneGroups) { g.group.visible = zones.visible(g.zone, st.s); if (g.group.visible && g.update) g.update(0, st.s, camera); }
+    post.render(renderer, scene, camera, 0);
+    await new Promise(r => setTimeout(r));
+  }
+  atmosphere.update(0, 0);
   camera.position.copy(home); camera.quaternion.copy(homeQ);
   terrain.update(0, 0, camera);
   // Then the real frame at the title pose, a few times: car, camera, sky,
@@ -230,7 +244,7 @@ function step(dt) {
     if (vis && g.update) g.update(dt, s, camera);
   }
   petals.update(dt, s);
-  ambience.update(dt, s);
+  sound.update(dt, s);
   ui.update(dt, s);
 
   post.render(renderer, scene, camera, dt);
