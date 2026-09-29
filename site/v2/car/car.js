@@ -93,7 +93,7 @@ async function init(ctx) {
     const t2 = performance.now();
     object.add(contactShadow());
     Object.assign(T, { carLoad: Math.round(t1 - t0), carBuild: Math.round(t2 - t1) });
-    if (tier === 'high') buildLampLights();
+    if (tier === 'high') buildLampLights(); else buildBeamDecal();   // phones: painted beams, no lights
   } catch (e) {
     console.error('[v2] car model failed to load', e);
   }
@@ -829,6 +829,39 @@ function buildLampLights() {
   body.add(tailLight);
 }
 
+/* Phones get no real lights (see above), which left the road dark in front
+ * of the car at night: this paints the low beams instead. One additive quad
+ * on the road plane ahead of the car (a child of `object`, so it follows the
+ * road's grade but not the body's bob), a soft fan that is brightest just
+ * ahead of the bumper and fades out by ~24 m. */
+let beam = null;
+function buildBeamDecal() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+  const g = c.getContext('2d'), W = 128, H = 256;
+  const img = g.createImageData(W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const v = 1 - y / H;                               // canvas top is the far end (v = 1 after flipY)
+    const half = 0.16 + 0.34 * Math.pow(v, 0.8);        // the fan widens with distance
+    const u = Math.abs(x / W - 0.5) / half;
+    const across = u < 1 ? Math.pow(1 - u * u, 1.5) : 0;
+    const along = Math.pow(1 - v, 1.6) * Math.min(1, v * 12);
+    const a = across * along;
+    const i = (y * W + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = Math.round(a * 255);
+  }
+  g.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xfff0d8, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  const len = 24, wid = 9;
+  const geo = new THREE.PlaneGeometry(wid, len).rotateX(-Math.PI / 2);   // local +Z forward, lying flat
+  geo.rotateY(Math.PI);                                                 // v = 0 (texture bottom) at the bumper
+  beam = new THREE.Mesh(geo, mat);
+  beam.position.set(-0.4, 0.05, lampPos.head.z + len / 2 - 0.3);       // a touch toward the lane centre
+  beam.renderOrder = 2; beam.name = 'car-beams'; beam.frustumCulled = false;
+  object.add(beam);
+}
+
 function indicate(side) { blink = side || null; blinkT = 0; }
 
 const AMBER = new THREE.Color(0xff8a10), HEAD = new THREE.Color(0xfff1d6), TAIL = new THREE.Color(0xff1a0c);
@@ -849,6 +882,7 @@ function updateLamps(dt) {
     }
   }
   spots.forEach(sp => { sp.intensity = on * 70; });
+  if (beam) beam.material.opacity = on * 0.42;
   if (tailLight) tailLight.intensity = on * 0.3;
 }
 
