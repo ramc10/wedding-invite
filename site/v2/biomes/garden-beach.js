@@ -5,7 +5,7 @@
  *
  * Exports helpers the cove reuses: duneGrass(ctx, opts), coastRocks(ctx, opts).
  */
-import { onEventSite } from '../core/timeline.js';
+import { onEventSite, eventDist } from '../core/timeline.js';
 import * as THREE from 'three';
 import { makeWater } from './water.js';
 import { plant, band as band0 } from './flora.js';
@@ -316,7 +316,8 @@ export function sandBeach(ctx, { s0, s1, wallLat, fadeIn = 24, fadeOut = 24 }) {
       const l = wallLat + (shore - 7.5 - wallLat) * Math.pow(c / (cols - 1), 1.15);
       path.toWorld(s, l, p);
       const h = world.heightSL(s, l);
-      const dune = h > w + 0.9 ? duneH(s, l, wallLat, shore) : 0;
+      // no dunes under the event decks; they ease back in over 5 m
+      const dune = h > w + 0.9 ? duneH(s, l, wallLat, shore) * smoothstep(0.5, 5, eventDist(s, l)) : 0;
       pos.push(p.x, h + 0.1 + dune, p.z);            // clear of the coarser terrain triangles
       fade.push(fs);
     }
@@ -548,7 +549,7 @@ function scatterProps(ctx, geo, spots, rough, name, sink = 0.05) {
 /** Top of the sand skin (terrain + dune) — plant beach props on this. */
 export function beachY(ctx, s, lat, wallLat) {
   const h = ctx.world.heightSL(s, lat), w = ctx.world.waterAt(s) ?? 0;
-  return h > w + 0.9 ? h + duneH(s, lat, wallLat, shoreLat(ctx, s, 0)) : h;
+  return h > w + 0.9 ? h + duneH(s, lat, wallLat, shoreLat(ctx, s, 0)) * smoothstep(0.5, 5, eventDist(s, lat)) : h;
 }
 
 export default {

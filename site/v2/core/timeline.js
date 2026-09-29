@@ -28,6 +28,16 @@ export const EVENTS = {
   haldi:     { s: 990, lat: [-7.4, -21], len: 26 },
   muhurtham: { s: 1200, lat: [-7.4, -21], len: 28 }
 };
+/** metres from (s, lateral) to the nearest event deck footprint (0 inside) */
+export function eventDist(s, lateral) {
+  let d = Infinity;
+  for (const k of ['reception', 'haldi', 'muhurtham']) {
+    const e = EVENTS[k];
+    const ds = Math.max(0, Math.abs(s - e.s) - e.len / 2), dl = Math.max(0, lateral - e.lat[0], e.lat[1] - lateral);
+    d = Math.min(d, Math.hypot(ds, dl));
+  }
+  return d;
+}
 /** true if (s, lateral) falls on an event's footprint, grown by pad metres */
 export function onEventSite(s, lateral, pad = 2) {
   for (const k of ['reception', 'haldi', 'muhurtham']) {

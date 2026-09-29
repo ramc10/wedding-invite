@@ -37,6 +37,7 @@ import * as THREE from 'three';
 import { path } from '../core/path.js';
 import { world } from '../core/world.js';
 import { ZONES, weightsAt } from '../core/zones.js';
+import { onEventSite } from '../core/timeline.js';
 import { fbm, noise2, rng as makeRng, smoothstep } from '../core/noise.js';
 
 const HW = path.halfWidth;          // 3.6: asphalt half-width
@@ -726,6 +727,7 @@ const _gs = { tint: new THREE.Color() };
 function respawn(i, s) {
   const lat = G.lat[i], rnd = G.rnd[i];
   let show = s >= 0 && s <= path.length;
+  if (show && onEventSite(s, lat, 1.5)) show = false;   // no tufts through the event decks
   let hs = 1;
   if (show) {
     const y = world.heightSL(s, lat);

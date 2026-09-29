@@ -115,7 +115,8 @@ for (const k in THREE.ShaderLib) {
 
 // ---- sky dome -------------------------------------------------------------
 const SKY_FRAG = /* glsl */`
-uniform float uDusk, uTime, uCloud, uSunI;
+uniform float uDusk, uTime, uCloud, uSunI, uNight, uDawn;
+uniform vec3 uMoon;
 varying vec3 vDir;
 ${FOGLIB}
 float fbm(vec2 p) {
@@ -139,23 +140,30 @@ void main() {
   float sd = dot(d, hfSun);
   float up = smoothstep(-0.1, 0.03, hfSun.y);
   // single-scatter gradient: horizon colour by azimuth → zenith Rayleigh blue
-  vec3 horC = mix(hfCool, hfCol, pow(clamp(sd * 0.5 + 0.5, 0.0, 1.0), 2.5));
-  vec3 col = mix(horC, hfZen, 1.0 - exp(-h * 5.5));                  // haze hugs the horizon; clear blue above
+  // (a sunrise keeps its warmth in a tighter glow round the sun and clear blue above it)
+  vec3 horC = mix(hfCool, hfCol, pow(clamp(sd * 0.5 + 0.5, 0.0, 1.0), 2.5 + 4.5 * uDawn));
+  vec3 col = mix(horC, hfZen, 1.0 - exp(-h * (5.5 + 6.0 * uDawn)));  // haze hugs the horizon; clear blue above
   col *= 0.92 + 0.12 * sd * sd;                                       // Rayleigh phase
   col += hfSunCol * up * (hg(sd, 0.78) * 0.12 + hg(sd, 0.35) * 0.18) * (0.35 + 0.65 * exp(-h * 3.0)); // Mie halo
   // dusk: Belt of Venus (pink band) above the earth's shadow, opposite the sun
   float anti = clamp(-sd * 0.5 + 0.5, 0.0, 1.0);
-  col += vec3(0.30, 0.16, 0.20) * uDusk * (1.0 - uDusk * 0.5) * anti * exp(-pow((h - 0.13) / 0.07, 2.0));
-  // stars: tiny, sparse, upper sky only, once dusk is well along
-  float sk = smoothstep(0.55, 0.95, uDusk) * smoothstep(0.45, 0.8, h);
+  col += vec3(0.30, 0.16, 0.20) * uDusk * (1.0 - uDusk * 0.5) * (1.0 - uNight) * (1.0 - 0.6 * uDawn) * anti * exp(-pow((h - 0.13) / 0.07, 2.0));
+  // night: the sky brightens softly round the moon (aureole + wide glow)
+  float md = dot(d, uMoon);
+  float mang = sqrt(max(2.0 * (1.0 - md), 0.0));
+  col += vec3(0.55, 0.66, 0.9) * uNight * (exp(-mang * 5.0) * 0.035 + exp(-mang * 22.0) * 0.06);
+  // stars: tiny, sparse, upper sky only, once dusk is well along; at night
+  // denser, down to the horizon haze, dimmed near the moon
+  float sk = max(smoothstep(0.55, 0.95, uDusk) * smoothstep(0.45, 0.8, h), uNight * smoothstep(0.015, 0.2, h) * smoothstep(0.08, 0.35, mang));
   if (sk > 0.001) {
     vec2 sp = d.xz / (d.y + 0.25) * 140.0;
     vec2 cell = floor(sp);
     float r = hfHash(cell);
     vec2 off = vec2(hfHash(cell + 3.1), hfHash(cell + 7.7)) - 0.5;
-    float st = step(0.992, r) * smoothstep(0.1, 0.02, length(fract(sp) - 0.5 - off * 0.6));
+    float st = step(0.992 - 0.01 * uNight, r) * smoothstep(0.1, 0.02, length(fract(sp) - 0.5 - off * 0.6));
     st *= 0.65 + 0.35 * sin(uTime * (1.5 + r * 3.0) + r * 40.0);
-    col += vec3(0.9, 0.93, 1.0) * st * sk * 0.9;
+    st *= 1.0 + uNight * (hfHash(cell + 1.7) * 1.6 - 0.35);                         // magnitudes vary
+    col += mix(vec3(0.9, 0.93, 1.0), vec3(1.0, 0.9, 0.78), step(0.7, hfHash(cell + 5.3)) * uNight) * st * sk * 0.9;
   }
   // high cirrus: faint streaks well above the cumulus
   float occ = 0.0;
@@ -176,6 +184,8 @@ void main() {
       vec3 amb = mix(horC, hfZen, 0.35) * (1.05 - 0.45 * c);          // thick = darker underside
       vec3 sunl = hfSunCol * uSunI * 0.34 * up * (Tl * powder * 1.3 + hg(sd, 0.6) * (1.0 - c) * 1.6);
       vec3 cc = amb * 0.9 + sunl;
+      // moonlit: thin edges near the moon glow silver
+      cc += vec3(0.5, 0.6, 0.8) * uNight * (1.0 - c) * (exp(-mang * 6.0) * 0.25 + 0.02);
       // aerial perspective: distant clouds melt into the horizon haze
       cc = mix(cc, horC, smoothstep(3.0, 15.0, pd) * 0.75);
       float a = c * smoothstep(0.0, 0.12, d.y);
@@ -189,7 +199,18 @@ void main() {
   if (rr < 1.2) {
     float mu = sqrt(max(1.0 - rr * rr, 0.0));
     float limb = 1.0 - 0.62 * (1.0 - mu) - 0.2 * (1.0 - mu * mu);
-    col += hfSunCol * limb * smoothstep(1.02, 0.94, rr) * 60.0 * up * (1.0 - occ * 0.97);
+    col += hfSunCol * limb * smoothstep(1.02, 0.94, rr) * 60.0 * up * (1.0 - occ * 0.97) * (1.0 - 0.88 * uDawn); // a low dawn sun keeps its colour
+  }
+  // the moon: a pale disc with faint maria, limb-darkened, behind thin cloud
+  if (uNight > 0.001 && mang < 0.022) {
+    vec3 t1 = normalize(cross(uMoon, vec3(0.0, 1.0, 0.0)));
+    vec3 t2 = cross(t1, uMoon);
+    vec2 mu = vec2(dot(d, t1), dot(d, t2)) / 0.012;
+    float mr = length(mu);
+    float maria = hfNoise(mu * 1.7 + 4.0) * 0.6 + hfNoise(mu * 4.1 + 9.0) * 0.4;
+    float mlimb = 0.8 + 0.2 * sqrt(max(1.0 - mr * mr, 0.0));
+    vec3 mcol = vec3(1.0, 0.97, 0.9) * (1.0 - 0.34 * smoothstep(0.42, 0.72, maria)) * mlimb;
+    col = mix(col, mcol * 1.3, smoothstep(1.03, 0.97, mr) * uNight * (1.0 - occ * 0.85));
   }
   // below the horizon the dome shows the haze
   col = mix(col, hfFogColor(normalize(vec3(d.x, 0.0, d.z))) * 0.9, smoothstep(0.0, -0.05, d.y));
@@ -220,6 +241,15 @@ function sunlight(elDeg, out) {
   out.setRGB(t[0] / mx, t[1] / mx, t[2] / mx);
   return t[0] * LUM[0] + t[1] * LUM[1] + t[2] * LUM[2];
 }
+// real night (sun below ≈ −4°, full by −12°): a clear coastal night: navy
+// sky a little lighter at the horizon, stars, and the moon over the sea as
+// the key light. Only the beach keys go that low; the creek (−2°) is untouched.
+const NIGHT = { zen: V3(0.0065, 0.013, 0.036), hor: V3(0.026, 0.038, 0.066), fog: V3(0.030, 0.040, 0.060) };
+const MOON = { col: V3(0.58, 0.70, 1.0), az: -19, el: 8, I: 0.62 };
+const moonDir = new THREE.Vector3();
+// sunrise (keys with dawn: 1): clean morning air: peach and rose toward the
+// sun, cool blue opposite and above, where a sunset is lilac all round
+const DAWN = { zen: V3(0.045, 0.105, 0.34), sun: V3(1.25, 0.60, 0.38), anti: V3(0.28, 0.39, 0.64) };
 let rose = 0;
 function pick(out, set, g, dk, r) { return out.copy(set.day).lerp(set.gold, g).lerp(r, rose).lerp(set.dusk, dk); }
 
@@ -231,7 +261,7 @@ const day = {
 const sunScreen = new THREE.Vector3();
 const tmp = new THREE.Vector3(), c1 = new THREE.Color(), c2 = new THREE.Color();
 const S = path.sample(0);
-const skyU = { uSunI: { value: 3 }, uCloud: { value: 0.56 } };
+const skyU = { uSunI: { value: 3 }, uCloud: { value: 0.56 }, uNight: { value: 0 }, uDawn: { value: 0 }, uMoon: { value: new THREE.Vector3(0, 0.3, -1) } };
 let shadows = false, SH = 40, SMAP = 4096;   // ±40 m box: the car plus ~60 m ahead
 
 function makeSky() {
@@ -293,14 +323,17 @@ function update(dt, s) {
   const elDeg = a.sun[0] + (b.sun[0] - a.sun[0]) * t;
   const az = THREE.MathUtils.degToRad(a.sun[1] + (b.sun[1] - a.sun[1]) * t);
   const zoneExpo = a.exposure + (b.exposure - a.exposure) * t;
+  const dawnK = (a.dawn || 0) + ((b.dawn || 0) - (a.dawn || 0)) * t;
   // time-of-day weights: golden below ~18°, dusk once the sun is near/below the horizon
   // (the late-afternoon hills at ~24° already take a warm, low-sun cast)
   const g = 1 - smooth(elDeg, 6, 32);
   const dk = 1 - smooth(elDeg, -3, 3);
   rose = (1 - smooth(elDeg, 3, 10)) * (1 - dk);   // sun just above the horizon: rose sunset
   day.golden = g * (1 - dk) * (1 - rose);
-  day.rose = rose;
+  day.rose = rose;   // (post's rose grade; a sunrise gets less of it, below)
   day.dusk = THREE.MathUtils.clamp(1 - elDeg / 10, 0, 1);   // legacy key other modules use
+  const nt = 1 - smooth(elDeg, -12, -4);
+  day.night = nt;
 
   // sunlight through the air; below the horizon the bright western sky
   // stands in as a weak, warm, low fill from the same side
@@ -314,14 +347,27 @@ function update(dt, s) {
   path.sample(s, S);
   const h = S.heading - az;                     // azimuth is relative to the road's heading
   day.sunDir.set(-Math.sin(h) * Math.cos(el), Math.sin(el), -Math.cos(h) * Math.cos(el)).normalize();
+  if (nt > 0) {
+    // the moon takes over as the key light: cool, dim, from over the sea
+    const mh = S.heading - THREE.MathUtils.degToRad(MOON.az), me = THREE.MathUtils.degToRad(MOON.el);
+    moonDir.set(-Math.sin(mh) * Math.cos(me), Math.sin(me), -Math.cos(mh) * Math.cos(me));
+    day.sunDir.lerp(moonDir, nt).normalize();
+    day.sunCol.lerp(MOON.col, nt);
+    day.sunI += (MOON.I - day.sunI) * nt;
+  }
   const trueDir = tdir.set(-Math.sin(h) * Math.cos(THREE.MathUtils.degToRad(elDeg)), Math.sin(THREE.MathUtils.degToRad(elDeg)), -Math.cos(h) * Math.cos(THREE.MathUtils.degToRad(elDeg))).normalize();
 
   // sky colours
   pick(day.sky, ZEN, g, dk, ROSE.zen);
   pick(c1, HSUN, g, dk, ROSE.sun);
   pick(c2, HANTI, g, dk, ROSE.anti);
+  const dw = dawnK * (1 - nt) * (1 - smooth(elDeg, 5, 14));
+  day.rose *= 1 - 0.7 * dw;
+  if (dw > 0) { day.sky.lerp(DAWN.zen, dw); c1.lerp(DAWN.sun, dw); c2.lerp(DAWN.anti, dw); }
+  if (nt > 0) { day.sky.lerp(NIGHT.zen, nt); c1.lerp(NIGHT.hor, nt); c2.lerp(NIGHT.hor, nt); }
   day.hor.copy(c1).lerp(c2, 0.6);
   day.fog.copy(day.hor).multiplyScalar(0.95);
+  if (nt > 0) day.fog.lerp(NIGHT.fog, nt);
   U.uSkyTop.value.copy(day.sky);
   U.uSkyHor.value.copy(day.hor);
   U.uFogCol.value.copy(day.fog);
@@ -338,7 +384,10 @@ function update(dt, s) {
   HF.hfCool.value.copy(c2).multiplyScalar(0.96);
   HF.hfZen.value.copy(day.sky);
   skyU.uSunI.value = Math.max(day.sunI, 1.2);
-  skyU.uCloud.value = 0.5 - 0.04 * g;
+  skyU.uCloud.value = 0.5 - 0.04 * g + 0.1 * nt + 0.12 * dw;   // a clear night, a clean morning
+  skyU.uDawn.value = dw * (1 - smooth(elDeg, 3, 9));
+  skyU.uNight.value = nt;
+  skyU.uMoon.value.copy(moonDir);
 
   ctx.scene.fog.color.copy(day.fog);
   ctx.scene.fog.density = U.uFogDensity.value;
@@ -348,12 +397,12 @@ function update(dt, s) {
   sun.intensity = day.sunI;
   hemi.color.copy(day.sky).multiplyScalar(0.45).add(c1.copy(day.hor).multiplyScalar(0.55));
   const skyE = hemi.color.r * LUM[0] + hemi.color.g * LUM[1] + hemi.color.b * LUM[2];
-  const sunE = day.sunI * Math.max(Math.sin(el), 0.05);
+  const sunE = day.sunI * Math.max(day.sunDir.y, 0.05);   // = sin(el) by day; the moon's height at night
   hemi.groundColor.setRGB(0.24, 0.22, 0.16).multiplyScalar(0.25 + 0.5 * Math.min(1, (sunE + skyE) / 2));
-  hemi.intensity = 1.0;
+  hemi.intensity = 1.0 + 0.4 * nt;   // moonlit sky fill: dim and cool, but the road still reads
   // mild auto-exposure around the zone's key, capped so dusk still reads as dusk
   const E = sunE + skyE;
-  day.exposure = zoneExpo * THREE.MathUtils.clamp(Math.pow(1.9 / Math.max(E, 0.05), 0.5), 0.85, 1.45);
+  day.exposure = zoneExpo * THREE.MathUtils.clamp(Math.pow(1.9 / Math.max(E, 0.05), 0.5), 0.85, 1.45 + 0.45 * nt);
   ctx.renderer.toneMappingExposure = day.exposure;   // post.js applies it
 
   const cam = ctx.camera, c = cam.position;
@@ -373,8 +422,8 @@ function update(dt, s) {
     // castShadow stays on: flipping it changes every lit material's program
     // (a recompile hitch when the sun sets). Fade the shadow and stop
     // redrawing its map instead.
-    sun.shadow.intensity = smooth(elDeg, 0.5, 1.5);
-    sun.shadow.autoUpdate = elDeg > 0.5;
+    sun.shadow.intensity = Math.max(smooth(elDeg, 0.5, 1.5), 0.6 * smooth(nt, 0.6, 0.95));   // soft moon shadows
+    sun.shadow.autoUpdate = elDeg > 0.5 || nt > 0.6;
   } else {
     sun.position.copy(c).addScaledVector(day.sunDir, 200);
     sun.target.position.copy(c);
