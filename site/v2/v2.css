@@ -305,6 +305,14 @@ html.ready .cue.gone {
   92% { transform: translate(-50%, 0); }
   95% { transform: translate(-50%, -3px); }
 }
+/* the second line under the pill: how to look around (car/camera.js) */
+.cue-look {
+  position: absolute; left: 50%; top: calc(100% + 10px); transform: translateX(-50%);
+  font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; opacity: .8; pointer-events: none;
+}
+/* hold-to-look on the scene: a grab hand for mice */
+#scene.lookable { cursor: grab; }
+#scene.looking { cursor: grabbing; }
 .cue-text { font-size: .95rem; letter-spacing: .18em; padding-left: .18em; text-transform: uppercase; font-weight: 500; }
 .cue-gesture { width: 20px; height: 27px; flex: none; }
 .cue-phone { fill: none; stroke: #FFF6E8; stroke-width: 1.6; opacity: .85; }

@@ -72,27 +72,59 @@ function focusAt(s) {
   return { w, st };
 }
 
+/* Hold to look around. Mouse: press and drag, any direction, orbits the
+ * car (nearly all the way round) and tilts. Touch: a quick swipe still
+ * scrolls the drive; press and hold still for ~0.25 s first, and the drag
+ * orbits instead (the page is kept from scrolling while it does). */
+const HOLD_MS = 250, YAW_MAX = 2.8, P_MIN = -0.2, P_MAX = 0.85;
+function lookBy(dx, dy) {
+  const k = 1 / Math.max(320, innerWidth * 0.5);
+  user.yaw = clamp(user.yaw - dx * k * 2.6, -YAW_MAX, YAW_MAX);
+  user.pitch = clamp(user.pitch + dy * k * 1.4, P_MIN, P_MAX);
+  idle = 0;
+}
 function init(ctx) {
   camera = ctx.camera;
   const el = ctx.renderer.domElement;
+  el.classList.add('lookable');
+  // mouse / pen: pointer capture, drag orbits straight away
   el.addEventListener('pointerdown', e => {
-    if (detour.active || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
-    if (!drag.touch) { try { el.setPointerCapture(e.pointerId); } catch (_) {} }
+    if (detour.active || e.pointerType === 'touch' || e.button !== 0) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    el.classList.add('looking');
   });
   el.addEventListener('pointermove', e => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag || e.pointerId !== drag.id || drag.touch) return;
+    lookBy(e.clientX - drag.x, e.clientY - drag.y);
     drag.x = e.clientX; drag.y = e.clientY;
-    const k = 1 / Math.max(320, innerWidth * 0.5);
-    user.yaw = clamp(user.yaw - dx * k * 2.2, -1.5, 1.5);
-    if (!drag.touch) user.pitch = clamp(user.pitch + dy * k * 1.2, -0.25, 0.5);
-    idle = 0;
   });
-  const end = e => { if (drag && e.pointerId === drag.id) { drag = null; idle = 0; } };
+  const end = e => { if (drag && !drag.touch && e.pointerId === drag.id) { drag = null; idle = 0; el.classList.remove('looking'); } };
   el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);   // touch turned into a native vertical scroll
+  el.addEventListener('pointercancel', end);
   el.addEventListener('lostpointercapture', end);
+  // touch: hold still, then drag to look; move first and it's an ordinary scroll
+  let t = null;
+  el.addEventListener('touchstart', e => {
+    if (detour.active || e.touches.length !== 1) { t = null; return; }
+    const p = e.touches[0];
+    t = { x: p.clientX, y: p.clientY, x0: p.clientX, y0: p.clientY, t0: performance.now(), on: false };
+    t.timer = setTimeout(() => { if (t) { t.on = true; drag = { touch: true }; idle = 0; if (navigator.vibrate) navigator.vibrate(8); } }, HOLD_MS);
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (!t) return;
+    const p = e.touches[0];
+    if (!t.on) {
+      if (Math.hypot(p.clientX - t.x0, p.clientY - t.y0) > 10) { clearTimeout(t.timer); t = null; }   // a swipe: let it scroll
+      return;
+    }
+    e.preventDefault();                      // looking: keep the page (and so the car) still
+    lookBy(p.clientX - t.x, p.clientY - t.y);
+    t.x = p.clientX; t.y = p.clientY;
+  }, { passive: false });
+  const tend = () => { if (t) { clearTimeout(t.timer); if (t.on) { drag = null; idle = 0; } t = null; } };
+  el.addEventListener('touchend', tend);
+  el.addEventListener('touchcancel', tend);
 }
 
 // weights of the authored rigs at s
@@ -109,8 +141,8 @@ function update(dt) {
   const s = detour.carS != null ? detour.carS : scroll.s;
 
   // drag offsets ease home after a few idle seconds
-  if (!drag && idle > 3.5) {
-    const k = damp(0.9, dt);
+  if (!drag && idle > 5) {
+    const k = damp(0.7, dt);
     user.yaw -= user.yaw * k; user.pitch -= user.pitch * k;
   }
   userC.yaw += (user.yaw - userC.yaw) * damp(5, dt);
@@ -150,14 +182,18 @@ function update(dt) {
     path.toWorld(as, focusLat, focusV); focusV.y = path.roadY(as) + 1.6;
   }
 
-  const drift = rm || idle < 3.5 ? 0 : Math.sin(time * 0.21) * 0.05;
-  const driftH = rm || idle < 3.5 ? 0 : Math.sin(time * 0.17 + 1) * 0.12;
+  const drift = rm || idle < 5 ? 0 : Math.sin(time * 0.21) * 0.05;
+  const driftH = rm || idle < 5 ? 0 : Math.sin(time * 0.17 + 1) * 0.12;
 
   // venue on the left → camera round to behind-right (negative yaw), and the mirror for the right
   const yaw = wT * tYaw + wC * (CHASE.yaw - curvS * 6 + drift) + wE * END.yaw + userC.yaw;
   const dist = (wT * tDist + wC * (CHASE.dist + sp * 1.4) + wE * END.dist) * (1 + narrow * 0.3) + fk * 0.6;
   let h = wT * TITLE.h + wC * (CHASE.h + sp * 0.3 + driftH) + wE * END.h;
   h += userC.pitch * dist * 0.9;
+  // swung round to the side or front: a little higher, and (below) allowed a few metres further
+  // off the road than the chase, so the car doesn't fill the frame
+  const roundK = smoothstep(0.5, 1.6, Math.abs(userC.yaw));
+  h += roundK * 0.9;
   const lookH = wT * TITLE.lookH + wC * CHASE.lookH + wE * END.lookH;
   const lookF = wT * TITLE.lookF + wC * (CHASE.lookF + sp * 3) + wE * END.lookF;
 
@@ -178,11 +214,14 @@ function update(dt) {
   look.y = car.pos.y + lookH;
   // aim across the car at the set: further on narrow screens, where less of it fits
   if (fk > 0.001) look.lerp(focusV, fk * (0.34 + 0.22 * port));
+  // looking round from the side or the front: aim back at the car, not down the road ahead
+  const round = smoothstep(0.5, 1.6, Math.abs(userC.yaw));
+  if (round > 0) { tmp.copy(car.pos); tmp.y += 0.9; look.lerp(tmp, round); }
 
   // stay inside the cleared corridor (road + shoulder + verge) so the lens
   // never ends up inside a tree or a wall beside the road
   const nr = path.nearest(want.x, want.z);
-  const lim = world.VERGE - 0.3;       // trees start at VERGE + 0.4
+  const lim = world.VERGE - 0.3 + roundK * 3.5;   // trees start at VERGE + 0.4; looking round may go a little past
   if (Math.abs(nr.lateral) > lim) {
     path.sample(nr.s, S);
     want.addScaledVector(S.right, -(nr.lateral - Math.sign(nr.lateral) * lim));
