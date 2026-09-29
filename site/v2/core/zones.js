@@ -65,12 +65,24 @@ export function weightsAt(s) {
 export const VIS_MARGIN = 220;   // beyond this the fog has most of it; drawing it cost millions of triangles
 export const visible = (z, s) => s > z.s0 - VIS_MARGIN && s < z.s1 + VIS_MARGIN;
 
-/** Time-of-day keyframes sit at zone centres; this interpolates between them. */
+/** Time-of-day keys: zone centres, except along the beach, where
+ *  core/daykeys.js places them per event. dayAt interpolates between the
+ *  two keys either side of s. Loaded lazily (daykeys imports timeline,
+ *  which imports this module). */
+let KEYS = null;
+async function loadKeys() {
+  const { BEACH_KEYS } = await import('./daykeys.js');
+  const own = ZONES.filter(z => z.id !== 'garden-beach' && z.id !== 'cove').map(z => ({ s: z.mid, sun: z.day.sun, exposure: z.day.exposure }));
+  KEYS = [...own, ...BEACH_KEYS].sort((a, b) => a.s - b.s);
+}
+export const dayReady = loadKeys();
+
 export function dayAt(s) {
-  s = clamp(s, ZONES[0].mid, ZONES[ZONES.length - 1].mid);
+  const K = KEYS || ZONES.map(z => ({ s: z.mid, sun: z.day.sun, exposure: z.day.exposure }));
+  s = clamp(s, K[0].s, K[K.length - 1].s);
   let i = 0;
-  while (i < ZONES.length - 2 && s > ZONES[i + 1].mid) i++;
-  const a = ZONES[i], b = ZONES[i + 1];
-  const t = smoothstep(a.mid, b.mid, s);
-  return { a: a.day, b: b.day, t };
+  while (i < K.length - 2 && s > K[i + 1].s) i++;
+  const a = K[i], b = K[i + 1];
+  const t = smoothstep(a.s, b.s, s);
+  return { a, b, t };
 }

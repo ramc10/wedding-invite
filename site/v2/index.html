@@ -56,10 +56,18 @@
   <div class="title" id="title"><h1><span class="first-name">Bhavya</span> <span class="amp" aria-hidden="true">&amp;</span><span class="amp-word">and</span> <span class="second-name">Ramcharan</span></h1></div>
   <div class="venue" id="titleVenue"><p class="details-place">Bengaluru</p></div>
 
-  <div class="details" id="details">
+  <div class="details" id="capReception">
     <ul class="details-events">
       <li><span class="details-ceremony">Reception By the Shore</span><span class="details-when">November 17th, 7 PM</span></li>
+    </ul>
+  </div>
+  <div class="details" id="capHaldi">
+    <ul class="details-events">
       <li><span class="details-ceremony">Haldi</span><span class="details-when">November 18th, 8 AM</span></li>
+    </ul>
+  </div>
+  <div class="details" id="capMuhurtham">
+    <ul class="details-events">
       <li><span class="details-ceremony">Muhurtham</span><span class="details-when">November 18th, 8 PM</span></li>
     </ul>
   </div>
@@ -77,7 +85,15 @@
 </div>
 
 <!-- one per STOPS entry (id callout-<stop.id>); ui/overlays.js shows each over its stop.callout span -->
-<button type="button" class="callout" id="callout-vizag" tabindex="-1" aria-hidden="true">
+<button type="button" class="callout" id="callout-reception" tabindex="-1" aria-hidden="true">
+  <svg viewBox="0 0 16 20" aria-hidden="true" focusable="false"><path d="M8 19s6-6.2 6-11A6 6 0 0 0 2 8c0 4.8 6 11 6 11z"/><circle cx="8" cy="8" r="2.2"/></svg>
+  <span>Take me here</span>
+</button>
+<button type="button" class="callout" id="callout-haldi" tabindex="-1" aria-hidden="true">
+  <svg viewBox="0 0 16 20" aria-hidden="true" focusable="false"><path d="M8 19s6-6.2 6-11A6 6 0 0 0 2 8c0 4.8 6 11 6 11z"/><circle cx="8" cy="8" r="2.2"/></svg>
+  <span>Take me here</span>
+</button>
+<button type="button" class="callout" id="callout-muhurtham" tabindex="-1" aria-hidden="true">
   <svg viewBox="0 0 16 20" aria-hidden="true" focusable="false"><path d="M8 19s6-6.2 6-11A6 6 0 0 0 2 8c0 4.8 6 11 6 11z"/><circle cx="8" cy="8" r="2.2"/></svg>
   <span>Take me here</span>
 </button>
@@ -128,13 +144,13 @@
 <!-- Event sheets, opened by a stop's "Take me here" (core/timeline.js STOPS[].sheet).
      Same markup as the root site's; data-map backs the Directions button.
      DRAFT: dress codes, colours and notes below are placeholders — confirm before sharing. -->
-<dialog class="sheet" id="sheetBeach" aria-labelledby="sheetBeachTitle"
+<dialog class="sheet" id="sheetReception" aria-labelledby="sheetReceptionTitle"
         data-map="https://www.google.com/maps/search/?api=1&amp;query=Palm+Beach+Hotel+Visakhapatnam">
   <button type="button" class="sheet-close" aria-label="Close">&times;</button>
   <div class="sheet-body">
   <header class="sheet-head">
-    <h2 class="sheet-title" id="sheetBeachTitle">Palm Beach Hotel</h2>
-    <p class="sheet-sub">Visakhapatnam</p>
+    <h2 class="sheet-title" id="sheetReceptionTitle">Reception</h2>
+    <p class="sheet-sub">Palm Beach Hotel, Visakhapatnam</p>
     <div class="sheet-rule" aria-hidden="true"><svg viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16.5L2.6 8.2a10 10 0 0 1 18.8 0z"/><path d="M12 16.5L6 4.2M12 16.5L9 2.4M12 16.5V2M12 16.5l3-14.1M12 16.5l6-12.3"/></svg></div>
   </header>
   <ol class="sheet-events">
@@ -142,11 +158,41 @@
       <div class="ev-head"><h3 class="ev-name">Reception</h3><p class="ev-when">Nov 17 · 7 PM</p></div>
       <p class="ev-note">Dance till the tide gives up.</p>
     </li>
+  </ol>
+
+  <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+  </div>
+</dialog>
+<dialog class="sheet" id="sheetHaldi" aria-labelledby="sheetHaldiTitle"
+        data-map="https://www.google.com/maps/search/?api=1&amp;query=Palm+Beach+Hotel+Visakhapatnam">
+  <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  <div class="sheet-body">
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="sheetHaldiTitle">Haldi</h2>
+    <p class="sheet-sub">Palm Beach Hotel, Visakhapatnam</p>
+    <div class="sheet-rule" aria-hidden="true"><svg viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16.5L2.6 8.2a10 10 0 0 1 18.8 0z"/><path d="M12 16.5L6 4.2M12 16.5L9 2.4M12 16.5V2M12 16.5l3-14.1M12 16.5l6-12.3"/></svg></div>
+  </header>
+  <ol class="sheet-events">
     <li class="sheet-ev" data-art="sun">
       <div class="ev-head"><h3 class="ev-name">Haldi</h3><p class="ev-when">Nov 18 · 8 AM</p></div>
       <p class="ev-dress" style="--c:#F2C230">Wear yellow</p>
       <p class="ev-note">Arrive in white, leave in yellow.</p>
     </li>
+  </ol>
+
+  <a class="sheet-directions" target="_blank" rel="noopener">Get directions</a>
+  </div>
+</dialog>
+<dialog class="sheet" id="sheetMuhurtham" aria-labelledby="sheetMuhurthamTitle"
+        data-map="https://www.google.com/maps/search/?api=1&amp;query=Palm+Beach+Hotel+Visakhapatnam">
+  <button type="button" class="sheet-close" aria-label="Close">&times;</button>
+  <div class="sheet-body">
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="sheetMuhurthamTitle">Muhurtham</h2>
+    <p class="sheet-sub">Palm Beach Hotel, Visakhapatnam</p>
+    <div class="sheet-rule" aria-hidden="true"><svg viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16.5L2.6 8.2a10 10 0 0 1 18.8 0z"/><path d="M12 16.5L6 4.2M12 16.5L9 2.4M12 16.5V2M12 16.5l3-14.1M12 16.5l6-12.3"/></svg></div>
+  </header>
+  <ol class="sheet-events">
     <li class="sheet-ev" data-art="rings">
       <div class="ev-head"><h3 class="ev-name">Muhurtham</h3><p class="ev-when">Nov 18 · 8 PM</p></div>
       <p class="ev-dress" style="--c:#F4EAD5">Wear cream</p>

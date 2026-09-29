@@ -5,9 +5,12 @@
  *
  * Exports helpers the cove reuses: duneGrass(ctx, opts), coastRocks(ctx, opts).
  */
+import { onEventSite } from '../core/timeline.js';
 import * as THREE from 'three';
 import { makeWater } from './water.js';
-import { plant, band } from './flora.js';
+import { plant, band as band0 } from './flora.js';
+// bands keep clear of the hotel board and the event decks (core/timeline.js EVENTS)
+const band = (...a) => { const f = band0(...a); return R => { const p = f(R); return onEventSite(p.s, p.lateral) ? null : p; }; };
 import { fbm, smoothstep } from '../core/noise.js';
 
 const TIER = { low: 0.45, med: 0.7, high: 1 };
@@ -583,6 +586,7 @@ export default {
         const s = clumps[i % clumps.length] + (Rp() - 0.5) * 9;
         const sh = shoreLat(ctx, s, 0);
         const lat = WALL - 2.5 - Rp() * Math.max(1, (WALL - sh) * -0.55);
+        if (onEventSite(s, lat, 3)) return null;
         return { s, lateral: lat, yaw: Math.PI + (Rp() - 0.5) * 1.2 + ctx.path.sample(s).heading };
       }
     }));
@@ -607,6 +611,7 @@ export default {
         const s = s0 - 10 + Rg() * (s1 - s0 + 10);
         const l = WALL - 0.6 - Rg() * 15;
         const d = fbm(s * 0.045 + 3.1, l * 0.11, 3);             // same field as the dunes
+        if (onEventSite(s, l, 1)) return null;
         return d > -0.05 || Rg() < 0.15 ? { s, lateral: l } : null;
       }
     }));
@@ -628,7 +633,7 @@ export default {
       const s = s0 + 20 + R() * (s1 - s0 - 30), sh = shoreLat(ctx, s, 0);
       drift.push({ s, lateral: sh + 2.2 + R() * 4, yaw: R() * 6.28, scale: 0.7 + R() * 0.6 });
     }
-    group.add(scatterProps(ctx, driftGeo(), drift, 0.95, 'driftwood', 0.08));
+    group.add(scatterProps(ctx, driftGeo(), drift.filter(d => !onEventSite(d.s, d.lateral)), 0.95, 'driftwood', 0.08));
 
     // a few beached fishing catamarans, bows toward the sea
     const cats = [];
@@ -636,14 +641,14 @@ export default {
       const s = s0 + f * (s1 - s0) + R() * 4, sh = shoreLat(ctx, s, 0);
       cats.push({ s, lateral: sh + 4.2 + R() * 1.5, yaw: (R() - 0.5) * 0.35 + (R() < 0.5 ? 1.5 : -1.5) });
     }
-    group.add(scatterProps(ctx, catGeo(), cats, 0.8, 'catamarans', 0.12));
+    group.add(scatterProps(ctx, catGeo(), cats.filter(c => !onEventSite(c.s, c.lateral, 4)), 0.8, 'catamarans', 0.12));
 
     const spots = [];
     for (let i = 0; i < 4; i++) {
       const s = s0 + 110 + i * ((s1 - s0 - 170) / 3) + (i % 2) * 12;
       spots.push({ s, lateral: shoreLat(ctx, s, 1.0) + 3.5 + (i % 3) * 1.5 });
     }
-    group.add(umbrellas(ctx, spots));
+    group.add(umbrellas(ctx, spots.filter(u => !onEventSite(u.s, u.lateral, 4))));
 
     T('props');
     return { group };

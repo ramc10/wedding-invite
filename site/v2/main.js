@@ -69,6 +69,7 @@ async function boot() {
   // the car's .glb downloads and Draco-decodes (in a worker) while the
   // terrain and legs are generated on the main thread
   const carReady = car.init(ctx);
+  await zones.dayReady;   // the beach's time-of-day keys (core/daykeys.js)
   atmosphere.init(ctx); progress(0.04);
   buildTimes.atmosphere = Math.round(performance.now() - tb); tb = performance.now();
   terrain.init(ctx); progress(0.08);

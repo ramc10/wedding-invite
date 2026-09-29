@@ -36,9 +36,9 @@ import { plant, band } from './flora.js';
 import { makeWater } from './water.js';
 import { terrain } from './terrain.js';
 import { fbm, rng as makeRng } from '../core/noise.js';
-import { STOPS } from '../core/timeline.js';
+import { STOP } from '../core/timeline.js';
 
-const VEN = STOPS[1].venue;
+const VEN = STOP.karimnagar.venue;
 const inVenue = (s, lat) => lat > 0 && Math.abs(s - VEN.s) < 55 && lat < VEN.lateral + 30;
 const CREEK_S0 = VEN.s + 60;
 

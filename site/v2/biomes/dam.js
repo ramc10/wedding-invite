@@ -29,7 +29,7 @@
  *  14. Reservoir (makeWater 'lake') and hazy hills on the far shore.
  *  15. River leaving the stilling basin across the valley (makeWater 'creek').
  *  16. Paddy fields with bunds on the valley floor; valley trees (instanced).
- *  VENUE: AMR Unnati Convention (STOPS[1].venue, road level, right side)
+ *  VENUE: AMR Unnati Convention (STOP.karimnagar.venue, road level, right side)
  *  17. Level lot pad with retaining skirt where the ground falls away.
  *  18. Boundary wall along the road and around the lot, with coping.
  *  19. Entrance gate: two pillars with lamp globes, arch board, open gates.
@@ -45,13 +45,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from '../vendor/addons/utils/BufferGeometryUtils.js';
 import { makeWater } from './water.js';
 import { plant } from './flora.js';
-import { STOPS } from '../core/timeline.js';
+import { STOP } from '../core/timeline.js';
 import { fbm, hash2, smoothstep, rng as makeRng } from '../core/noise.js';
 
 const FLOOR = -16;           // valley floor (matches world.js 'drop')
-// The hall sits 10 m nearer the dam than STOPS[1].venue so its gate lines up with the pull-over spot
-const PARK_S = STOPS[1].park.s, GATE_C = PARK_S + 8;          // gate centre = where the car turns in
-const VENUE = { s: STOPS[1].venue.s - 10, lateral: STOPS[1].venue.lateral };
+// The hall sits 10 m nearer the dam than STOP.karimnagar.venue so its gate lines up with the pull-over spot
+const PARK_S = STOP.karimnagar.park.s, GATE_C = PARK_S + 8;          // gate centre = where the car turns in
+const VENUE = { s: STOP.karimnagar.venue.s - 10, lateral: STOP.karimnagar.venue.lateral };
 
 /* ---------- procedural textures ---------- */
 
