@@ -1,4 +1,4 @@
-/* Zone 'forest' (s 0–292): a flowering dry-deciduous roadside forest outside
+/* Zone 'forest' (s 0–234): a flowering dry-deciduous roadside forest outside
  * Bengaluru, the kind lining the old Nandi Hills / Chikkaballapur roads.
  *
  * Title shot: the car is parked at s≈0, lateral −1.8, and the camera orbits
@@ -783,13 +783,13 @@ export default {
 
     // ROADSIDE: km stone, hectometre stone, warning sign, direction board, shrine (+ its tree)
     group.add(buildProps([
-      { make: kmStone, s: 118, lateral: -6.4, yaw: -0.5 },
-      { make: hectoStone, s: 218, lateral: -6.3, yaw: -0.4 },
-      { make: warnSign, s: 150, lateral: -6.9, yaw: -0.15 },
-      { make: directionBoard, s: 262, lateral: -7.6, yaw: -0.12 },
-      { make: shrine, s: 186, lateral: 9.6, yaw: -Math.PI / 2 + 0.45 }
+      { make: kmStone, s: 94, lateral: -6.4, yaw: -0.5 },
+      { make: hectoStone, s: 174, lateral: -6.3, yaw: -0.4 },
+      { make: warnSign, s: 120, lateral: -6.9, yaw: -0.15 },
+      { make: directionBoard, s: 210, lateral: -7.6, yaw: -0.12 },
+      { make: shrine, s: 149, lateral: 9.6, yaw: -Math.PI / 2 + 0.45 }
     ]));
-    group.add(plant(ctx, { kind: 'broadleaf', count: 1, place: () => ({ s: 181, lateral: 13.5, scale: 2.0 }), seed: 'fo-peepal' }));
+    group.add(plant(ctx, { kind: 'broadleaf', count: 1, place: () => ({ s: 145, lateral: 13.5, scale: 2.0 }), seed: 'fo-peepal' }));
 
     // POWER LINE: concrete poles on the right verge every ~38 m, three sagging conductors
     const poles = [], wire = [], tops = [];

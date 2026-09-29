@@ -18,7 +18,7 @@ import { clamp, smoothstep } from './noise.js';
 import { path } from './path.js';
 
 const L = path.length;
-const f = [0, 0.115, 0.235, 0.35, 0.52, 0.685, 0.855, 1].map(v => v * L);
+const f = [0, 0.092, 0.206, 0.35, 0.52, 0.685, 0.855, 1].map(v => v * L);
 
 export const ZONES = [
   { id: 'forest', s0: f[0], s1: f[1], profile: { left: 'forest', right: 'forest' }, water: null,

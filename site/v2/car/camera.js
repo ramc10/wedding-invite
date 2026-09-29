@@ -38,7 +38,7 @@ const CHASE = { yaw: 0.2, dist: 7.6, h: 2.7, lookH: 1.05, lookF: 7 };
 // rear three-quarter, looking down the road ahead: the first frame is the
 // car and the tree-lined road it's about to drive, never the empty ground
 // behind where the road begins
-const TITLE = { yaw: 0.62, dist: 8.4, h: 2.04, lookH: 1.9, lookF: 9 };
+const TITLE = { yaw: 0.38, dist: 12, h: 3.4, lookH: 1.3, lookF: 10 };
 // crane up and back, but keep the parked car small in the lower frame with
 // the road running on into the dusk above it
 const END = { yaw: 0.45, dist: 18, h: 6, lookH: 2, lookF: 55 };
@@ -114,12 +114,12 @@ function update(dt) {
   const pe = 1 - Math.pow(1 - pushIn, 3);
   // bounded orbit: a slow sway round the three-quarter, never wandering off
   // into the trees however long the title sits
-  const orbit = rm ? 0 : Math.sin(time * 0.045) * 0.3 + Math.sin(time * 0.017 + 1.1) * 0.08;
+  const orbit = rm ? 0 : Math.sin(time * 0.045) * 0.15 + Math.sin(time * 0.017 + 1.1) * 0.05;
   // portrait phones: a narrow frame can't hold a wide three-quarter, so come
   // round closer to straight behind and stand further back
   const port = clamp((1 - camera.aspect) / 0.55, 0, 1);
   const tYaw = (TITLE.yaw + orbit - (1 - pe) * 0.35) * (1 - 0.6 * port);
-  const tDist = lerp(TITLE.dist + 3.4, TITLE.dist, pe) * (1 + 0.45 * port);
+  const tDist = lerp(TITLE.dist + 1.5, TITLE.dist, pe) * (1 + 0.45 * port);
 
   const drift = rm || idle < 3.5 ? 0 : Math.sin(time * 0.21) * 0.05;
   const driftH = rm || idle < 3.5 ? 0 : Math.sin(time * 0.17 + 1) * 0.12;
