@@ -26,12 +26,17 @@ function onProgress(e) {
 
 function onReady() {
   if (reveal) reveal.style.strokeDashoffset = '0';
-  // let the brush close its last few degrees before the fade starts
+  // let the brush close its last few degrees, and the names finish writing
+  // themselves in (index.html), before the fade starts
+  const names = document.querySelector('.loader-names');
+  if (names && !names.dataset.doneAt && window.__writeNames) window.__writeNames();   // ready before the font: write now, then wait
+  const writing = names && names.dataset.doneAt ? Math.max(0, +names.dataset.doneAt - performance.now()) : 0;
+  const hold = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.max(450, writing + 350);
   setTimeout(() => {
     root.classList.add('ready');
     if (loader) loader.setAttribute('aria-hidden', 'true');
     setTimeout(() => loader && loader.remove(), 1800);
-  }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450);
+  }, hold);
 }
 
 addEventListener('v2:progress', onProgress);

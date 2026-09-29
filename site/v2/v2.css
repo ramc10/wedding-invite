@@ -44,7 +44,7 @@ html.scroll-locked body { position: fixed; left: 0; right: 0; overflow: hidden; 
 
 #scene {
   position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0;
-  touch-action: pan-y; opacity: 0; transition: opacity .3s linear;   /* the loader's poster does the crossfade */
+  touch-action: pan-y; opacity: 0; transition: opacity .3s linear;   /* the black loader fades off over it */
 }
 html.ready #scene { opacity: 1; }
 #track { position: relative; width: 1px; pointer-events: none; }
@@ -340,8 +340,8 @@ html.ready .cue.gone {
 
 /* -------------------------------------------------------------- credit */
 
-/* CC-BY needs the credit on the page. Always there, quiet mid-drive, fully
-   legible on the loader and at the ending (html.at-end, set by overlays.js). */
+/* CC-BY needs the car's credit on the page: it runs as an end credit, on the
+   ending (html.at-end, set by overlays.js). */
 .credit {
   position: fixed; z-index: 11; margin: 0;
   left: calc(var(--gutter) + env(safe-area-inset-left, 0px));
@@ -356,8 +356,9 @@ html.ready .cue.gone {
 }
 .credit a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(255, 246, 232, .3); }
 .credit a:hover { color: #FFF6E8; border-bottom-color: var(--gold); }
-html.at-end .credit, html:not(.ready) .credit { color: rgba(255, 246, 232, .9); }
-html:not(.ready) .credit { background: none; }
+/* shown on the ending only (the credits, as in a film): hidden on the loader and mid-drive */
+.credit { opacity: 0; visibility: hidden; transition: opacity .8s ease, visibility 0s linear .8s; }
+html.at-end .credit { opacity: 1; visibility: visible; transition: opacity .8s ease; color: rgba(255, 246, 232, .9); }
 
 /* Phones: the venue lines and the credit share the bottom edge, so the credit
    centres under them and the venue slot lifts clear of it. */
@@ -372,15 +373,8 @@ html:not(.ready) .credit { background: none; }
 .loader {
   position: fixed; inset: 0; z-index: 10;
   display: grid; place-items: center; padding: var(--gutter);
-  /* a still of the live title frame (captured from the scene itself), so the
-     invite looks finished from the first paint while the 3D builds behind it */
-  background: #0b0e09 url(assets/poster-land.webp) center / cover no-repeat;
+  background: #000;
   transition: opacity 1.4s ease, visibility 0s linear 1.4s;
-}
-@media (max-aspect-ratio: 1/1) { .loader { background-image: url(assets/poster-port.webp); } }
-.loader::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(90% 70% at 50% 42%, rgba(8, 10, 7, .55) 0%, rgba(8, 10, 7, .25) 60%, rgba(8, 10, 7, .1) 100%);
 }
 .loader-inner { position: relative; }
 html.ready .loader { opacity: 0; visibility: hidden; pointer-events: none; }
@@ -406,6 +400,14 @@ html.ready .loader-inner { transform: scale(1.06); filter: blur(4px); }
   font-size: clamp(2.5rem, 11vw, 3.4rem); line-height: 1.1; color: #FFF6E8;
 }
 .loader-names .amp { font-family: "EB Garamond", Georgia, serif; font-style: italic; font-size: .45em; color: var(--gold); vertical-align: .35em; }
+/* written in: each letter is uncovered left to right, like a pen passing over it
+   (index.html's inline script splits the words and staggers --d) */
+.loader-names .ch, .loader-names .amp { display: inline-block; opacity: 0; clip-path: inset(-40% 100% -40% -20%); }
+.loader-names.writing .ch, .loader-names.writing .amp { animation: ink .42s cubic-bezier(.45, 0, .25, 1) var(--d, 0s) forwards; }
+@keyframes ink {
+  0%   { opacity: .35; clip-path: inset(-40% 100% -40% -20%); filter: blur(1.2px); }
+  100% { opacity: 1;   clip-path: inset(-40% -40% -40% -20%); filter: blur(0); }
+}
 .loader-status {
   margin: 10px 0 0; font-size: .74rem; letter-spacing: .34em; padding-left: .34em; text-transform: uppercase;
   color: rgba(255, 246, 232, .55);
@@ -592,6 +594,7 @@ html.ready .loader-inner { transform: scale(1.06); filter: blur(4px); }
 @media (prefers-reduced-motion: reduce) {
   #scene, .loader, .loader-inner, .hud, .route, .cue, .callout { transition-duration: .01s !important; transition-delay: 0s !important; }
   html.ready .loader-inner { transform: none; filter: none; }
+  .loader-names .ch, .loader-names .amp { opacity: 1; clip-path: none; animation: none !important; }
   .cue, .cue-chev, .cue-finger, .cue-wheel, .callout::after { animation: none !important; }
   html.ready .cue, html.ready .cue.gone { transform: translate(-50%, 0); }
   .callout, .callout.on { transform: translate(-50%, 0); }
