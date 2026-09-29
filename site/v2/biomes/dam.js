@@ -814,7 +814,7 @@ function buildVenue(ctx, M, K, group) {
   const H = (s, l) => world.heightSL(s, l);
   const PY = path.roadY(VENUE.s) + 0.02;               // lot pad level = road level
   const out = { plaster: [], steel: [], glow: [], sign: [], glass: [], conc: [], path: [], kerb: [] };
-  const ssl = range(LOT.s0, LOT.s1, 3), cream = 0xefe4cf;
+  const ssl = range(LOT.s0, LOT.s1, 3), cream = 0xd3ccbf;   // honed stone, as the hall portal
 
   // 17. pad (paved) + lawn overlay
   const pave = new THREE.Mesh(ribbon(ctx, ssl, range(LOT.l0 - 0.4, LOT.l1, 2), () => PY, (s, l) => [s / 10, (l - LOT.l0) / 10]), M.pave);
@@ -841,14 +841,15 @@ function buildVenue(ctx, M, K, group) {
   // painted edge line + a stop line across the apron mouth
   out.conc.push(tint(sweep(ctx, range(CREST_BR, LOT.s1, 2), s => [[3.5, Yr(s) + 0.035], [3.62, Yr(s) + 0.035]], 4, 4), 0xe8e2d4));
 
-  // 18. boundary wall with coping; its sides also retain the pad where the ground falls away
-  const top = PY + 1.9, low = (s, l) => Math.min(H(s, l), PY) - 0.8;
+  // 18. low boundary wall with coping (knee height, so the hall reads from the road); its sides
+  //     also retain the pad where the ground falls away
+  const top = PY + 0.75, low = (s, l) => Math.min(H(s, l), PY) - 0.8;
   for (const s of [LOT.s0, LOT.s1]) out.plaster.push(tint(wallAcross(ctx, s, range(LOT.l0 - 0.5, LOT.l1 + 0.3, 2), () => top, l => low(s, l), 0.35), cream, 0.05, s));
   const wallS = (a, b, l) => {
     const ss = range(a, b, 2);
     out.plaster.push(tint(sweep(ctx, ss, s => [[l - 0.17, low(s, l)], [l - 0.17, top], [l + 0.17, top], [l + 0.17, low(s, l)]], 6, 6), cream, 0.05, a));
-    out.conc.push(tint(sweep(ctx, ss, () => [[l - 0.24, top], [l - 0.24, top + 0.1], [l + 0.24, top + 0.1], [l + 0.24, top]], 6, 6), 0x8a3b2e));
-    for (let s = a + 3; s < b - 1; s += 3) out.plaster.push(tint(place(ctx, box(0.5, top - PY + 0.3, 0.5, 2), s, l, (top + PY) / 2 + 0.05), 0xe4d6bc));
+    out.conc.push(tint(sweep(ctx, ss, () => [[l - 0.24, top], [l - 0.24, top + 0.1], [l + 0.24, top + 0.1], [l + 0.24, top]], 6, 6), 0x38383b));   // charcoal coping
+    for (let s = a + 3; s < b - 1; s += 3) out.plaster.push(tint(place(ctx, box(0.5, top - PY + 0.3, 0.5, 2), s, l, (top + PY) / 2 + 0.05), 0xc9c1b3));
   };
   const G0 = GATE_C - 5, G1 = GATE_C + 5;              // 10 m gate opening facing the pull-over apron
   wallS(LOT.s0, G0 - 0.7, LOT.l0 - 0.4); wallS(G1 + 0.7, LOT.s1, LOT.l0 - 0.4); wallS(LOT.s0, LOT.s1, LOT.l1 + 0.1);
