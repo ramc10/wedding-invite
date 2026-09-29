@@ -191,6 +191,12 @@ function resize() {
 }
 addEventListener('resize', resize);
 
+// ?debug: what this device got (tier, pixel ratio, render scale, fps, GPU), for testing on phones
+const DBG = new URLSearchParams(location.search).has('debug') ? document.body.appendChild(Object.assign(document.createElement('div'), {
+  style: 'position:fixed;left:8px;top:64px;z-index:30;padding:6px 9px;border-radius:8px;background:rgba(0,0,0,.6);color:#fff;font:11px/1.4 ui-monospace,monospace;pointer-events:none;white-space:pre'
+})) : null;
+let dbgT = 0;
+
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
@@ -198,6 +204,10 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   step(dt);
   quality.tick(dt);
+  if (DBG && (dbgT += dt) > 0.5) {
+    dbgT = 0;
+    DBG.textContent = `tier ${quality.tier}  dpr ${quality.dpr}  scale ${quality.scale.toFixed(2)}\nfps ${quality.fps}  ${innerWidth}x${innerHeight}\n${(quality.gpu || 'gpu n/a').slice(0, 40)}`;
+  }
 }
 
 // one frame of the drive (also run behind the loader by warmUp)

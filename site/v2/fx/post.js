@@ -243,7 +243,7 @@ function init(ctx) {
   tier = ctx.quality.tier;
   bloomOn = tier !== 'low';
   aoOn = tier !== 'low';
-  msaa = tier === 'high' ? 4 : 0;
+  msaa = tier === 'high' ? 4 : tier === 'med' ? 2 : 0;   // capable phones get edge smoothing too
   R.toneMapping = THREE.NoToneMapping; // ACES happens in the composite, once
   R.getDrawingBufferSize(size);
   const depthTexture = aoOn ? new THREE.DepthTexture(size.x, size.y, THREE.UnsignedIntType) : null;

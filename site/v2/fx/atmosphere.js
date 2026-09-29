@@ -297,12 +297,16 @@ function init(c) {
   sun = new THREE.DirectionalLight(0xfff4e0, 3);
   scene.add(sun, sun.target);
 
-  // desktop: one sun shadow map fitted ahead of the camera over the car and verge
-  shadows = quality.tier === 'high';
+  // one sun shadow map fitted ahead of the camera over the car and verge
+  // capable phones ('med') too, with a smaller map over a tighter box (about the
+  // same texel size) and plain PCF
+  shadows = quality.tier !== 'low';
   if (shadows) {
-    SMAP = Math.min(4096, renderer.capabilities.maxTextureSize);
+    const med = quality.tier === 'med';
+    if (med) SH = 26;
+    SMAP = Math.min(med ? 2048 : 4096, renderer.capabilities.maxTextureSize);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = med ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     sun.castShadow = true;
     sun.shadow.mapSize.set(SMAP, SMAP);
     const sc = sun.shadow.camera;
