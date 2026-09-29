@@ -399,11 +399,14 @@ html.ready .loader-inner { transform: scale(1.06); filter: blur(4px); }
   margin: 14px 0 0; font-family: "Mrs Saint Delafield", cursive;
   font-size: clamp(2.5rem, 11vw, 3.4rem); line-height: 1.1; color: #FFF6E8;
 }
-.loader-names .amp { font-family: "EB Garamond", Georgia, serif; font-style: italic; font-size: .45em; color: var(--gold); vertical-align: .35em; }
+/* three lines: "Bhavya", "and", "Ramcharan" */
+.loader-names { line-height: 1.02; }
+.loader-names .w { display: block; }
+.loader-names .and { font-family: "EB Garamond", Georgia, serif; font-style: italic; font-size: .34em; letter-spacing: .06em; color: var(--gold); margin: .1em 0 .12em; }
 /* written in: each letter is uncovered left to right, like a pen passing over it
    (index.html's inline script splits the words and staggers --d) */
-.loader-names .ch, .loader-names .amp { display: inline-block; opacity: 0; clip-path: inset(-40% 100% -40% -20%); }
-.loader-names.writing .ch, .loader-names.writing .amp { animation: ink .42s cubic-bezier(.45, 0, .25, 1) var(--d, 0s) forwards; }
+.loader-names .ch { display: inline-block; opacity: 0; clip-path: inset(-40% 100% -40% -20%); }
+.loader-names.writing .ch { animation: ink .42s cubic-bezier(.45, 0, .25, 1) var(--d, 0s) forwards; }
 @keyframes ink {
   0%   { opacity: .35; clip-path: inset(-40% 100% -40% -20%); filter: blur(1.2px); }
   100% { opacity: 1;   clip-path: inset(-40% -40% -40% -20%); filter: blur(0); }
@@ -594,7 +597,7 @@ html.ready .loader-inner { transform: scale(1.06); filter: blur(4px); }
 @media (prefers-reduced-motion: reduce) {
   #scene, .loader, .loader-inner, .hud, .route, .cue, .callout { transition-duration: .01s !important; transition-delay: 0s !important; }
   html.ready .loader-inner { transform: none; filter: none; }
-  .loader-names .ch, .loader-names .amp { opacity: 1; clip-path: none; animation: none !important; }
+  .loader-names .ch { opacity: 1; clip-path: none; animation: none !important; }
   .cue, .cue-chev, .cue-finger, .cue-wheel, .callout::after { animation: none !important; }
   html.ready .cue, html.ready .cue.gone { transform: translate(-50%, 0); }
   .callout, .callout.on { transform: translate(-50%, 0); }
