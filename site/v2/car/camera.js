@@ -55,14 +55,18 @@ const offE = new THREE.Vector3(), offL = new THREE.Vector3();
 const back = new THREE.Vector3(), left = new THREE.Vector3(), tmp = new THREE.Vector3();
 const S = path.sample(0), SA = path.sample(0);
 let vS = 0, curvS = 0, pushIn = 0;
-// event focus: near a venue the chase swings to the far side of the car and
-// aims across it at the set, so the decor on the left isn't left out of frame
-let focusW = 0, focusSide = 0;
-const focusV = new THREE.Vector3(), focusT = new THREE.Vector3();
+// Event focus: approaching a venue, the chase turns its head toward the set
+// (a small shift to the far side of the car, and the aim drawn toward the
+// set). The aim point always stays ahead of the car, sliding along the road
+// with it, and the focus has faded out by the time the set is alongside, so
+// the camera never swings round to look back as the car drives on.
+let focusW = 0, focusSide = 0, focusLat = 0, focusVs = 0;
+const focusV = new THREE.Vector3();
 function focusAt(s) {
   let w = 0, st = null;
   for (const x of STOPS) {
-    const k = smoothstep(x.s - 120, x.s - 60, s) * (1 - smoothstep(x.s + 15, x.s + 50, s));
+    const vs = x.venue.s;
+    const k = smoothstep(vs - 130, vs - 70, s) * (1 - smoothstep(vs - 25, vs + 5, s));
     if (k > w) { w = k; st = x; }
   }
   return { w, st };
@@ -133,22 +137,23 @@ function update(dt) {
   const tYaw = (TITLE.yaw + orbit - (1 - pe) * 0.35) * (1 - 0.6 * port);
   const tDist = lerp(TITLE.dist + 1.5, TITLE.dist, pe) * (1 + 0.45 * port);
 
-  // ease the focus in and out; the target point is the venue, at eye height
+  // focus weight eases in and out slowly; side and lateral are held from the
+  // last venue so nothing flips while it fades
   const F = focusAt(s);
-  if (F.st) {
-    path.toWorld(F.st.venue.s, F.st.venue.lateral, focusT); focusT.y = path.roadY(F.st.venue.s) + 1.6;
-    if (focusW < 0.01) focusV.copy(focusT); else focusV.lerp(focusT, damp(2, dt));
-    focusSide = F.st.venue.lateral < 0 ? -1 : 1;
-  }
-  focusW += (F.w - focusW) * damp(1.2, dt);
+  if (F.st && F.w > 0.001) { focusSide = F.st.venue.lateral < 0 ? -1 : 1; focusLat = F.st.venue.lateral * 0.8; focusVs = F.st.venue.s; }
+  focusW += (F.w - focusW) * damp(0.9, dt);
   const fk = focusW * wC * (rm ? 0.6 : 1);
+  if (fk > 0.001) {
+    const as = clamp(Math.max(focusVs, s + 24), 0, path.length);   // never behind the car
+    path.toWorld(as, focusLat, focusV); focusV.y = path.roadY(as) + 1.6;
+  }
 
   const drift = rm || idle < 3.5 ? 0 : Math.sin(time * 0.21) * 0.05;
   const driftH = rm || idle < 3.5 ? 0 : Math.sin(time * 0.17 + 1) * 0.12;
 
   // venue on the left → camera round to behind-right (negative yaw), and the mirror for the right
-  const yaw = wT * tYaw + wC * (CHASE.yaw - curvS * 6 + drift) + wE * END.yaw + userC.yaw + fk * (focusSide < 0 ? -0.6 : 0.35);
-  const dist = (wT * tDist + wC * (CHASE.dist + sp * 1.4) + wE * END.dist) * (1 + narrow * 0.3) + fk * 1.6;
+  const yaw = wT * tYaw + wC * (CHASE.yaw - curvS * 6 + drift) + wE * END.yaw + userC.yaw + fk * (focusSide < 0 ? -0.28 : 0.12);
+  const dist = (wT * tDist + wC * (CHASE.dist + sp * 1.4) + wE * END.dist) * (1 + narrow * 0.3) + fk * 1.0;
   let h = wT * TITLE.h + wC * (CHASE.h + sp * 0.3 + driftH) + wE * END.h;
   h += userC.pitch * dist * 0.9;
   const lookH = wT * TITLE.lookH + wC * CHASE.lookH + wE * END.lookH;
@@ -170,7 +175,7 @@ function update(dt) {
   look.z += (tmp.z - (car.pos.z + f.z * 18)) * 0.35 * wC;
   look.y = car.pos.y + lookH;
   // aim across the car at the set: further on narrow screens, where less of it fits
-  if (fk > 0) look.lerp(focusV, fk * (0.42 + 0.25 * port));
+  if (fk > 0.001) look.lerp(focusV, fk * (0.38 + 0.22 * port));
 
   // stay inside the cleared corridor (road + shoulder + verge) so the lens
   // never ends up inside a tree or a wall beside the road
