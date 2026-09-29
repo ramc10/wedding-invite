@@ -94,8 +94,11 @@ const A = new THREE.Vector3(), L = new THREE.Vector3();
 function follow() {
   const st = cur.stop, s = car.s, S = path.sample(s);
   const inward = -Math.sign(st.pullover.lateral) || 1;
-  shot.pos.copy(car.pos).addScaledVector(S.fwd, -10.5).addScaledVector(S.right, inward * 4.4);
-  shot.pos.y = path.roadY(s) + 3.3;
+  // pulling away (cur.out 0→1) the shot drifts onto the chase camera's own
+  // spot, behind and a little left, so handing back to it moves nothing
+  const o = smoothstep(0, 1, cur.out);
+  shot.pos.copy(car.pos).addScaledVector(S.fwd, -10.5 + 2.9 * o).addScaledVector(S.right, inward * 4.4 * (1 - o) - 1.5 * o);
+  shot.pos.y = path.roadY(s) + 3.3 - 0.6 * o;
   const g = world.heightAt(shot.pos.x, shot.pos.z) + 1.3;
   if (shot.pos.y < g) shot.pos.y = g;
   A.copy(car.pos).addScaledVector(S.fwd, 12); A.y = path.roadY(s) + 1.4;
@@ -128,7 +131,7 @@ async function go(stop) {
     const sPark = Math.max(stop.park ? stop.park.s : stop.s, s0 + 28);
     const latPark = stop.pullover.lateral;
     detour.carS = s0; detour.carLatExact = lat0;
-    cur = { stop, lookK: 0 };
+    cur = { stop, lookK: 0, out: 0 };
     follow();
     detour.camShot = shot;
 
@@ -147,12 +150,14 @@ async function go(stop) {
     // indicate back, pull away into the lane, hand back to the chase camera
     car.indicate && car.indicate(stop.pullover.side === 'left' ? 'right' : 'left');
     await wait(400);
-    const sOut = sPark + 30;
-    animate(cur, 'lookK', 0, 1.6);
+    const sOut = Math.max(sPark + 30, stop.callout[1] + 4);   // rejoin past the callout, so it doesn't pop back up
+    animate(cur, 'lookK', 0, 2.4);
+    animate(cur, 'out', 1, 4.2);
+    wait(1800).then(() => blendTo(0, 3.2));                 // hand back gradually, during the pull-away
     await drive(sPark, sOut, latPark, car.LANE, 4.2, 'out');
     car.indicate && car.indicate(null);
     scroll.place(sOut);
-    await blendTo(0, 1.4);
+    await blendTo(0, 3.2);
   } finally {
     cur = null;
     detour.camShot = null; shot.w = 0; p = pTarget = 0;

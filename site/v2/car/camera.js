@@ -60,7 +60,7 @@ let vS = 0, curvS = 0, pushIn = 0;
 // set). The aim point always stays ahead of the car, sliding along the road
 // with it, and the focus has faded out by the time the set is alongside, so
 // the camera never swings round to look back as the car drives on.
-let focusW = 0, focusSide = 0, focusLat = 0, focusVs = 0;
+let focusW = 0, focusLat = 0, focusVs = 0;
 const focusV = new THREE.Vector3();
 function focusAt(s) {
   let w = 0, st = null;
@@ -104,7 +104,9 @@ function update(dt) {
   const rm = RM.matches;
   time += dt;
   idle += dt;
-  const s = scroll.s;
+  // where the car actually is: during a detour the page scroll is frozen
+  // behind it, and following that jumped the view when the detour ended
+  const s = detour.carS != null ? detour.carS : scroll.s;
 
   // drag offsets ease home after a few idle seconds
   if (!drag && idle > 3.5) {
@@ -140,7 +142,7 @@ function update(dt) {
   // focus weight eases in and out slowly; side and lateral are held from the
   // last venue so nothing flips while it fades
   const F = focusAt(s);
-  if (F.st && F.w > 0.001) { focusSide = F.st.venue.lateral < 0 ? -1 : 1; focusLat = F.st.venue.lateral * 0.8; focusVs = F.st.venue.s; }
+  if (F.st && F.w > 0.001) { focusLat = F.st.venue.lateral * 0.8; focusVs = F.st.venue.s; }
   focusW += (F.w - focusW) * damp(0.9, dt);
   const fk = focusW * wC * (rm ? 0.6 : 1);
   if (fk > 0.001) {
@@ -152,8 +154,8 @@ function update(dt) {
   const driftH = rm || idle < 3.5 ? 0 : Math.sin(time * 0.17 + 1) * 0.12;
 
   // venue on the left → camera round to behind-right (negative yaw), and the mirror for the right
-  const yaw = wT * tYaw + wC * (CHASE.yaw - curvS * 6 + drift) + wE * END.yaw + userC.yaw + fk * (focusSide < 0 ? -0.28 : 0.12);
-  const dist = (wT * tDist + wC * (CHASE.dist + sp * 1.4) + wE * END.dist) * (1 + narrow * 0.3) + fk * 1.0;
+  const yaw = wT * tYaw + wC * (CHASE.yaw - curvS * 6 + drift) + wE * END.yaw + userC.yaw;
+  const dist = (wT * tDist + wC * (CHASE.dist + sp * 1.4) + wE * END.dist) * (1 + narrow * 0.3) + fk * 0.6;
   let h = wT * TITLE.h + wC * (CHASE.h + sp * 0.3 + driftH) + wE * END.h;
   h += userC.pitch * dist * 0.9;
   const lookH = wT * TITLE.lookH + wC * CHASE.lookH + wE * END.lookH;
@@ -175,7 +177,7 @@ function update(dt) {
   look.z += (tmp.z - (car.pos.z + f.z * 18)) * 0.35 * wC;
   look.y = car.pos.y + lookH;
   // aim across the car at the set: further on narrow screens, where less of it fits
-  if (fk > 0.001) look.lerp(focusV, fk * (0.38 + 0.22 * port));
+  if (fk > 0.001) look.lerp(focusV, fk * (0.34 + 0.22 * port));
 
   // stay inside the cleared corridor (road + shoulder + verge) so the lens
   // never ends up inside a tree or a wall beside the road
