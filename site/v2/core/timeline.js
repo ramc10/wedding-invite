@@ -23,10 +23,10 @@ const at = (id, u) => Z[id].s0 + (Z[id].s1 - Z[id].s0) * u;
 // negative = left/sea side) and s ± len/2. biomes/events/*.js build them,
 // and the beach legs keep their palms, grass and props off these footprints.
 export const EVENTS = {
-  board:     { s: 572, lateral: 9.5 },
-  reception: { s: 730, lat: [-7.4, -21], len: 30 },
-  haldi:     { s: 990, lat: [-7.4, -21], len: 26 },
-  muhurtham: { s: 1200, lat: [-7.4, -21], len: 28 }
+  board:     { s: 442, lateral: 9.5 },
+  reception: { s: 600, lat: [-7.4, -21], len: 30 },
+  haldi:     { s: 860, lat: [-7.4, -21], len: 26 },
+  muhurtham: { s: 1070, lat: [-7.4, -21], len: 28 }
 };
 /** Each beach event has a paved forecourt (court) at road level just before
  *  its deck, where "Take me here" drives the car in (car/detour.js): off the

@@ -580,10 +580,12 @@ export default {
     group.add(sandBeach(ctx, { s0: s0 - 25, s1: s1 + 20, wallLat: WALL - 0.2, fadeIn: 30, fadeOut: 25 }));
     T('sand');
     // Beach Road parapet + railing
-    // open where the Reception court meets the promenade: the car drives in there
-    const gap = COURTS.reception;
-    group.add(seaWall(ctx, { s0: s0 + 8, s1: gap.s0 - 0.5, lat: WALL }));
-    group.add(seaWall(ctx, { s0: gap.s1 + 0.5, s1: s1 + 10, lat: WALL }));
+    // open wherever a venue's court meets the promenade: the car drives in there
+    const gaps = Object.values(COURTS).filter(c => c.s1 > s0 && c.s0 < s1 + 10).sort((a, b) => a.s0 - b.s0);
+    const runs = []; let w0 = s0 + 8;
+    for (const c of gaps) { runs.push([w0, c.s0 - 0.5]); w0 = c.s1 + 0.5; }
+    runs.push([w0, s1 + 10]);
+    for (const [a, b] of runs) if (b - a > 2) group.add(seaWall(ctx, { s0: a, s1: b, lat: WALL }));
 
     T('wall');
     // coconut palms in loose clumps on the dunes, leaning seaward; a grove on the right
@@ -629,8 +631,9 @@ export default {
     T('dune');
     // the city side of Beach Road, and its street lamps
     group.add(beachBlocks(ctx, { s0: s0 + 20, s1: s1 - 10 }));
-    group.add(promenadeLamps(ctx, { s0: s0 + 16, s1: COURTS.reception.s0 - 3, lat: WALL + 0.45 }));
-    group.add(promenadeLamps(ctx, { s0: COURTS.reception.s1 + 3, s1, lat: WALL + 0.45 }));
+    { let l0 = s0 + 16;
+      for (const c of gaps) { if (c.s0 - 3 - l0 > 4) group.add(promenadeLamps(ctx, { s0: l0, s1: c.s0 - 3, lat: WALL + 0.45 })); l0 = c.s1 + 3; }
+      if (s1 - l0 > 4) group.add(promenadeLamps(ctx, { s0: l0, s1, lat: WALL + 0.45 })); }
 
     T('city');
     // rocks at the tide line, clustered in a couple of reefs

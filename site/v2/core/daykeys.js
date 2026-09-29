@@ -22,7 +22,7 @@ const R = EVENTS.reception.s, H = EVENTS.haldi.s, M = EVENTS.muhurtham.s;
 // The one full-turn wrap back to plain degrees sits in deep night (−14°),
 // where every direction-dependent term is off (fx/atmosphere.js).
 export const BEACH_KEYS = [
-  { s: 560, sun: [30, -60], exposure: 1.0 },          // afternoon on Beach Road, past the hotel board
+  { s: 430, sun: [30, -60], exposure: 1.0 },          // afternoon on Beach Road, past the hotel board
   { s: R - 95, sun: [4, -290], exposure: 0.95 },      // sunset behind the city (right), reached round the back
   { s: R - 72, sun: [-5, -292], exposure: 0.95 },     // sets where it stands; afterglow
   { s: R - 45, sun: [-14, -390], exposure: 1.0 },     // night falls (swings below the horizon)
