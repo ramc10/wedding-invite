@@ -54,14 +54,18 @@ function animate(obj, key, to, seconds) {
  * away gently, rolls to a stop). The car's yaw is the curve's own tangent,
  * so it steers through the turns instead of sliding. */
 const routeCurve = pts => new THREE.CatmullRomCurve3(pts.map(([s, l]) => new THREE.Vector3(s, 0, l)), false, 'centripetal');
-const RP = new THREE.Vector3(), RT = new THREE.Vector3();
+const RP = new THREE.Vector3(), RT = new THREE.Vector3(), RQ = new THREE.Vector3();
 function driveRoute(curve, T) {
   return new Promise(res => {
     const t0 = performance.now();
     const step = now => {
       const u = clamp((now - t0) / 1000 / T, 0, 1);
       const e = u * u * u * (u * (u * 6 - 15) + 10);           // smootherstep
-      curve.getPointAt(e, RP); curve.getTangentAt(e, RT);
+      curve.getPointAt(e, RP);
+      // heading from a 3 m chord round the car, not the curve's exact tangent: the spline through
+      // 1 m route points ripples between them, and the car's nose wiggled with it
+      const L = curve.getLength(), d = Math.min(1.5 / L, 0.5);
+      curve.getPointAt(Math.max(0, e - d), RT); RQ.copy(RT); curve.getPointAt(Math.min(1, e + d), RT); RT.sub(RQ);
       detour.carS = RP.x; detour.carLatExact = RP.z;
       detour.carYaw = -Math.atan2(RT.z, RT.x);
       u < 1 ? requestAnimationFrame(step) : res();
@@ -92,22 +96,44 @@ function chaseSpot(s, out, look) {
   path.toWorld(s - 7.5, car.LANE - 1.5, out); out.y = path.roadY(s) + 2.7;
   if (look) { path.toWorld(s + 7, car.LANE, look); look.y = path.roadY(s) + 1.05; }
 }
+/* The camera path is planned in road coordinates {s, l, h} (along the road, lateral, height above it),
+ * then placed with path.toWorld, which is continuous. Going in it glides from where the chase camera
+ * was to the crane; coming out, from the crane to a point that follows the car (7.5 m behind it, just
+ * road-side of it, chase height), ending exactly on the chase camera's own spot. Two rules shape it:
+ *  - it stays at least 7.5 m behind the car along the road (eased in, never a hard stop);
+ *  - alongside a beach venue's deck (stop.keepOut) it stays on the road side of the deck line, so it
+ *    never sweeps through the tent, poles and lights (it did, straight-line gliding out: the "shake"). */
+const RC = { s: 0, l: 0, h: 0 };
 function crane(dt) {
-  const e = smoothstep(0, 1, cur.u);
-  shot.pos.lerpVectors(cur.from, cur.to, e);
-  shot.pos.y += Math.sin(Math.PI * e) * 2;   // a gentle arc over roadside trees mid-glide
-  // never crowd or overtake the car: hold the camera at least 8 m behind it along the road. Measured
-  // continuously against the road's direction at the car (path.nearest snaps to 0.5 m steps, and the
-  // clamped camera stepped with it: visible judder on the way out), and eased in rather than a hard stop
-  path.sample(car.s, _smp);
-  const along = (shot.pos.x - car.pos.x) * _smp.fwd.x + (shot.pos.z - car.pos.z) * _smp.fwd.z;
-  const over = along + 8;
-  if (over > -2) { const push = over > 0 ? over + 1 : (over + 2) * (over + 2) / 4; shot.pos.addScaledVector(_smp.fwd, -push); }
+  const A = cur.fromRC, st = cur.stop;
+  if (!cur.out) {
+    const e = smoothstep(0, 1, cur.u), B = cur.toRC;
+    RC.s = A.s + (B.s - A.s) * e; RC.l = A.l + (B.l - A.l) * e;
+    RC.h = A.h + (B.h - A.h) * e + Math.sin(Math.PI * e) * 2;   // a gentle arc over roadside trees mid-glide
+  } else {
+    // out: first rise and drift out over the road while still beside the drop-off (P1), then come
+    // down behind the car along the road (B, which ends exactly on the chase camera's spot). The
+    // camera never passes back over the venue, its canopy, poles or lights.
+    const P1 = { s: A.s + 3, l: 1.2, h: 6.2 }, B = { s: car.s - 7.5, l: Math.min(car.lateral, car.LANE) - 1.5, h: 2.7 };
+    const e1 = smoothstep(0, 0.45, cur.u), e2 = smoothstep(0.35, 1, cur.u);
+    const s1 = A.s + (P1.s - A.s) * e1, l1 = A.l + (P1.l - A.l) * e1, h1 = A.h + (P1.h - A.h) * e1;
+    RC.s = s1 + (B.s - s1) * e2; RC.l = l1 + (B.l - l1) * e2; RC.h = h1 + (B.h - h1) * e2;
+  }
+  const over = RC.s - (car.s - 7.5);
+  if (over > -2) RC.s -= over > 0 ? over + 1 : (over + 2) * (over + 2) / 4;
+  if (st.keepOut) {
+    const w = smoothstep(st.keepOut.s0 - 8, st.keepOut.s0, RC.s);
+    if (RC.l < st.keepOut.l) RC.l += (st.keepOut.l - RC.l) * w;
+  }
+  path.toWorld(RC.s, RC.l, shot.pos);
+  shot.pos.y = Math.max(path.roadY(RC.s) + RC.h, world.heightAt(shot.pos.x, shot.pos.z) + 1.2);
   AIM.copy(car.pos); AIM.y += 1.2;
   AIM.lerp(FOC, 0.35 + 0.45 * smoothstep(0, 1, cur.lookK));
   if (cur.outK > 0) { chaseSpot(car.s, CH, FOC2); AIM.lerp(FOC2, smoothstep(0, 1, cur.outK)); }
   if (cur.fresh) { cur.fresh = false; } else shot.look.lerp(AIM, damp(2.4, dt));
 }
+/** a world position in road coordinates (used once per glide, never per frame) */
+function toRC(v) { const n = path.nearest(v.x, v.z); return { s: n.s, l: n.lateral, h: v.y - path.roadY(n.s) }; }
 const FOC2 = new THREE.Vector3();
 
 async function go(stop) {
@@ -129,10 +155,10 @@ async function go(stop) {
     detour.carGround = stop.ground || null;
     aimCrane(stop);
     // start the shot exactly on the chase camera, so taking over moves nothing
-    cur = { stop, lookK: 0, outK: 0, u: 0, from: new THREE.Vector3(), to: CAM.clone(), fresh: true };
-    cur.from.copy(camObj.position);
+    cur = { stop, lookK: 0, outK: 0, u: 0, out: false, fresh: true,
+      fromRC: toRC(camObj.position), toRC: { s: stop.cam.s, l: stop.cam.lateral, h: CAM.y - path.roadY(stop.cam.s) } };
     shot.look.copy(camObj.position).add(camObj.getWorldDirection(AIM).multiplyScalar(20));
-    shot.pos.copy(cur.from);
+    shot.pos.copy(camObj.position);
     p = pTarget = 1; shot.w = 1;
     detour.camShot = shot;
 
@@ -153,7 +179,7 @@ async function go(stop) {
     const Tout = clamp(cout.getLength() / 6.5, 5, 9);
     const sOut = stop.route.out[stop.route.out.length - 1][0];
     // glide from the crane to the chase camera's own spot behind the car in its lane
-    cur.from.copy(CAM); chaseSpot(sOut, cur.to); cur.u = 0;
+    cur.fromRC = { ...cur.toRC }; cur.out = true; cur.u = 0;
     animate(cur, 'lookK', 0, Tout * 0.5);
     wait(Tout * 250).then(() => animate(cur, 'u', 1, Tout * 0.75));
     wait(Tout * 350).then(() => animate(cur, 'outK', 1, Tout * 0.65));
