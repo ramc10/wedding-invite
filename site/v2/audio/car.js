@@ -71,8 +71,9 @@ export const carSound = {
     rev += (target - rev) * Math.min(1, dt * 3);
     const move = smoothstep(0.3, 3, v);
     if (engineOn) {
-      idle.level(0.75 * (1 - move), 0.25);
-      cruise.level((0.45 + 0.35 * Math.max(0, load)) * move, 0.25);
+      // parked it's a soft idle; on the move the engine carries the car and grows with speed and throttle
+      idle.level(0.5 * (1 - move), 0.25);
+      cruise.level((0.6 + 0.5 * smoothstep(3, 30, v) + 0.45 * Math.max(0, load)) * move, 0.2);
     } else { idle.level(0, 0.15); cruise.level(0, 0.15); }
     cruise.rate(rev);
     idle.rate(0.95 + 0.1 * move);

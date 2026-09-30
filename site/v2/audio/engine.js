@@ -32,7 +32,7 @@ export function start() {
   eng.master = ctx.createGain();
   eng.master.gain.value = 0;
   eng.master.connect(comp).connect(ctx.destination);
-  for (const [k, v] of Object.entries({ nature: 0.9, car: 0.55, events: 0.8 })) {
+  for (const [k, v] of Object.entries({ nature: 0.9, car: 0.75, events: 0.8 })) {
     const g = eng.bus[k] = ctx.createGain();
     g.gain.value = v;
     g.connect(eng.master);
