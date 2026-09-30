@@ -22,6 +22,7 @@ import { car } from './car/car.js';
 import { cam } from './car/camera.js';
 import { detour } from './car/detour.js';
 import { fx as petals } from './fx/petals.js';
+import { fauna } from './biomes/fauna.js';
 import { sound } from './audio/index.js';
 import { ui } from './ui/index.js';
 import { quality } from './core/quality.js';
@@ -99,6 +100,7 @@ async function boot() {
   cam.init(ctx);
   detour.init(ctx);
   petals.init(ctx);
+  fauna.init(ctx);
   post.init(ctx);
   ui.init(ctx);
   progress(0.82);
@@ -244,6 +246,7 @@ function step(dt) {
     if (vis && g.update) g.update(dt, s, camera);
   }
   petals.update(dt, s);
+  fauna.update(dt, s);
   sound.update(dt, s);
   ui.update(dt, s);
 

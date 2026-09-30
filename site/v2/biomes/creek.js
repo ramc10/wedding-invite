@@ -1,4 +1,4 @@
-/* Zone 'creek' (s 2172–2540): the dusk "The Beginning" ending. A country road at
+/* Zone 'creek' (s 2067–2430): the dusk "The Beginning" ending. A country road at
  * dusk with a stream winding through the meadow on the right, forest on the left.
  *
  * Objects (draw calls in brackets):
@@ -64,10 +64,10 @@ const HW = 2.2; // stream half width (nominal)
 // the real half width breathes: pools and narrows, so the banks don't run ruler-straight
 const hwAt = s => HW + 0.55 * Math.sin(s * 0.043 + 0.7) + 0.3 * Math.sin(s * 0.117 + 2.1);
 // the open crop field right of the stream
-const FIELD = { s0: 2345, s1: 2470, near: 6, far: 62 };
+const FIELD = { s0: 2235, s1: 2360, near: 6, far: 62 };
 const inField = (s, lat) => s > FIELD.s0 - 4 && s < FIELD.s1 + 4 && lat > creekLat(s) + FIELD.near - 2 && lat < creekLat(s) + FIELD.far + 4;
 // the footbridge
-const BRIDGE_S = 2322;
+const BRIDGE_S = 2212;
 
 // keep trees off the stream band, the field and the venue lot
 const offCreek = place => (R, i) => {

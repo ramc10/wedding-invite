@@ -1,4 +1,4 @@
-/* Zone 'hills' (s 1321–1740, golden hour) — an Eastern-Ghats hill road.
+/* Zone 'hills' (s 1324–1634, golden hour) — an Eastern-Ghats hill road.
  *
  * Objects (draw calls in brackets, all built in road space and grounded on
  * gH(), which is world.heightSL raised over the road cuttings):
@@ -30,18 +30,18 @@ const TIER = { low: 0.45, med: 0.7, high: 1 };
 /* ---------- road cuttings: where the road is cut into the hillside ---------- */
 // side: -1 left, +1 right; H: peak face height (m)
 const CUTS = [
-  { a: 1372, b: 1482, side: -1, H: 6.5 },
-  { a: 1512, b: 1566, side: 1, H: 3.6 },
-  { a: 1588, b: 1712, side: 1, H: 7.5 }
+  { a: 1357, b: 1437, side: -1, H: 6.5 },
+  { a: 1458, b: 1498, side: 1, H: 3.6 },
+  { a: 1514, b: 1605, side: 1, H: 7.5 }
 ];
 const D0 = 7.0;            // |lateral| of the cut foot (beyond gravel + drain)
 const BATTER = 0.3;        // face lean: metres back per metre up
 // valley-side spans that get a crash barrier / parapet (opposite the cuts)
 const BARRIERS = [
-  { a: 1380, b: 1476, side: 1, kind: 'beam' },
-  { a: 1596, b: 1706, side: -1, kind: 'beam' },
-  { a: 1518, b: 1562, side: -1, kind: 'beam' },
-  { a: 1334, b: 1364, side: 1, kind: 'beam' }
+  { a: 1363, b: 1432, side: 1, kind: 'beam' },
+  { a: 1520, b: 1600, side: -1, kind: 'beam' },
+  { a: 1463, b: 1495, side: -1, kind: 'beam' },
+  { a: 1329, b: 1351, side: 1, kind: 'beam' }
 ];
 const BAR_LAT = 5.35;
 
@@ -60,7 +60,7 @@ export default {
     group.name = 'hills';
     const k = TIER[quality.tier] ?? 1;
     const n = v => Math.max(1, Math.round(v * k));
-    const s0 = z.s0 - z.blend / 2, s1 = Math.min(z.s1 + z.blend / 2, 1760);
+    const s0 = z.s0 - z.blend / 2, s1 = Math.min(z.s1 + z.blend / 2, 1650);
 
     // cutting top height at (s, lat), or -Infinity outside any cutting
     const cutTop = (s, lat) => {
@@ -645,10 +645,10 @@ function buildSigns(env) {
     return [cpart(g, 0xffffff, {}), cpart(back, 0x8a8a88, {})];
   };
   const warn = (s, lat, slot, flip = 0) => { for (const g of [...tri(slot), signPost(2.3)]) place(g, s, lat, 0.25 * Math.sign(lat) * -1 + flip); };
-  warn(1352, -6.3, 1);            // left curve ahead (uphill, cut on the left)
-  warn(1575, -6.3, 0);            // right curve ahead
-  warn(1655, -6.3, 3);            // tight right bend
-  warn(1492, 6.3, 0, Math.PI);    // for downhill traffic: we see its back
+  warn(1342, -6.3, 1);            // left curve ahead (uphill, cut on the left)
+  warn(1505, -6.3, 0);            // right curve ahead
+  warn(1563, -6.3, 3);            // tight right bend
+  warn(1444, 6.3, 0, Math.PI);    // for downhill traffic: we see its back
   // chevrons along the outside of the bends, on the barrier line
   for (const B of BARRIERS) {
     if (B.kind !== 'beam') continue;
@@ -677,9 +677,9 @@ function buildSigns(env) {
     }
     place(cpart(g, 0xffffff), s, lat, Math.sign(lat) * 0.2);
   };
-  stone(0, 1346, -6.2, 0.5, 0.8);
-  stone(1, 1346.6, 6.2, 0.5, 0.8);
-  stone(2, 1546, -6.2, 0.3, 0.48);
+  stone(0, 1338, -6.2, 0.5, 0.8);
+  stone(1, 1338.2, 6.2, 0.5, 0.8);
+  stone(2, 1483, -6.2, 0.3, 0.48);
   const mat = new THREE.MeshStandardMaterial({ map: signAtlas(), vertexColors: true, roughness: 0.6, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(mergeGeo(parts), mat);
   mesh.name = 'hills:signs'; mesh.castShadow = mesh.receiveShadow = true;
@@ -708,10 +708,10 @@ const POLE_ATTACH = [[-0.72, 7.78], [0.72, 7.78], [0, 8.18]];
 
 function buildPoles(env) {
   const { path, group, gH } = env;
-  // run on the valley side, crossing the road once (s 1525 → 1565)
+  // run on the valley side, crossing the road once (s 1468 → 1497)
   const poles = [];
-  for (let s = 1326; s <= 1528; s += 40) poles.push({ s, lat: 7.8 });
-  for (let s = 1566; s <= 1728; s += 41) poles.push({ s, lat: -7.9 });
+  for (let s = 1323; s <= 1470; s += 40) poles.push({ s, lat: 7.8 });
+  for (let s = 1498; s <= 1618; s += 41) poles.push({ s, lat: -7.9 });
   for (const P of poles) { P.y = gH(P.s, P.lat); P.yaw = 0; P.sc = 1; P.tint = 0xffffff; }
   const mat = new THREE.MeshStandardMaterial({ map: grimeTex(), vertexColors: true, roughness: 0.85 });
   instance(env, poleGeo(), mat, poles, 'poles', { headingYaw: true });
@@ -754,7 +754,7 @@ function buildFurniture(env) {
 
 function buildRidges(env) {
   const { path, group } = env;
-  const C = path.toWorld(1540, 0), h0 = path.sample(1540).heading, baseY = path.roadY(1540);
+  const C = path.toWorld(1479, 0), h0 = path.sample(1479).heading, baseY = path.roadY(1479);
   const P = [], Cc = [], I = [];
   const LAYERS = [
     { R: 420, H: 55, col: 0x55603f, f: 3.0, seed: 1 },

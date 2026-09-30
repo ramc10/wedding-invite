@@ -18,7 +18,10 @@ import { clamp, smoothstep } from './noise.js';
 import { path } from './path.js';
 
 const L = path.length;
-const f = [0, 0.069, 0.1545, 0.35, 0.52, 0.685, 0.855, 1].map(v => v * L);
+// Zone boundaries in metres: fractions of the road as first laid out (L0 m). The hills leg was
+// then shortened by HILLS_CUT m (core/path.js), which moved the dam and the creek back by as much.
+const L0 = 2546, HILLS_CUT = 110;
+const f = [...[0, 0.069, 0.1545, 0.35, 0.52].map(v => v * L0), 0.685 * L0 - HILLS_CUT, 0.855 * L0 - HILLS_CUT, L];
 
 export const ZONES = [
   { id: 'forest', s0: f[0], s1: f[1], profile: { left: 'forest', right: 'forest' }, water: null,
