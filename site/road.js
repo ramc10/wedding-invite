@@ -828,6 +828,9 @@
        * the tap — the car drives there first, then the sheet opens (see
        * Detour); without one, the href above still opens the map. */
       var sheet = Sheets.find(l.url);
+      a.addEventListener('click', function () {
+        window.track('take_me_here', { venue: (l.url.match(/query=([^&]+)/) || [, l.url])[1].replace(/\+/g, ' ') });
+      });
       if (sheet) {
         a.setAttribute('aria-label', 'Event details');
         a.addEventListener('click', function (e) { e.preventDefault(); Detour.go(l.url, sheet); });

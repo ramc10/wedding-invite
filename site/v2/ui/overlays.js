@@ -42,6 +42,7 @@ function init(ctx) {
 async function go(stop, el) {
   if (busy) return;
   busy = true;
+  window.track('take_me_here', { venue: stop.id });
   try {
     detourMod = detourMod || (await import('../car/detour.js')).detour;
     await detourMod.go(stop);
