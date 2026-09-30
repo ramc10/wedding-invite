@@ -15,11 +15,11 @@ import { loop, unload } from './engine.js';
 // file → { vol, pan, zones: {zoneId: level} }
 const LAYERS = {
   'forest-birds': { vol: 0.8, pan: 0.15, bird: true, zones: { forest: 1, hills: 0.35, creek: 0.25 } },
-  'garden-birds': { vol: 0.8, pan: 0.25, bird: true, zones: { garden: 1, 'garden-beach': 0.3 } },
+  'garden-birds': { vol: 1.3, pan: 0.25, bird: true, zones: { garden: 1, 'garden-beach': 0.3 } },
   shore:          { vol: 0.9, pan: -0.6, zones: { 'garden-beach': 1, cove: 0.45, dam: 0.12 } },
   'sea-wind':     { vol: 0.6, pan: -0.3, zones: { 'garden-beach': 0.6, cove: 0.7 } },
   'cove-rocks':   { vol: 0.85, pan: -0.55, zones: { cove: 1 } },
-  'hills-wind':   { vol: 0.7, pan: 0.2, zones: { hills: 1, cove: 0.25, dam: 0.35 } },
+  'hills-wind':   { vol: 1.1, pan: 0.2, zones: { hills: 1, cove: 0.25, dam: 0.35 } },
   'water-rush':   { vol: 0.75, pan: 0.5, zones: { dam: 1 } },
   stream:         { vol: 0.8, pan: -0.35, zones: { creek: 1, forest: 0.2 } },
   crickets:       { vol: 0.7, pan: 0, night: true, zones: { creek: 1, dam: 0 } }

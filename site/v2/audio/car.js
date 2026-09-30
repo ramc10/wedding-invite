@@ -20,6 +20,7 @@ import { eng, load, loop, shot, noiseLoop } from './engine.js';
 const PERIOD = 0.8, ON = 0.42;   // car.js updateLamps
 let idle, cruise, road, wind, lp, ready = false;
 let blink = null, blinkT = 0, engineOn = true, rev = 0.8;
+const qa = { ticks: 0, tocks: 0 };   // counts, for debug()
 
 // wrap the indicator: same reset car.js does, so both clocks start together
 const indicate0 = car.indicate;
@@ -31,6 +32,7 @@ car.indicate = side => {
 
 const PANS = { left: -0.35, right: 0.35, both: 0 };
 function tick(on, when) {
+  qa[on ? 'ticks' : 'tocks']++;
   shot(on ? 'car/tick.mp3' : 'car/tock.mp3', 'car', { gain: on ? 0.55 : 0.4, pan: PANS[blink] || 0, when });
 }
 
@@ -69,13 +71,13 @@ export const carSound = {
     rev += (target - rev) * Math.min(1, dt * 3);
     const move = smoothstep(0.3, 3, v);
     if (engineOn) {
-      idle.level(0.5 * (1 - move), 0.25);
-      cruise.level((0.28 + 0.2 * Math.max(0, load)) * move, 0.25);
+      idle.level(0.75 * (1 - move), 0.25);
+      cruise.level((0.45 + 0.35 * Math.max(0, load)) * move, 0.25);
     } else { idle.level(0, 0.15); cruise.level(0, 0.15); }
     cruise.rate(rev);
     idle.rate(0.95 + 0.1 * move);
     lp.frequency.setTargetAtTime(700 + 2600 * clamp(0.3 * move + 0.7 * Math.max(0, load) + 0.3 * smoothstep(10, 40, v), 0, 1), eng.ctx.currentTime, 0.15);
-    road.level(0.55 * smoothstep(1, 22, v), 0.2);
+    road.level(0.4 * smoothstep(1, 22, v), 0.2);
     road.rate(0.85 + 0.3 * smoothstep(5, 40, v));
     wind.level(0.18 * smoothstep(12, 45, v) ** 1.5, 0.3);
   },
@@ -94,5 +96,5 @@ export const carSound = {
     shot('car/engine-start.mp3', 'car', { gain: 0.65, when: 0.5 });
     setTimeout(() => { engineOn = true; }, 1600);
   },
-  debug: () => ready ? `rev ${rev.toFixed(2)} idle ${idle.target.toFixed(2)} cruise ${cruise.target.toFixed(2)} road ${road.target.toFixed(2)} wind ${wind.target.toFixed(2)} blink ${blink} on ${engineOn}` : 'not started'
+  debug: () => ready ? `rev ${rev.toFixed(2)} idle ${idle.target.toFixed(2)} cruise ${cruise.target.toFixed(2)} road ${road.target.toFixed(2)} wind ${wind.target.toFixed(2)} blink ${blink} on ${engineOn} ticks ${qa.ticks}/${qa.tocks} blinkT ${blinkT.toFixed(2)}` : 'not started'
 };

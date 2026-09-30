@@ -1,0 +1,69 @@
+[
+  {
+    "file": "reception.mp3",
+    "purpose": "Reception (evening, beach-side): crowd murmur, glass clinks, faint Indian bamboo flute. Stereo loop, 38.2 s, RMS -24.",
+    "freesound_id": 133819,
+    "url": "https://freesound.org/s/133819/",
+    "author": "ecfike",
+    "license": "CC0",
+    "start": 2.0,
+    "len": 38.2,
+    "layers": [
+      {"freesound_id": 44337, "url": "https://freesound.org/s/44337/", "author": "ananth-pattabi", "license": "CC-BY 4.0", "start": 31.5, "gain_db": -10, "role": "bamboo flute (Indian), band-limited 200 Hz-6 kHz with a light echo so it reads as distant live music"},
+      {"freesound_id": 567248, "url": "https://freesound.org/s/567248/", "author": "cabled_mess", "license": "CC0", "role": "9 isolated glass clinks (0.9 s each) placed every 3.5-5 s, -4 to -10 dB, panned across the field"}
+    ],
+    "notes": "Base is a real wedding-reception crowd (Zoom H4n, author says loopable): dense, even walla, no single foreground voice in the spectrogram, 4-pole high-pass at 140 Hz to lose mic rumble. Flute loop seam placed on breath gaps (source 33.5 s / 71.7 s) so the crossfade does not cut a phrase. Rejected: 451596 (indoor hall, loud burst at 80-90 s), 72848 (actors improvising a posh English dinner party, intelligible speech), 850373 clinks (clipped, peaks over 0 dBFS), 125655 veena (very uneven level). Mix built with a numpy premix, then mkloop. Attribution needed for the flute (CC-BY)."
+  },
+  {
+    "file": "haldi.mp3",
+    "purpose": "Haldi (daytime, joyful): street dhol with an Indian folk song and cymbals, women's laughter, ghungroo (anklet bells). Stereo loop, 28.04 s, RMS -24.",
+    "freesound_id": 728135,
+    "url": "https://freesound.org/s/728135/",
+    "author": "deep_",
+    "license": "CC0",
+    "start": 0.3,
+    "len": 28.04,
+    "layers": [
+      {"freesound_id": 438419, "url": "https://freesound.org/s/438419/", "author": "craigsmith", "license": "CC0", "role": "3 laughter bursts (3.5 s, src 14.0/52.5/24.5 s) at about 6 dB under the music, panned"},
+      {"freesound_id": 700521, "url": "https://freesound.org/s/700521/", "author": "bashrambali", "license": "CC0", "role": "3 ghungroo jingles (src 2/22/30 s), quiet, panned"}
+    ],
+    "notes": "Source is a real Holi street performance recorded in India (dhol, sung folk song, hand cymbals): unmistakably Indian and festive, no clipping (peak -3 dBFS). It is a mono phone recording, so the laughter and ghungroo layers are panned to give it width. Loop is 11 song cycles (period 2.56 s) with the best seam score. WEAK POINT: the music lasts only about 34 s, so the loop is 28 s, just under the 30 s target, and it is a phone recording, not studio quality. No usable dholak-and-women-singing (sangeet/haldi) recording exists on Freesound under CC0/CC-BY. Rejected: 418780 Indian Wedding Dhols (heavily clipped, +3 dBFS), 272178 Goa Holi drums (boomy, procession rather than gathering), 865161 dholak jam (dry and aimless), 175435 bangles (too quiet and hissy to use)."
+  },
+  {
+    "file": "muhurtham.mp3",
+    "purpose": "Muhurtham (emotional peak): mangala vadyam, two nadaswarams with thavil and shruti drone, recorded at a real Hindu wedding in Chennai. Stereo loop, 36.48 s, RMS -24.",
+    "freesound_id": 320245,
+    "url": "https://freesound.org/s/320245/",
+    "author": "xserra",
+    "license": "CC-BY 4.0",
+    "start": 112.8,
+    "len": 36.48,
+    "notes": "Exactly the target sound: the author describes it as music at a Hindu wedding in Chennai, 'two nadaswaram accompanied by a thavil' (Sony PCM-D50). Window is 112.8-153.3 s, inside the steady section (91-168 s), which avoids the near-clipping gatti melam roll at 170-178 s and the pause at 80 s. The spectrogram shows continuous nadaswaram melody with gamakas over the thavil strokes and the drone. The seam was chosen by spectral match (best score of the candidates, 0.45) and shows no melodic break. Peak -1.5 dBFS after gain. Alternative kept in mind: 683487 (psubhashish, CC-BY 4.0, Gangireddu/Kole Basava nadaswaram, Bengaluru; start 55.8 len 35.94 builds cleanly). It is cleaner and more melody-forward but almost nothing below 250 Hz (no thavil weight), and it is a door-to-door street tradition, not wedding music. Attribution needed (CC-BY)."
+  },
+  {
+    "file": "dawat.mp3",
+    "purpose": "Dawat (dinner at convention hall): busy Indian restaurant chatter, plates and cutlery, faint kitchen sizzle. Stereo loop, 44 s, RMS -24.",
+    "freesound_id": 508874,
+    "url": "https://freesound.org/s/508874/",
+    "author": "SoundEnsemble",
+    "license": "CC0",
+    "start": 30.0,
+    "len": 44.0,
+    "layers": [
+      {"freesound_id": 325558, "url": "https://freesound.org/s/325558/", "author": "burkay", "license": "CC0", "start": 8.0, "gain_db": -3, "role": "dinner party recorded from above: cutlery and plate clinks plus murmur"},
+      {"freesound_id": 862622, "url": "https://freesound.org/s/862622/", "author": "bassimat", "license": "CC0", "start": 5.0, "gain_db": -12, "role": "steady pan sizzle, high-passed at 1.2 kHz (4-pole) so only the fizz remains, about 11 dB under the room in the highs"}
+    ],
+    "notes": "Base is a busy south Indian restaurant in Delhi (Zoom H2n), with Indian voices and an even level (-26 to -31 dBFS per 5 s). Cutlery clinks are clearly visible as broadband ticks throughout. The loop is level-flat (-21 to -25 per 2 s) with no one-off bangs. Rejected: 72848 (English theatre improvisation), 480724 (level drifts by 10 dB), 432151/563892 sizzles (clunks, birds). 325558 may carry some English murmur, but it sits 3 dB under the Hindi room and is not intelligible in the spectrogram."
+  },
+  {
+    "file": "arrive.mp3",
+    "purpose": "Event-card open: one soft handbell strike with natural decay. Stereo one-shot, 3.6 s, peak -6 dBFS.",
+    "freesound_id": 448510,
+    "url": "https://freesound.org/s/448510/",
+    "author": "Faranta",
+    "license": "CC0",
+    "start": 0.0,
+    "len": 3.6,
+    "notes": "Single clean strike of a small handbell (G, fundamental about 1.58 kHz, gentle beating shimmer). It decays from -39 to -72 dBFS RMS over 3 s, then gets mkloop's 0.4 s fade. Two 4-pole high-passes at 300 Hz remove the recorder's low rumble. Chosen over 331676 (brass bell: the clapper strikes three times in 0.35 s), 212541 (Indian finger-cymbal ring: pleasant, but 4 kHz, piercing and clipped on the attack), 452379/862762 (decay under 1 s), 390202/148849 (noisy background) and 271627 (repeated temple bells, busy). Not specifically Indian; the Indian-flavoured alternative is 212541 (CC0) at the same settings."
+  }
+]
