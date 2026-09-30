@@ -9,6 +9,8 @@
  *             chases the car round the turns. The sheet opens. On close the
  *             car drives the out route back onto the road, and the camera
  *             glides back to the chase as it goes.
+ *   Tapped alongside or past the venue, the car first rolls back (a scroll
+ *             back) to where the route turns in.
  *   Reduced motion: the sheet opens straight away.
  *
  * API: init(ctx), update(dt), go(stop) → Promise (resolves after the sheet
@@ -146,6 +148,14 @@ async function go(stop) {
       scroll.lock();
       try { await ui.openSheet(stop.sheet); } finally { scroll.unlock(); }
       return;
+    }
+    // tapped alongside or past the venue: roll back along the road to where the route turns in
+    // (a plain scroll back, the chase camera with it), then drive in from there
+    const entry = stop.route.in[0][0] - 4;
+    if (car.s > entry) {
+      scroll.goTo(entry);
+      const t0 = performance.now();
+      while (Math.abs(car.s - entry) > 0.6 && performance.now() - t0 < 4000) await frames(1);
     }
     scroll.lock();
     const s0 = car.s, lat0 = car.lateral;

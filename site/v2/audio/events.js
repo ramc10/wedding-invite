@@ -38,8 +38,12 @@ export const events = {
       // passing the stop: one bell
       if (Math.abs(s - st.s) < 10 && now - (rung.get(st.id) || -1e9) > 30000) { rung.set(st.id, now); events.bell(); }
     }
-    // the venue takes over from the scenery as you arrive
-    if (eng.bus.nature) eng.bus.nature.gain.setTargetAtTime(0.9 * (1 - 0.45 * duck), eng.ctx.currentTime, 0.8);
+    // the venue takes over from the scenery as you arrive; both sit under the engine while the
+    // car moves (about -6 dB scenery, -4 dB venue) and come back up when it stops or parks
+    const drive = eng.drive, t = eng.ctx.currentTime;
+    if (eng.bus.nature) eng.bus.nature.gain.setTargetAtTime(0.9 * (1 - 0.45 * duck) * (1 - 0.5 * drive), t, 0.8);
+    if (eng.bus.events) eng.bus.events.gain.setTargetAtTime(0.8 * (1 - 0.4 * drive), t, 0.8);
+    if (eng.bgEq) eng.bgEq.gain.setTargetAtTime(-9 * drive, t, 0.8);   // and clear the engine's band (engine.js)
   },
   bell(when = 0) { shot('events/arrive.mp3', 'events', { gain: 0.6, when }); },
   open(id) {

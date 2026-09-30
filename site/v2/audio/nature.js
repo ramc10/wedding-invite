@@ -21,7 +21,7 @@ const LAYERS = {
   'cove-rocks':   { vol: 0.85, pan: -0.55, zones: { cove: 1 } },
   'hills-wind':   { vol: 1.1, pan: 0.2, zones: { hills: 1, cove: 0.25, dam: 0.35 } },
   'water-rush':   { vol: 0.75, pan: 0.5, zones: { dam: 1 } },
-  stream:         { vol: 0.8, pan: -0.35, zones: { creek: 1, forest: 0.2 } },
+  stream:         { vol: 0.8, pan: -0.35, zones: { forest: 0.2 } },   // none at the creek: the owner wants it dry
   crickets:       { vol: 0.7, pan: 0, night: true, zones: { creek: 1, dam: 0 } }
 };
 const LOAD_AHEAD = 260, KEEP = 420;

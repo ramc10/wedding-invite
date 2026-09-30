@@ -117,13 +117,14 @@ html.ready #scene { opacity: 1; }
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: .55em;
 }
-.details-events li { display: flex; flex-direction: column; align-items: center; gap: .1em; }
+.details-events li { display: flex; flex-direction: column; align-items: center; gap: .2em; }
 .details-ceremony {
   font-weight: 500; font-size: clamp(1.8rem, 6.5vw, 2.2rem); line-height: 1.15;
   color: var(--text); text-shadow: var(--overlay-shadow);
 }
 .details-when {
-  font-style: italic; font-weight: 400; font-size: clamp(1.05rem, 3.6vw, 1.2rem);
+  font-style: italic; font-weight: 400; font-size: clamp(1.25rem, 4.5vw, 1.45rem);
+  line-height: 1.2; letter-spacing: .01em;
   color: #FFF6E8; text-shadow: var(--overlay-shadow);
 }
 

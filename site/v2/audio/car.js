@@ -39,7 +39,7 @@ function tick(on, when) {
 function init() {
   const ctx = eng.ctx;
   lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.5;
+  lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.5;
   lp.connect(eng.bus.car);
   idle = loop('car/engine-idle.mp3', 'car');
   cruise = loop('car/engine-cruise.mp3', 'car');
@@ -70,14 +70,15 @@ export const carSound = {
     const target = 0.72 + 0.5 * smoothstep(0, 28, v) + 0.12 * Math.max(0, load) + 0.25 * smoothstep(30, 60, v);
     rev += (target - rev) * Math.min(1, dt * 3);
     const move = smoothstep(0.3, 3, v);
+    eng.drive = engineOn ? move : 0;   // the scenery and venues duck under a moving car (events.js)
     if (engineOn) {
       // parked it's a soft idle; on the move the engine carries the car and grows with speed and throttle
       idle.level(0.5 * (1 - move), 0.25);
-      cruise.level((0.6 + 0.5 * smoothstep(3, 30, v) + 0.45 * Math.max(0, load)) * move, 0.2);
+      cruise.level((0.7 + 0.55 * smoothstep(3, 30, v) + 0.45 * Math.max(0, load)) * move, 0.2);
     } else { idle.level(0, 0.15); cruise.level(0, 0.15); }
     cruise.rate(rev);
     idle.rate(0.95 + 0.1 * move);
-    lp.frequency.setTargetAtTime(700 + 2600 * clamp(0.3 * move + 0.7 * Math.max(0, load) + 0.3 * smoothstep(10, 40, v), 0, 1), eng.ctx.currentTime, 0.15);
+    lp.frequency.setTargetAtTime(1100 + 2600 * clamp(0.3 * move + 0.7 * Math.max(0, load) + 0.3 * smoothstep(10, 40, v), 0, 1), eng.ctx.currentTime, 0.15);
     road.level(0.4 * smoothstep(1, 22, v), 0.2);
     road.rate(0.85 + 0.3 * smoothstep(5, 40, v));
     wind.level(0.18 * smoothstep(12, 45, v) ** 1.5, 0.3);

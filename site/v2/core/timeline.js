@@ -125,10 +125,12 @@ const karimS = Z.dam.s1 - 25;
  * the lane into the compound, ending at the stop. out: from the stop back to
  * the lane. cam: the raised, fixed viewpoint the camera glides to while the
  * car drives in and out ({s, lateral, h} above the road), aimed between the
- * car and focus (the venue). The callout ends before the route's first point. */
+ * car and focus (the venue). The callout starts only once the event's caption
+ * (cap below) is fully in, and stays up the whole way past the venue's decor; tapped
+ * past the route's first point, the detour first rolls the car back to it. */
 const eventStop = (id, label, sheet) => {
   const e = EVENTS[id], S = SITES[id], a = S.a, ax = S.ax, W = SITE_WALL;
-  return { id, s: e.s, slow: [a - 110, e.s + 20], callout: [a - 95, a - 20], sheet, label,
+  return { id, s: e.s, slow: [a - 110, e.s + 20], callout: [a - 65, S.d1 + 15], sheet, label,
     venue: { s: e.s + 3, lateral: ax }, pullover: { side: 'left', lateral: -4.9 },
     // in: off the lane through the first gate onto the axis, straight to the drop-off (parks square);
     // out: straight on, through the second gate, and a straight run in the lane (no snap at hand-back)
@@ -148,7 +150,7 @@ export const STOPS = [
   eventStop('muhurtham', 'the Muhurtham', 'sheetMuhurtham'),
   // AMR Unnati: in through the gate (s G, dam.js), round to the drop-off under the
   // hall's canopy, out through the exit gate further along (s G + 29)
-  { id: 'karimnagar', s: karimS, slow: [karimS - 90, karimS + 50], callout: [karimS - 60, karimS + 26],
+  { id: 'karimnagar', s: karimS, slow: [karimS - 90, karimS + 50], callout: [karimS - 60, karimS + 100],
     sheet: 'sheetDam', label: 'AMR Unnati Convention',
     venue: { s: karimS + 68, lateral: 36 }, pullover: { side: 'right', lateral: 4.9 },
     park: { s: karimS + 40 },
@@ -176,7 +178,9 @@ export const STOPS = [
 ];
 export const STOP = Object.fromEntries(STOPS.map(s => [s.id, s]));
 
-const cap = (id, els) => ({ id, els, from: EVENTS[id].s - 55, to: EVENTS[id].s + 45, fade: 30 });
+// a beach caption is fully in (a - 70) before its "Take me here" shows (a - 65), and gone
+// before the next one starts
+const cap = (id, els) => ({ id, els, from: SITES[id].a - 70, to: EVENTS[id].s + 35, fade: 30 });
 export const OVERLAYS = [
   // the names wait for the first scroll: hidden at rest, written in over the first few metres
   { id: 'title', els: ['title'], from: 9, to: at('garden', 0.3), fade: 8, fadeOut: 40 },

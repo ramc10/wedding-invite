@@ -2,7 +2,8 @@
  * compressor, buffer loading, seamless loops and one-shots.
  *
  *   buses: nature (terrain beds), car (engine, road, indicators, doors),
- *          events (venue ambiences, chime), each with its own gain
+ *          events (venue ambiences, chime), each with its own gain; the
+ *          nature and events buses duck under the car while it moves
  *   loop(url, bus, {len, pan})  → voice {gain, src, pan, rate(r), level(v, tau)}
  *                                  starts silent; level() eases it
  *   shot(url, bus, {gain, pan, when})  plays a one-shot (buffers cached)
@@ -17,7 +18,8 @@ import { quality } from '../core/quality.js';
 
 export const BASE = new URL('../../audio/v2/', import.meta.url).href;
 
-export const eng = { ctx: null, master: null, bus: {}, on: false };
+// drive: 0 parked … 1 on the move (car.js); events.js ducks the scenery and venues by it
+export const eng = { ctx: null, master: null, bus: {}, on: false, drive: 0 };
 const buffers = new Map();   // url → Promise<AudioBuffer>
 
 export function start() {
@@ -32,10 +34,22 @@ export function start() {
   eng.master = ctx.createGain();
   eng.master.gain.value = 0;
   eng.master.connect(comp).connect(ctx.destination);
-  for (const [k, v] of Object.entries({ nature: 0.9, car: 0.75, events: 0.8 })) {
+  // the engine and tyres are mostly under 300 Hz, which phone speakers barely play, and the
+  // scenery (wind, surf, birds) sits right where they do. So the car bus trades boom for body
+  // (shelf down at 120 Hz, a lift around 500 Hz), and the scenery and venues share one EQ that
+  // carves the same band out while the car moves (bgEq.gain, set by events.js from drive).
+  const shelf = ctx.createBiquadFilter(), body = ctx.createBiquadFilter();
+  shelf.type = 'lowshelf'; shelf.frequency.value = 120; shelf.gain.value = -6;
+  body.type = 'peaking'; body.frequency.value = 500; body.Q.value = 0.8; body.gain.value = 8;
+  shelf.connect(body).connect(eng.master);
+  eng.carOut = body;   // (QA taps the two sides here)
+  const bgEq = eng.bgEq = ctx.createBiquadFilter();
+  bgEq.type = 'peaking'; bgEq.frequency.value = 550; bgEq.Q.value = 0.7; bgEq.gain.value = 0;
+  bgEq.connect(eng.master);
+  for (const [k, v] of Object.entries({ nature: 0.9, car: 1, events: 0.8 })) {
     const g = eng.bus[k] = ctx.createGain();
     g.gain.value = v;
-    g.connect(eng.master);
+    g.connect(k === 'car' ? shelf : bgEq);
   }
 }
 
