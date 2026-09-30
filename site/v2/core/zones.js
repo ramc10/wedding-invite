@@ -71,9 +71,9 @@ export const visible = (z, s) => s > z.s0 - VIS_MARGIN && s < z.s1 + VIS_MARGIN;
  *  which imports this module). */
 let KEYS = null;
 async function loadKeys() {
-  const { BEACH_KEYS } = await import('./daykeys.js');
-  const own = ZONES.filter(z => z.id !== 'garden-beach' && z.id !== 'cove').map(z => ({ s: z.mid, sun: z.day.sun, exposure: z.day.exposure }));
-  KEYS = [...own, ...BEACH_KEYS].sort((a, b) => a.s - b.s);
+  const { BEACH_KEYS, ENDING_KEYS } = await import('./daykeys.js');
+  const own = ZONES.filter(z => !['garden-beach', 'cove', 'creek'].includes(z.id)).map(z => ({ s: z.mid, sun: z.day.sun, exposure: z.day.exposure }));
+  KEYS = [...own, ...BEACH_KEYS, ...ENDING_KEYS].sort((a, b) => a.s - b.s);
 }
 export const dayReady = loadKeys();
 

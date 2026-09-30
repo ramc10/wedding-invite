@@ -12,6 +12,7 @@
  * (peach toward the sun, cool blue above and opposite). Pairs of equal keys hold a look across a scene.
  * Owned by the atmosphere/night work (fx/atmosphere.js). */
 import { EVENTS } from './timeline.js';
+import { byId } from './zones.js';
 
 const R = EVENTS.reception.s, H = EVENTS.haldi.s, M = EVENTS.muhurtham.s;
 
@@ -37,4 +38,18 @@ export const BEACH_KEYS = [
   { s: M - 45, sun: [-14, -760], exposure: 1.0 },     // night again
   { s: M + 44, sun: [-14, -760], exposure: 1.0 },     // Muhurtham: night
   { s: M + 45, sun: [-14, -40], exposure: 1.0 }       // same direction, plain degrees again (invisible at night)
+];
+
+/* The ending ("The Beginning", the creek): after the Dawat at dusk by the dam, a short night, then the
+ * very first light and an early sunrise ahead-left down the road: low, soft golden light on the meadow
+ * and the stream. The sun only moves while it's below the horizon, then rises in place. These keys
+ * replace the creek's zone-centre key. */
+const DAM = byId.dam, CRK = byId.creek, cl = CRK.s1 - CRK.s0;
+export const ENDING_KEYS = [
+  { s: DAM.s1 + 20, sun: [-4, -95], exposure: 0.95 },                   // afterglow past AMR Unnati
+  { s: CRK.s0 + cl * 0.22, sun: [-9, -60], exposure: 1.0 },             // the small hours
+  { s: CRK.s0 + cl * 0.45, sun: [-5, -42], exposure: 0.92, dawn: 1 },   // first light
+  { s: CRK.s0 + cl * 0.63, sun: [0.8, -40], exposure: 0.84, dawn: 1 },  // the disc at the horizon, ahead-left
+  { s: CRK.s0 + cl * 0.82, sun: [4.5, -40], exposure: 0.88, dawn: 1 },
+  { s: CRK.s1, sun: [8.5, -40], exposure: 0.92, dawn: 1 }               // early golden sunrise over the ending: past ~8° the rose tint gives way to gold
 ];
