@@ -24,7 +24,8 @@
  *  11. Control tower on the reservoir side with an access bridge.
  *  12. Highway sodium street lamps: tapered octagonal poles, outreach arm,
  *      cobra-head luminaires, orange pools of light on the road at dusk.
- *  13. Dam name board at the start of the crest.
+ *  13. Dam name monument at the start of the crest: sandstone wall, granite panel with gilded Telugu +
+ *      English lettering, planter of hedge and marigolds, uplights (buildBoard).
  *  SETTING
  *  14. Reservoir (makeWater 'lake') and hazy hills on the far shore.
  *  15. River leaving the stilling basin across the valley (makeWater 'creek').
@@ -385,11 +386,11 @@ function catenary(out, a, b, n, sag) {
 
 /* ---------- layout (road space) ---------- */
 
-const CREST_A = 1746, CREST_B = 2186, RIP_B = 2166; // abutments (crest ends); left pitching ends where the far bank rises
+const CREST_A = 1636, CREST_B = 2076, RIP_B = 2056; // abutments (crest ends); left pitching ends where the far bank rises
 // right-hand crest (parapet, footpath, kerb) ends at the abutment before the venue frontage and the pull-over apron
 const CREST_BR = Math.min(CREST_B, PARK_S - 10);
 const FOOT = [3.6, 5.4], PAR = 5.6, PAR_W = 0.4, PAR_H = 0.95;
-const SP = { n: 5, bay: 12, pier: 2.8, c: 2020 }; // spillway: bays, clear width, pier thickness, centre s
+const SP = { n: 5, bay: 12, pier: 2.8, c: 1910 }; // spillway: bays, clear width, pier thickness, centre s
 SP.len = SP.n * SP.bay + (SP.n + 1) * SP.pier;
 SP.a = SP.c - SP.len / 2; SP.b = SP.c + SP.len / 2;
 const pierS = i => SP.a + SP.pier / 2 + i * (SP.bay + SP.pier);
@@ -663,7 +664,7 @@ function buildFurniture(ctx, M, K) {
 
   // 11. control tower in the reservoir with an access bridge from the left parapet
   {
-    const s = 1872, Y = path.roadY(s), L = -30, g0 = H(s, L) - 2;
+    const s = 1762, Y = path.roadY(s), L = -30, g0 = H(s, L) - 2;
     out.conc.push(tint(place(ctx, box(6, Y + 3.2 - g0, 6, 4), s, L, (Y + 3.2 + g0) / 2), 0xcfc6b4, 0.05, 7));
     out.conc.push(tint(place(ctx, box(7, 3.2, 7, 4), s, L, Y + 4.8), 0xe8e0cc));
     out.conc.push(tint(place(ctx, box(7.8, 0.3, 7.8, 4), s, L, Y + 6.55), 0x8a4a38));
@@ -690,16 +691,143 @@ function buildFurniture(ctx, M, K) {
     out.pools.push(place(ctx, pool, s, l - side * 3.2, path.roadY(s) + 0.06));
   }
 
-  // 13. dam name board at the start of the crest (left side, angled to the approach)
-  {
-    const s = CREST_A - 9, l = -7.2, gy = H(s, l);
-    const b = new THREE.PlaneGeometry(4.6, 1.5);
-    const uv = b.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setY(k, 2 / 3 + uv.getY(k) / 3);
-    out.sign.push(place(ctx, b.rotateY(0.55).translate(0, gy + 2.6, 0), s, l, 0));
-    out.steel.push(tint(place(ctx, box(4.8, 1.7, 0.08, 2).rotateY(0.55).translate(-0.05 * Math.sin(0.55), gy + 2.6, -0.05 * Math.cos(0.55)), s, l, 0), 0x2a2e33));
-    for (const d of [-1.9, 1.9]) out.steel.push(tint(place(ctx, cyl(0.06, 0.06, 3.4, 6).translate(d * Math.cos(0.55), gy + 1.4, -d * Math.sin(0.55) - 0.1), s, l, 0), 0x3a3e42));
-  }
+  // 13. the dam's name monument: buildBoard()
   return { out, spots };
+}
+
+/* ---------- 13: dam name monument at the start of the crest ----------
+ * The kind of stone name wall that stands at the entrance to Indian dams:
+ * sandstone on a plinth, end piers with finials like the abutments', an
+ * inset polished black-granite panel with gilded lettering (Telugu above
+ * English), a planter of clipped hedge and marigolds in front, and two
+ * uplights. Left of the road, turned to face the approach. */
+const BOARD = { s: CREST_A - 11, l: -10.4, yaw: 0.5, w: 7.2, h: 2.2 };
+const FONT_URL = f => new URL(`../../fonts/${f}`, import.meta.url).href;
+let boardFonts = null;
+function loadBoardFonts() {
+  if (!boardFonts) {
+    const faces = [new FontFace('DamTelugu', `url(${FONT_URL('noto-serif-telugu-600-dam.woff2')})`, { weight: '600' }),
+      new FontFace('DamSerif', `url(${FONT_URL('eb-garamond-600.woff2')})`, { weight: '600' })];
+    boardFonts = Promise.all(faces.map(f => f.load().then(ff => document.fonts.add(ff))));
+  }
+  return boardFonts;
+}
+
+// the panel's lettering, drawn in `ink` (a fill style or a function of the text box) for each map
+function boardLetters(g, w, h, ink, lift) {
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  const lines = [
+    { text: 'దిగువ మానేరు జలాశయం', font: '600 132px DamTelugu, "Telugu Sangam MN", "Noto Sans Telugu", Gautami, serif', y: 0.40, sp: 0 },
+    { text: 'LOWER MANAIR DAM', font: '600 150px DamSerif, "EB Garamond", Georgia, serif', y: 0.71, sp: 18 },
+    { text: 'KARIMNAGAR  ·  TELANGANA', font: '600 54px DamSerif, "EB Garamond", Georgia, serif', y: 0.895, sp: 12 }
+  ];
+  for (const L of lines) {
+    g.font = L.font;
+    if ('letterSpacing' in g) g.letterSpacing = L.sp + 'px';
+    const x = w / 2, y = h * L.y;
+    if (lift) {   // engraved/raised: dark drop below-right, a pale catch-light above-left
+      g.fillStyle = 'rgba(0,0,0,0.85)'; g.fillText(L.text, x + 4, y + 5);
+      g.fillStyle = 'rgba(255,236,190,0.35)'; g.fillText(L.text, x - 2, y - 2);
+    }
+    g.fillStyle = typeof ink === 'function' ? ink(y, L) : ink; g.fillText(L.text, x, y);
+    L.half = g.measureText(L.text).width / 2;
+  }
+  if ('letterSpacing' in g) g.letterSpacing = '0px';
+  // gilded rules either side of the subtitle, and a double inset border
+  g.fillStyle = typeof ink === 'function' ? ink(h * 0.87, null) : ink;
+  const ry = h * 0.875, half = lines[2].half + 40, run = Math.min(260, w / 2 - half - 90);
+  g.fillRect(w / 2 - half - run, ry - 3, run, 5); g.fillRect(w / 2 + half, ry - 3, run, 5);
+  g.strokeStyle = g.fillStyle;
+  g.lineWidth = 7; g.strokeRect(26, 26, w - 52, h - 52);
+  g.lineWidth = 2.5; g.strokeRect(42, 42, w - 84, h - 84);
+}
+
+function boardFace() {
+  const W = 2048, Hh = 632;
+  const drawColor = (g, w, h) => {
+    // polished black granite: near-black with fine grey and white flecks and a soft polish sheen
+    g.fillStyle = '#121315'; g.fillRect(0, 0, w, h);
+    const r = makeRng('granite');
+    for (let i = 0; i < 26000; i++) {
+      const v = r() < 0.9 ? 30 + r() * 40 | 0 : 150 + r() * 90 | 0;
+      g.fillStyle = `rgba(${v},${v},${v + 4},${0.25 + r() * 0.5})`;
+      g.fillRect(r() * w, r() * h, 1 + r() * 2.5, 1 + r() * 2.5);
+    }
+    const sheen = g.createLinearGradient(0, 0, w, h);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.0)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0.07)');
+    sheen.addColorStop(0.55, 'rgba(255,255,255,0.0)'); g.fillStyle = sheen; g.fillRect(0, 0, w, h);
+    boardLetters(g, w, h, y => {
+      const gr = g.createLinearGradient(0, y - 120, 0, y + 20);
+      gr.addColorStop(0, '#fbe7a4'); gr.addColorStop(0.45, '#d9a94a'); gr.addColorStop(0.7, '#a8761f'); gr.addColorStop(1, '#f0cd73');
+      return gr;
+    }, true);
+  };
+  // roughness (G) and metalness (B): polished stone 0.22 / 0, gilt 0.35 / 1
+  const drawRM = (g, w, h) => { g.fillStyle = 'rgb(0,56,0)'; g.fillRect(0, 0, w, h); boardLetters(g, w, h, 'rgb(0,90,255)', false); };
+  const map = canvasTex(W, Hh, drawColor, false);
+  const rm = canvasTex(W, Hh, drawRM, false, false);
+  // redraw once the webfonts are in (the first pass uses whatever the system has)
+  loadBoardFonts().then(() => {
+    drawColor(map.image.getContext('2d'), W, Hh); map.needsUpdate = true;
+    drawRM(rm.image.getContext('2d'), W, Hh); rm.needsUpdate = true;
+  }).catch(() => {});
+  return new THREE.MeshStandardMaterial({ map, roughnessMap: rm, metalnessMap: rm, roughness: 1, metalness: 1,
+    emissive: 0xffc27a, emissiveMap: map, emissiveIntensity: 0.14 });
+}
+
+function buildBoard(ctx) {
+  const { world } = ctx;
+  const { s, l, yaw, w, h } = BOARD;
+  const out = { stone: [], dark: [], face: [], leaf: [], glow: [] };
+  // stand on the lowest ground under the footprint, footing sunk into it
+  let gy = Infinity;
+  for (const ds of [-3, 0, 3]) for (const dl of [-3, 0, 3]) gy = Math.min(gy, world.heightSL(s + ds, l + dl));
+  const put = (list, geo, hex, jit = 0, seed = 1) => list.push(tint(geo, hex, jit, seed));
+  const B = (bw, bh, bd, x, y, z, T = 2) => box(bw, bh, bd, T).translate(x, y, z);
+  const sphere = (r, x, y, z, sx = 1, sy = 1, sz = 1) => new THREE.SphereGeometry(r, 12, 8).toNonIndexed().scale(sx, sy, sz).translate(x, y, z);
+
+  const P = 0.75;                               // the wall stands on a plinth, clear of the planter
+  put(out.stone, B(w + 0.5, P + 0.6, 0.95, 0, (P - 0.6) / 2, 0), 0x9a8f80, 0.06, 2);       // grey stone plinth, footing sunk
+  put(out.stone, B(w, h, 0.7, 0, P + h / 2, 0), 0xe0bf95, 0.07, 3);                         // sandstone wall
+  put(out.stone, B(w + 0.35, 0.16, 0.95, 0, P + h + 0.08, 0), 0xefe7d6);                    // coping
+  put(out.stone, B(w + 0.1, 0.12, 0.82, 0, P + 0.06, 0), 0xefe7d6);                         // base course
+  for (const sx of [-1, 1]) {                   // end piers with caps and finials (as the abutments)
+    const x = sx * (w / 2 + 0.38), ph = h + 0.75;
+    put(out.stone, B(0.78, ph + P + 0.6, 0.95, x, (ph + P - 0.6) / 2, 0), 0xd2ab80, 0.07, 5 + sx);
+    put(out.stone, B(0.98, 0.15, 1.12, x, P + ph + 0.075, 0), 0xefe7d6);
+    put(out.stone, B(0.7, 0.1, 0.84, x, P + ph + 0.2, 0), 0xefe7d6);
+    put(out.stone, sphere(0.25, x, P + ph + 0.5, 0), 0xefe7d6);
+  }
+  // the granite panel: a slim dark frame proud of the wall, the polished face on it
+  const fy = P + h / 2 + 0.02, fz = 0.35;
+  put(out.dark, B(6.34, 1.98, 0.1, 0, fy, fz + 0.05), 0x1c1d20);
+  out.face.push(new THREE.PlaneGeometry(6.12, 1.89).toNonIndexed().translate(0, fy, fz + 0.101));
+
+  // planter: sandstone kerb, dark soil, a clipped hedge along the wall, marigolds and crimson in front
+  const pz = 1.15, pd = 1.3, pw = w + 0.7, Q = 0.2;   // planter kerb top at Q + 0.18
+  put(out.stone, B(pw, 0.5, 0.14, 0, Q - 0.07, pz + pd / 2), 0xd8b890, 0.05, 9);
+  for (const sx of [-1, 1]) put(out.stone, B(0.14, 0.5, pd, sx * pw / 2, Q - 0.07, pz), 0xd8b890, 0.05, 10);
+  put(out.dark, B(pw - 0.1, 0.5, pd, 0, Q - 0.12, pz), 0x3b2a1e);
+  const r = makeRng('dam-bed');
+  for (let x = -pw / 2 + 0.35; x < pw / 2 - 0.2; x += 0.42) {
+    put(out.leaf, sphere(0.3, x + (r() - 0.5) * 0.06, Q + 0.3, pz - 0.36, 1.3, 0.85, 0.8), 0x2f5b2a, 0.25, x * 7);
+  }
+  const blooms = [0xf28a14, 0xf5b21a, 0xf28a14, 0xc41f3b, 0xf7c52a];
+  for (let i = 0; i < 230; i++) {
+    const x = (r() - 0.5) * (pw - 0.4), z = pz + 0.02 + r() * (pd / 2 - 0.12);
+    if (i % 3 === 0) put(out.leaf, sphere(0.15, x, Q + 0.2, z, 1.3, 0.7, 1.1), 0x3f7a2e, 0.3, i);
+    const c = blooms[(Math.abs(Math.round(x * 1.4)) + (r() < 0.25 ? 3 : 0)) % blooms.length];
+    out.leaf.push(tint(new THREE.IcosahedronGeometry(0.075 + r() * 0.03, 0).translate(x, Q + 0.26 + r() * 0.1, z), c, 0.15, i + 1));
+  }
+  // two uplights in the bed, aimed at the panel
+  for (const sx of [-1, 1]) {
+    put(out.dark, B(0.26, 0.16, 0.22, sx * 1.9, Q + 0.3, pz - 0.05, 1), 0x2a2c2e);
+    put(out.glow, B(0.2, 0.02, 0.16, sx * 1.9, Q + 0.39, pz - 0.05, 1), 0xffd08a);
+  }
+
+  const at = g => place(ctx, g.rotateY(yaw).translate(0, gy, 0), s, l, 0);
+  for (const k of Object.keys(out)) out[k] = out[k].map(at);
+  return out;
 }
 
 /* ---------- 14–16: reservoir, far hills, river, paddy, valley trees ---------- */
@@ -901,16 +1029,22 @@ export default {
     const F = buildFurniture(ctx, M, K);
     buildSetting(ctx, M, K, group);
     const V = buildVenue(ctx, M, K, group);
+    const BD = buildBoard(ctx);
 
-    group.add(meshOf([...B.conc, ...S.out.conc, ...F.out.conc, ...V.out.conc], M.conc, 'dam:concrete'));
+    group.add(meshOf([...B.conc, ...S.out.conc, ...F.out.conc, ...V.out.conc, ...BD.stone], M.conc, 'dam:concrete'));
+    M.board = boardFace();
+    M.leaf = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+    group.add(meshOf(BD.face, M.board, 'dam:board', false));
+    group.add(meshOf(BD.leaf, M.leaf, 'dam:board-bed'));
     group.add(meshOf(B.riprap, M.riprap, 'dam:riprap', false));
     group.add(meshOf(B.parapet, M.parapet, 'dam:parapet'));
     group.add(meshOf([...B.kerb, ...V.out.kerb], M.kerb, 'dam:kerb', false));
     group.add(meshOf([...B.path, ...V.out.path], M.path, 'dam:footpath', false));
-    group.add(meshOf([...B.steel, ...S.out.steel, ...F.out.steel, ...V.out.steel], M.steel, 'dam:steel'));
+    group.add(meshOf([...B.steel, ...S.out.steel, ...F.out.steel, ...V.out.steel, ...BD.dark], M.steel, 'dam:steel'));
     group.add(meshOf(V.out.plaster, M.plaster, 'venue:hall'));
-    group.add(meshOf([...F.out.sign, ...V.out.sign], M.sign, 'dam:signs', false));
-    const glow = meshOf([...F.out.glow, ...V.out.glow], M.glow, 'dam:glow', false); group.add(glow);
+    const signs = [...F.out.sign, ...V.out.sign];
+    if (signs.length) group.add(meshOf(signs, M.sign, 'dam:signs', false));
+    const glow = meshOf([...F.out.glow, ...V.out.glow, ...BD.glow], M.glow, 'dam:glow', false); group.add(glow);
 
     // spill sheets + outflow (scrolling streaks), basin foam
     const st = streakTex();
@@ -941,6 +1075,7 @@ export default {
         // a real sodium lamp pool is a soft warm patch a few metres across, not a floodlit road
         poolMat.opacity = 0.03 + 0.19 * smoothstep(0.3, 0.9, d);
         M.sign.emissiveIntensity = 0.45 + 1.3 * d;
+        M.board.emissiveIntensity = 0.14 + 0.7 * smoothstep(0.3, 0.9, d);   // the uplights wash the gilt at dusk
         st.offset.y -= dt * 1.1;
         ft.offset.x += dt * 0.05; ft.offset.y -= dt * 0.12;
       },
