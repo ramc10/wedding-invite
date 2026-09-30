@@ -186,7 +186,8 @@ export const OVERLAYS = [
   cap('haldi', ['capHaldi']),
   cap('muhurtham', ['capMuhurtham']),
   { id: 'karimnagar', els: ['damCaption', 'damVenue'], from: at('dam', 0.12), to: at('creek', 0.18), fade: 40 },
-  { id: 'ending', els: ['ending', 'endingVenue'], from: at('creek', 0.3), to: 1e9, fade: 60 }
+  // fades in only once the Dawat caption has gone (they overlapped), arriving with the first light
+  { id: 'ending', els: ['ending', 'endingVenue'], from: at('creek', 0.18) + 100, to: 1e9, fade: 60 }
 ];
 
 /** Scroll pacing knots: extra scroll distance per metre inside these spans. */
