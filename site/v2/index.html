@@ -33,9 +33,6 @@
 <!-- the page's scroll height: every scroll px moves the car (core/scroll.js) -->
 <div id="track" aria-hidden="true"></div>
 
-<!-- route: one dot per leg, built from core/zones.js by ui/hud.js -->
-<nav class="route" id="route" aria-label="Route"></nav>
-
 <div class="hud">
   <button type="button" class="autoplay" id="autoplay" data-autoplay aria-pressed="false">
     <svg class="autoplay-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path class="i-play" d="M5 3.2v9.6L12.6 8z"/><path class="i-pause" d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z"/></svg>
@@ -104,7 +101,7 @@
   <svg class="cue-chev" viewBox="0 0 20 12" aria-hidden="true" focusable="false"><path d="M2 2l8 8 8-8"/></svg>
 </button>
 
-<p class="credit" id="credit">Car: <a href="https://sketchfab.com/3d-models/2012-ford-ecosport-4e491913d5f74b60a838555cb7ab610b" target="_blank" rel="noopener">&ldquo;2012 Ford EcoSport&rdquo;</a> by <a href="https://sketchfab.com/tonielpro520" target="_blank" rel="noopener">tonielpro520</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;4.0</a><br>Sounds (Freesound, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;4.0</a>): <a href="https://freesound.org/s/320245/" target="_blank" rel="noopener">nadaswaram</a> by xserra, <a href="https://freesound.org/s/44337/" target="_blank" rel="noopener">flute</a> by ananth-pattabi, <a href="https://freesound.org/s/845611/" target="_blank" rel="noopener">engine</a> by KVV_Audio, <a href="https://freesound.org/s/612011/" target="_blank" rel="noopener">road</a> by klankbeeld; the rest CC0. Rabbit: <a href="https://poly.pizza/m/0s-PwU4ssMx" target="_blank" rel="noopener">&ldquo;Rabbit&rdquo;</a> by Poly by Google, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;3.0</a></p>
+<a class="credit" id="credit" href="credits.html">Credits</a>
 
 <!-- ensō drawn by load progress (ui/loader.js); inline so it paints before any module runs -->
 <div class="loader" id="loader">

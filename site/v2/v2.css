@@ -340,31 +340,21 @@ html.ready .cue.gone {
 
 /* -------------------------------------------------------------- credit */
 
-/* CC-BY needs the car's credit on the page: it runs as an end credit, on the
-   ending (html.at-end, set by overlays.js). */
+/* CC BY needs the credits reachable from the page: a small, faint link in the corner, to credits.html */
 .credit {
-  position: fixed; z-index: 11; margin: 0;
+  position: fixed; z-index: 11;
   left: calc(var(--gutter) + env(safe-area-inset-left, 0px));
   bottom: calc(8px + var(--safe-b));
-  padding: 3px 10px; border-radius: 999px;
-  font-size: 11px; letter-spacing: .02em; line-height: 1.3;
-  color: rgba(255, 246, 232, .7); text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
-  /* a faint smoked backing so it stays legible over pale ground or sky */
-  background: rgba(12, 16, 10, .28);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  transition: color .8s ease, background .8s ease;
+  font-size: 10.5px; letter-spacing: .06em; line-height: 1;
+  color: rgba(255, 246, 232, .5); text-decoration: none; text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+  opacity: 0; transition: opacity .9s ease .6s, color .3s ease;
 }
-.credit a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(255, 246, 232, .3); }
-.credit a:hover { color: #FFF6E8; border-bottom-color: var(--gold); }
-/* shown on the ending only (the credits, as in a film): hidden on the loader and mid-drive */
-.credit { opacity: 0; visibility: hidden; transition: opacity .8s ease, visibility 0s linear .8s; }
-html.at-end .credit { opacity: 1; visibility: visible; transition: opacity .8s ease; color: rgba(255, 246, 232, .9); }
+html.ready .credit { opacity: 1; }
+.credit:hover, .credit:focus-visible { color: #FFF6E8; }
 
-/* Phones: the venue lines and the credit share the bottom edge, so the credit
-   centres under them and the venue slot lifts clear of it. */
+/* Phones: the venue lines and the credits link share the bottom edge, so the venue slot lifts clear of it. */
 @media (max-width: 640px) {
   :root { --venue-bottom: calc(2.2vh + 22px + var(--safe-b)); }
-  .credit { left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 2 * var(--gutter)); text-align: center; font-size: 10.5px; bottom: calc(6px + var(--safe-b)); }
   .callout { bottom: calc(var(--venue-bottom) + 70px); }
 }
 
