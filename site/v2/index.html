@@ -128,7 +128,7 @@
     <p class="loader-status" id="loaderStatus" role="status">Setting out&hellip;</p>
     <div class="loader-error" id="loaderError" role="alert" hidden>
       <p>The 3D road couldn&rsquo;t load here.</p>
-      <a href="../">Take the painted road instead</a>
+      <a href="../" id="loaderFallback">Take the painted road instead</a>
     </div>
   </div>
 </div>
@@ -244,15 +244,17 @@
 /* Failure path, deliberately a classic inline script: if any module in the
    graph fails to load or link, neither main.js nor ui/loader.js ever runs, so
    nothing would report 'v2:error' and the loader would spin forever. This
-   handles that, 'v2:error' from boot, no WebGL, and a long stall. */
+   handles that, 'v2:error' from boot, no WebGL, and a slow connection.
+   A stall only offers v1 (the loader keeps going and still fades into the
+   scene if it gets there); a failure replaces the loader with it. */
 (function () {
-  var root = document.documentElement, done = false;
+  var root = document.documentElement, done = false, why = 'error';
   function fail(stalled) {
     if (done || root.classList.contains('ready')) return;
     var l = document.getElementById('loader'), box = document.getElementById('loaderError');
     if (!l || !box) return;
-    if (!stalled) { done = true; window.__v2err = true; l.classList.add('failed'); }
-    else box.querySelector('p').textContent = 'This is taking a while on this connection.';
+    if (!stalled) { done = true; window.__v2err = true; l.classList.add('failed'); box.querySelector('p').textContent = 'The 3D road couldn\u2019t load here.'; why = 'error'; }
+    else { box.querySelector('p').textContent = 'Slow connection? The painted road loads in a moment.'; why = 'slow'; }
     box.hidden = false;
   }
   addEventListener('v2:error', function () { fail(false); });
@@ -261,7 +263,12 @@
     var c = document.createElement('canvas');
     if (!(c.getContext('webgl2') || c.getContext('webgl'))) fail(false);
   } catch (e) { fail(false); }
-  setTimeout(function () { fail(true); }, 180000);
+  // offer the painted road after 8 s, or 3 s on a connection that reports itself slow
+  var net = navigator.connection || {};
+  var slow = net.saveData || /(^|-)2g$/.test(net.effectiveType || '');
+  setTimeout(function () { fail(true); }, slow ? 3000 : 8000);
+  var a = document.getElementById('loaderFallback');
+  if (a) a.addEventListener('click', function () { if (window.track) window.track('fallback_v1', { reason: why }); });
 })();
 </script>
 <script type="module" src="main.js"></script>

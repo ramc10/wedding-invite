@@ -130,4 +130,36 @@ const tex = new THREE.DataTexture(texData, TEX_W, 1, THREE.RGBAFormat, THREE.Flo
 tex.magFilter = tex.minFilter = THREE.LinearFilter; // needs OES_texture_float_linear; fine on WebGL2 desktop, sample at texel centres on mobile
 tex.needsUpdate = true;
 
-export const path = { length, halfWidth: 3.6, sample, toWorld, roadY, nearest, tex, STEP };
+/* The road's continuation past s = length: EXT_D metres that bend gently away
+ * (biomes/creek.js builds it and its trees; the car drives off along it at the
+ * very end). ext.toWorld(d, lateral) / ext.fwd(d), d = metres past the end;
+ * flat at ext.y0. */
+const EXT_D = 700, EXT_STEP = 2, EXT_N = EXT_D / EXT_STEP + 1;
+const ext = (() => {
+  const end = sample(length);
+  const P = new Float32Array(EXT_N * 2), FR = new Float32Array(EXT_N * 4);
+  const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const bend = d => 0.22 * ss(110, 420, d) - 0.08 * ss(380, 650, d);
+  let x = end.pos.x, z = end.pos.z;
+  for (let i = 0; i < EXT_N; i++) {
+    const a = bend(i * EXT_STEP), c = Math.cos(a), sn = Math.sin(a);
+    P[i * 2] = x; P[i * 2 + 1] = z;
+    const fx = end.fwd.x * c + end.fwd.z * sn, fz = -end.fwd.x * sn + end.fwd.z * c;
+    FR[i * 4] = fx; FR[i * 4 + 1] = fz;
+    FR[i * 4 + 2] = end.right.x * c + end.right.z * sn; FR[i * 4 + 3] = -end.right.x * sn + end.right.z * c;
+    x += fx * EXT_STEP; z += fz * EXT_STEP;
+  }
+  const at = (d, A, k, w) => {
+    const f = Math.min(EXT_N - 1.001, Math.max(0, d / EXT_STEP)), i = Math.floor(f), t = f - i;
+    return A[i * w + k] * (1 - t) + A[(i + 1) * w + k] * t;
+  };
+  return {
+    D: EXT_D, y0: roadY(length),
+    toWorld(d, lat, out = new THREE.Vector3()) {
+      return out.set(at(d, P, 0, 2) + at(d, FR, 2, 4) * lat, roadY(length), at(d, P, 1, 2) + at(d, FR, 3, 4) * lat);
+    },
+    fwd(d, out = new THREE.Vector3()) { return out.set(at(d, FR, 0, 4), 0, at(d, FR, 1, 4)).normalize(); }
+  };
+})();
+
+export const path = { length, halfWidth: 3.6, sample, toWorld, roadY, nearest, tex, STEP, ext };

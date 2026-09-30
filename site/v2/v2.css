@@ -406,7 +406,8 @@ html.ready .loader-inner { transform: scale(1.06); filter: blur(4px); }
   margin: 10px 0 0; font-size: .74rem; letter-spacing: .34em; padding-left: .34em; text-transform: uppercase;
   color: rgba(255, 246, 232, .55);
 }
-.loader-error { margin-top: 18px; max-width: 36ch; }
+.loader-error { margin-top: 18px; max-width: 36ch; animation: loaderErrIn .8s ease both; }
+@keyframes loaderErrIn { from { opacity: 0; transform: translateY(6px); } }
 .loader-error p { margin: 0 0 14px; font-size: 1.1rem; font-style: italic; color: #FFF6E8; }
 .loader-error a {
   display: inline-block; padding: 11px 20px; border-radius: 999px;

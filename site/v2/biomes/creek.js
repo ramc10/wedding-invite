@@ -175,27 +175,9 @@ export default {
 /* ---------- the road's continuation past s = L: a frame (d metres past the end, lateral) ---------- */
 function extFrame(ctx) {
   const { path, world } = ctx;
-  const L = path.length, end = path.sample(L);
-  const D = 700, STEP = 2, N = D / STEP + 1;
-  const P = new Float32Array(N * 2), FR = new Float32Array(N * 4);
-  const bend = d => 0.22 * THREE.MathUtils.smoothstep(d, 110, 420) - 0.08 * THREE.MathUtils.smoothstep(d, 380, 650);
-  let x = end.pos.x, z = end.pos.z;
-  for (let i = 0; i < N; i++) {
-    const a = bend(i * STEP), c = Math.cos(a), s = Math.sin(a);
-    const fx = end.fwd.x * c + end.fwd.z * s, fz = -end.fwd.x * s + end.fwd.z * c;
-    const rx = end.right.x * c + end.right.z * s, rz = -end.right.x * s + end.right.z * c;
-    P[i * 2] = x; P[i * 2 + 1] = z;
-    FR[i * 4] = fx; FR[i * 4 + 1] = fz; FR[i * 4 + 2] = rx; FR[i * 4 + 3] = rz;
-    x += fx * STEP; z += fz * STEP;
-  }
-  const y0 = path.roadY(L);
+  const L = path.length, e = path.ext;
   return {
-    L, D, y0,
-    toWorld(d, lat, out = new THREE.Vector3()) {
-      const f = Math.min(N - 1.001, Math.max(0, d / STEP)), i = Math.floor(f), t = f - i;
-      const lerp = (A, k, w) => A[i * w + k] * (1 - t) + A[(i + 1) * w + k] * t;
-      return out.set(lerp(P, 0, 2) + lerp(FR, 2, 4) * lat, y0, lerp(P, 1, 2) + lerp(FR, 3, 4) * lat);
-    },
+    L, D: e.D, y0: e.y0, toWorld: e.toWorld,
     // ground height past the end: the zone's own side profiles, with s running on past L
     height(d, lat) { return world.heightSL(L + Math.max(0, d), lat); }
   };

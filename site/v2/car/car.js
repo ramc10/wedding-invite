@@ -50,6 +50,8 @@ import * as THREE from 'three';
 import { path } from '../core/path.js';
 import { world } from '../core/world.js';
 import { detour } from './detour.js';
+import { END_S } from '../core/timeline.js';
+import { scroll } from '../core/scroll.js';
 import { damp, clamp, smoothstep } from '../core/noise.js';
 
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -907,9 +909,41 @@ const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 // so the car moves at ~0.4x scroll speed at first and 1x from CATCH_S on.
 const PARK_S = 36, CATCH_S = 120;
 
+// The drive-off: once the page has been scrolled to the end, the car doesn't
+// park. It takes over from the scroll while the page is still easing in, at the
+// speed it's already doing (never braking to a stop first), and the throttle
+// comes in gently up to a cruise, down the road's continuation past the end
+// (path.ext) until it's gone. The camera holds the ending shot, framed on
+// parkPos/parkFwd (the scroll's own spot), so it stays put while the car leaves.
+// Scrolling back, the car rewinds with the scroll itself: the first REWIND metres
+// scrolled back bring it all the way home (quick while it's a speck in the
+// distance, easing in to its spot), in step with the page, never a jump.
+// By ~300 m it's a pixel or two: it dwindles to nothing into the haze by OFF_GONE.
+const OFF_V = 20, OFF_A = 2.4, OFF_JERK = 2, OFF_GONE = 380, REWIND = 40;
+const off = { s: null, v: 0, a: 0, g0: 0, s0: 0, rew: false };   // s: where the car is while it drives on (null: on the scroll)
+const parkPos = new THREE.Vector3(), parkFwd = new THREE.Vector3(0, 0, -1);
+
 function update(dt, s) {
   if (s < CATCH_S) s += PARK_S * (1 - s / CATCH_S) ** 2;
   if (detour.carS != null) s = detour.carS;
+  if (detour.carS == null && scroll.sTarget >= END_S - 1.5 && s > END_S - 90) {
+    if (off.s == null || off.rew) { off.s = off.s ?? s; off.v = clamp(scroll.v, 0, OFF_V); off.a = 0; off.rew = false; }   // carry on at the scroll's own speed
+    off.a = Math.min(OFF_A, off.a + OFF_JERK * dt);
+    off.v = Math.min(OFF_V, Math.max(off.v + off.a * dt, clamp(scroll.v, 0, OFF_V)));
+    off.s = Math.max(off.s + off.v * dt, s);
+  } else if (off.s != null) {
+    off.v = off.a = 0;
+    // gap = (g0+1)^u − 1, u running 1 → 0 over the first REWIND metres scrolled back from where the
+    // rewind began: each metre scrolled closes a fixed share of the gap, so it's quick far off and
+    // near home the car moves at little more than the scroll's own pace
+    if (!off.rew) { off.rew = true; off.g0 = Math.max(0, off.s - s); off.s0 = s; }
+    const u = clamp((s - (off.s0 - REWIND)) / REWIND, 0, 1);
+    off.s = s + Math.pow(off.g0 + 1, u) - 1;
+    if (u <= 0) { off.s = null; off.rew = false; }
+  }
+  path.toWorld(s, state.lateral, parkPos); parkPos.y += ROAD_LIFT;
+  parkFwd.copy(path.sample(s, S).fwd);
+  if (off.s != null) s = off.s;
   const prevS = state.s;
   state.s = s;
   let ds = s - prevS;
@@ -936,10 +970,20 @@ function update(dt, s) {
     : Math.abs(ds) > 0.02 && Math.abs(dLat) > 1e-4 ? clamp(-Math.atan(dLat / ds), -0.35, 0.35) : 0;
   state.yaw += (yawT - state.yaw) * damp(8, dt);
 
-  path.sample(s, S);
-  path.toWorld(s, state.lateral, pos);
-  state.heading = S.heading;
-  fwd.copy(S.fwd);
+  const past = s - path.length;
+  if (past > 0) {
+    // on the continuation past the end (flat, at the end's height: groundY clamps to it)
+    path.ext.toWorld(past, state.lateral, pos);
+    path.ext.fwd(past, fwd);
+    state.heading = Math.atan2(-fwd.x, -fwd.z);
+  } else {
+    path.sample(s, S);
+    path.toWorld(s, state.lateral, pos);
+    state.heading = S.heading;
+    fwd.copy(S.fwd);
+  }
+  object.visible = past < OFF_GONE;
+  object.scale.setScalar(past > 280 ? 1 - smoothstep(280, OFF_GONE, past) : 1);
 
   // sit on the ground under each track (the shoulder falls away): height is
   // the mean of the two sides, the difference becomes a small camber roll
@@ -1020,5 +1064,8 @@ export const car = {
   get lateral() { return state.lateral; },
   get s() { return state.s; },
   get speed() { return state.vs; },
+  // the drive-off: metres driven on past the end, and the pose the ending camera frames
+  get away() { return off.s == null ? 0 : Math.max(0, off.s - scroll.s); },
+  parkPos, parkFwd,
   get accel() { return state.acc; }
 };

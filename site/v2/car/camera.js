@@ -149,7 +149,8 @@ function update(dt) {
   userC.pitch += (user.pitch - userC.pitch) * damp(5, dt);
 
   // speed and curvature, smoothed (they're noisy frame to frame)
-  vS += (Math.abs(car.speed) - vS) * damp(2, dt);
+  // driving off at the end, the camera goes at the scroll's pace, not the car's
+  vS += (Math.abs(car.away > 0 ? scroll.v : car.speed) - vS) * damp(2, dt);
   path.sample(clamp(s + 18, 0, path.length), SA);
   curvS += (SA.curvature - curvS) * damp(1.5, dt);
   const sp = clamp(vS / 30, 0, 1);
@@ -200,30 +201,32 @@ function update(dt) {
   const lookH = wT * TITLE.lookH + wC * CHASE.lookH + wE * END.lookH;
   const lookF = wT * TITLE.lookF + wC * (CHASE.lookF + sp * 3) + wE * END.lookF;
 
-  // car frame: behind = -fwd, left = -right
-  const f = car.fwd;
+  // car frame: behind = -fwd, left = -right. Driving off at the end, the shot is
+  // framed on where the car would have parked, so the camera holds still as it leaves
+  const drv = car.away > 0, cp = drv ? car.parkPos : car.pos, cf = drv ? car.parkFwd : car.fwd;
+  const f = cf;
   back.copy(f).negate();
   left.set(f.z, 0, -f.x);          // -right, with right = (-f.z, 0, f.x)
-  want.copy(car.pos)
+  want.copy(cp)
     .addScaledVector(back, Math.cos(yaw) * dist)
     .addScaledVector(left, Math.sin(yaw) * dist);
-  want.y = car.pos.y + h + fkP * 2.8;
+  want.y = cp.y + h + fkP * 2.8;
   // away from the venue's side: a venue on the left (lateral < 0) moves the camera right (−left)
   if (fkP > 0.001) want.addScaledVector(left, (focusLat < 0 ? -1 : 1) * fkP * 9);
 
   // aim: ahead of the car, pulled toward where the road goes (curve look-ahead)
-  look.copy(car.pos).addScaledVector(f, lookF);
+  look.copy(cp).addScaledVector(f, lookF);
   path.toWorld(clamp(s + 18, 0, path.length), car.lateral, tmp);
-  look.x += (tmp.x - (car.pos.x + f.x * 18)) * 0.35 * wC;
-  look.z += (tmp.z - (car.pos.z + f.z * 18)) * 0.35 * wC;
-  look.y = car.pos.y + lookH;
+  look.x += (tmp.x - (cp.x + f.x * 18)) * 0.35 * wC;
+  look.z += (tmp.z - (cp.z + f.z * 18)) * 0.35 * wC;
+  look.y = cp.y + lookH;
   // aim across the car at the set: further on narrow screens, where less of it fits
   if (fk > 0.001) look.lerp(focusV, fk * (0.34 + 0.22 * port) + fkP * 0.28);
   // phones framing a venue from far across the road: aim between the car and the set so both fit
-  if (fkP > 0.001) { tmp.copy(car.pos).add(focusV).multiplyScalar(0.5); tmp.y = car.pos.y + 1.2; look.lerp(tmp, fkP * 0.7); }
+  if (fkP > 0.001) { tmp.copy(cp).add(focusV).multiplyScalar(0.5); tmp.y = cp.y + 1.2; look.lerp(tmp, fkP * 0.7); }
   // looking round from the side or the front: aim back at the car, not down the road ahead
   const round = smoothstep(0.5, 1.6, Math.abs(userC.yaw));
-  if (round > 0) { tmp.copy(car.pos); tmp.y += 0.9; look.lerp(tmp, round); }
+  if (round > 0) { tmp.copy(cp); tmp.y += 0.9; look.lerp(tmp, round); }
 
   // stay inside the cleared corridor (road + shoulder + verge) so the lens
   // never ends up inside a tree or a wall beside the road
@@ -244,15 +247,15 @@ function update(dt) {
   if (want.y < g) want.y = g;
 
   // ease in the car's frame, so a hard fling never leaves the camera behind
-  want.sub(car.pos); look.sub(car.pos);
+  want.sub(cp); look.sub(cp);
   // an authored shot fully in control is exact: easing it in the car's frame
   // would drag a fixed viewpoint along with the moving car
   if (first || scroll.cut || (shot && shot.w > 0.999)) { offE.copy(want); offL.copy(look); first = false; }
   const k = shot && shot.w > 0 ? 8 : 3;
   offE.lerp(want, damp(k, dt));
   offL.lerp(look, damp(k + 2, dt));
-  eye.copy(car.pos).add(offE);
-  lookC.copy(car.pos).add(offL);
+  eye.copy(cp).add(offE);
+  lookC.copy(cp).add(offL);
   const gE = world.heightAt(eye.x, eye.z) + 0.9;
   if (eye.y < gE) eye.y = gE;
   camera.position.copy(eye);
