@@ -136,6 +136,8 @@ const eventStop = (id, label, sheet) => {
     // the crane ends raised behind the drop-off, just road-side of the axis, looking straight down it:
     // car → carpet → arch → aisle → stage
     cam: { s: S.stop.s - 11, lateral: ax + 2.5, h: 4.8 }, focus: { s: S.d0 + 4, lateral: ax, h: 1.8 },
+    // the detour camera never flies over the deck: from here on it keeps road-side of the deck line
+    keepOut: { s0: S.d0 - 1, l: -3.4 },
     // surface the car drives on (car/car.js): the compound drive (biomes/events/compound.js) is road + 0.03
     ground: (s, l) => path.roadY(s) + (l < -3.35 ? 0.031 : 0.02) };
 };

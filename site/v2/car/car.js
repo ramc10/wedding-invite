@@ -971,9 +971,11 @@ function update(dt, s) {
   // rate of turn of the car itself (road curvature + detour yaw), rad/m, + = left
   const hTot = state.heading + state.yaw;
   let turn = state.turn || 0;
-  if (Math.abs(ds) > 1e-3 && state.hPrev != null) turn = clamp(wrapA(hTot - state.hPrev) / ds, -0.3, 0.3);
-  state.hPrev = hTot;
-  state.turn = (state.turn || 0) + (turn - (state.turn || 0)) * damp(6, dt);
+  // heading change per metre: only measured once the car has moved a few mm (pulling away or rolling to
+  // a stop, ds is tiny and the ratio spiked, flicking the steering and the body roll)
+  if (state.hPrev == null) state.hPrev = hTot;
+  if (Math.abs(ds) > 0.012) { turn = clamp(wrapA(hTot - state.hPrev) / ds, -0.3, 0.3); state.hPrev = hTot; }
+  state.turn = (state.turn || 0) + (turn - (state.turn || 0)) * damp(4, dt);
 
   // wheels roll with distance; the fronts steer (bicycle model, a touch of Ackermann)
   const steer = clamp(Math.atan(WHEELBASE * state.turn), -0.55, 0.55);
