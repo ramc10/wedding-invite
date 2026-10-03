@@ -1,4 +1,4 @@
-/* Background music: a ~63s loop at one constant, fixed volume - no longer
+/* Background music: a 30s loop at one constant, fixed volume - no longer
  * scroll-reactive (an earlier version ramped volume/filter with scroll
  * progress; dropped in favour of a flat, predictable level throughout). Off
  * by default — first user gesture (the toggle) is the only thing allowed to
