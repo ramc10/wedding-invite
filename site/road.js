@@ -53,25 +53,6 @@
    * cutting to it the instant the leg starts. */
   var ENDING_REVEAL_AT = 0.3;
 
-  /* "Take me here" detours — where the car turns off the road and parks when
-   * a painted callout is tapped (see Detour). Keyed by the callout's url in
-   * ribbon.json. Picked by hand against the art rather than derived from the
-   * tap box: the dam's callout sits over the reservoir, so "park next to the
-   * bubble" would drive the car into the lake.
-   *   exit     ribbon row the car's centre is on when it leaves the road
-   *   park     [x, row] of the parked car's centre, x from the road centre
-   *   heading  parked nose direction in CSS degrees: 0 is straight down the
-   *            road (the car's nose points screen-down), negative swings the
-   *            nose toward screen-right. Keep within ±180.
-   * All in native ribbon px, like R.links — so if build-ribbon.py moves a
-   * segment, these rows move with it and must be re-picked. */
-  var DETOURS = {
-    'https://www.google.com/maps/search/?api=1&query=Palm+Beach+Hotel+Visakhapatnam':
-      { exit: 2990, park: [235, 3185], heading: -115 },
-    'https://www.google.com/maps/search/?api=1&query=AMR+Unnati+Convention+Karimnagar':
-      { exit: 4770, park: [-305, 4950], heading: 110 }
-  };
-
   /* time of day — [at, tintRGB, tintA, duskRGB, duskA]
    * The tint layer is a plain alpha overlay (normal blending), not soft-light:
    * a blend mode over the moving ribbon makes the compositor re-read and
@@ -497,184 +478,6 @@
     return { open: open, find: find };
   })();
 
-  /* ------------------------------------------------------------ detour
-   * "Take me here" taken literally: tapping a venue's callout drives the car
-   * off the road and parks it beside the callout before that venue's sheet
-   * opens, then backs it out onto the road once the sheet is closed.
-   *
-   *   1. align  — scroll the page (so the road engine itself drives the car,
-   *               forward or in reverse) until the car sits at the exit row
-   *   2. turn   — page held still; the car follows a cubic Bézier from its
-   *               spot on the road to the parking spot, nose along the curve
-   *   3. parked — a short beat, then the sheet opens
-   *   4. back   — sheet closed (by any route: its 'close' event); the car
-   *               reverses along the same curve, and the page stays at the
-   *               venue
-   *
-   * The off-road part never touches the scroll engine: it is an offset and
-   * heading (S.det) that tick() adds onto the transform it already writes,
-   * in the same space — x from the car anchor's centre, y from S.carY.
-   *
-   * Scrolling is blocked while the car is moving (it would otherwise drag
-   * the road out from under it), never while the sheet is open (its own
-   * content scrolls), and a failsafe always hands control back. Anything
-   * that makes the drive unsafe to play — reduced motion, no car drawn yet,
-   * a parking spot that wouldn't be on screen — skips straight to the sheet,
-   * which is exactly what a tap did before this existed. */
-  var Detour = (function () {
-    var ALIGN_MS_PER_VH = 900, ALIGN_MIN = 300, ALIGN_MAX = 1100;
-    var TURN_MS = 1100, PARK_BEAT_MS = 250, BACK_MS = 900, FAILSAFE_MS = 4000;
-    /* keys that scroll the page, blocked with the wheel and touch while locked */
-    var SCROLL_KEYS = { ' ': 1, ArrowUp: 1, ArrowDown: 1, PageUp: 1, PageDown: 1, Home: 1, End: 1 };
-    var NOT_PASSIVE = { passive: false };
-
-    var job = null;   // the running detour, or null when idle
-
-    function block(e) { e.preventDefault(); }
-    function blockKeys(e) { if (SCROLL_KEYS[e.key]) e.preventDefault(); }
-    function lock(on) {
-      var f = on ? 'addEventListener' : 'removeEventListener';
-      window[f]('wheel', block, NOT_PASSIVE);
-      window[f]('touchmove', block, NOT_PASSIVE);
-      window[f]('keydown', blockKeys);
-    }
-
-    function ease(t) { return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
-
-    /* Runs step(0..1, eased) once per frame for ms, then done(). Progress is
-     * read off the clock, not counted in frames, so a dropped frame or a
-     * backgrounded tab can only make it skip ahead, never drift. */
-    function animate(ms, step, done) {
-      var t0 = performance.now();
-      (function frame(now) {
-        var t = clamp((now - t0) / ms, 0, 1);
-        step(ease(t));
-        if (t < 1) job.raf = requestAnimationFrame(frame);
-        else { job.raf = 0; done(); }
-      })(t0);
-    }
-
-    function arm(ms) {
-      clearTimeout(job.failsafe);
-      job.failsafe = setTimeout(function () { cancel(); }, ms);
-    }
-
-    /* The car's shadow is a box-shadow inside the rotating car (road.css
-     * .car-shadow), so turning the car would swing the shadow round with it.
-     * Counter-rotate its offset so it keeps falling screen-down. Mirrors the
-     * 8px offset in road.css; '' hands it back to the stylesheet. */
-    function shadow(rot) {
-      if (!el.shadow) return;
-      if (!rot) { el.shadow.style.boxShadow = ''; return; }
-      var r = rot * Math.PI / 180;
-      el.shadow.style.boxShadow = (8 * Math.sin(r)).toFixed(2) + 'px calc(1000px + ' +
-        (8 * Math.cos(r)).toFixed(2) + 'px) 14px rgba(10,16,8,.35)';
-    }
-
-    function place(p) {
-      S.det = p;
-      shadow(p ? p.rot : 0);
-      ping();
-    }
-
-    /* The off-road leg as a cubic Bézier in tick()'s car space, relative to
-     * where the car sits on the road right now. It leaves pointing straight
-     * down the road (no snap as it starts to turn) and arrives pointing
-     * along the parked heading; the car's nose follows the curve's tangent
-     * the whole way. Returns null if the parked car wouldn't be fully on
-     * screen — the tap then just opens the sheet. */
-    function route(cfg, d) {
-      var pan = panAt(d);
-      var carX = trackAt(R.roadCentre, (d + S.carY) / S.scale) * S.scale - pan;
-      var px = (trackAt(R.roadCentre, cfg.park[1]) + cfg.park[0]) * S.scale - pan - carX;
-      var py = cfg.park[1] * S.scale - d - S.carY;
-      var reach = Math.max(el.carImg.offsetWidth, el.carImg.offsetHeight) / 2;
-      var sx = S.vw / 2 + carX + px, sy = S.carY + py;
-      if (sx - reach < 0 || sx + reach > S.vw || sy - reach < 0 || sy + reach > S.vh) return null;
-
-      var h = cfg.heading * Math.PI / 180;
-      var k = Math.sqrt(px * px + py * py) * 0.5;
-      var P = [[0, 0], [0, k], [px + Math.sin(h) * k, py - Math.cos(h) * k], [px, py]];
-      return function (t) {
-        var u = 1 - t;
-        var b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t;
-        var d0 = 3 * u * u, d1 = 6 * u * t, d2 = 3 * t * t;
-        var tx = d0 * (P[1][0] - P[0][0]) + d1 * (P[2][0] - P[1][0]) + d2 * (P[3][0] - P[2][0]);
-        var ty = d0 * (P[1][1] - P[0][1]) + d1 * (P[2][1] - P[1][1]) + d2 * (P[3][1] - P[2][1]);
-        return {
-          x: b0 * P[0][0] + b1 * P[1][0] + b2 * P[2][0] + b3 * P[3][0],
-          y: b0 * P[0][1] + b1 * P[1][1] + b2 * P[2][1] + b3 * P[3][1],
-          /* 0deg is nose-down, so a tangent (tx, ty) is rotate(atan2(-tx, ty)) */
-          rot: Math.atan2(-tx, ty) * 180 / Math.PI
-        };
-      };
-    }
-
-    function go(url, sheet) {
-      if (job) return;                       // one detour at a time; extra taps do nothing
-      var cfg = DETOURS[url];
-      if (!cfg || RM || !el.carImg.classList.contains('has-car')) { Sheets.open(sheet); return; }
-
-      job = { sheet: sheet, stage: 'align', raf: 0, timer: 0, failsafe: 0, path: null };
-      lock(true);
-      arm(FAILSAFE_MS);
-
-      var d1 = clamp(cfg.exit * S.scale - S.carY, 0, S.travel);
-      var y0 = window.scrollY, y1 = scrollForD(d1);
-      var ms = clamp(Math.abs(y1 - y0) / S.vh * ALIGN_MS_PER_VH, ALIGN_MIN, ALIGN_MAX);
-      animate(ms, function (t) { window.scrollTo(0, y0 + (y1 - y0) * t); }, function () {
-        /* build the curve from where scrollTo actually landed (it rounds),
-         * not from where it was asked to go */
-        job.path = route(cfg, posAt(window.scrollY).d);
-        if (!job.path) { open(); return; }
-        job.stage = 'turn';
-        animate(TURN_MS, function (t) { place(job.path(t)); }, function () {
-          job.stage = 'parked';
-          job.timer = setTimeout(open, PARK_BEAT_MS);
-        });
-      });
-    }
-
-    function open() {
-      clearTimeout(job.failsafe);
-      lock(false);                            // the sheet's own content has to scroll
-      job.stage = 'sheet';
-      job.sheet.addEventListener('close', back, { once: true });
-      Sheets.open(job.sheet);
-    }
-
-    function back() {
-      if (!job || job.stage !== 'sheet') return;
-      if (!job.path) { finish(); return; }    // never left the road: nothing to reverse
-      job.stage = 'back';
-      lock(true);
-      arm(BACK_MS + FAILSAFE_MS);
-      animate(BACK_MS, function (t) { place(job.path(1 - t)); }, finish);
-    }
-
-    function finish() {
-      clearTimeout(job.failsafe);
-      lock(false);
-      place(null);
-      job = null;
-    }
-
-    /* Drop whatever is running and put the car back on the road: a real
-     * resize (the curve's px are stale), or the failsafe. If the sheet
-     * hadn't opened yet, open it — the tap still gets its answer. */
-    function cancel() {
-      if (!job) return;
-      cancelAnimationFrame(job.raf);
-      clearTimeout(job.timer);
-      var sheet = job.sheet, pending = job.stage !== 'sheet' && job.stage !== 'back';
-      sheet.removeEventListener('close', back);
-      finish();
-      if (pending) Sheets.open(sheet);
-    }
-
-    return { go: go, cancel: cancel };
-  })();
-
   /* index.html preloads this (rel=preload as=fetch crossorigin) so the request
    * is already in flight while the HTML is still parsing. That preload is only
    * reused if this request's mode/credentials match it: fetch()'s defaults
@@ -689,7 +492,6 @@
     el.ribbon = $('ribbon'); el.streaks = $('streaks'); el.clouds = $('clouds');
     el.car = $('car'); el.carImg = document.querySelector('.car-idle');
     el.carAnchor = document.querySelector('.car-anchor');
-    el.shadow = document.querySelector('.car-shadow');
     el.tint = $('tint'); el.dusk = $('dusk');
     el.legs = $('legs'); el.rail = $('rail'); el.cue = $('cue');
     el.title = $('title'); el.titleVenue = $('titleVenue');
@@ -778,12 +580,11 @@
       a.href = l.url; a.target = '_blank'; a.rel = 'noopener';
       a.setAttribute('aria-label', 'Open in Google Maps');
       /* A matching event sheet (index.html, matched by data-map) takes over
-       * the tap — the car drives there first, then the sheet opens (see
-       * Detour); without one, the href above still opens the map. */
+       * the tap; without one, the href above still opens the map. */
       var sheet = Sheets.find(l.url);
       if (sheet) {
         a.setAttribute('aria-label', 'Event details');
-        a.addEventListener('click', function (e) { e.preventDefault(); Detour.go(l.url, sheet); });
+        a.addEventListener('click', function (e) { e.preventDefault(); Sheets.open(sheet); });
       }
       el.ribbon.appendChild(a);
       return { a: a, top: l.top, bottom: l.bottom, left: l.left, right: l.right };
@@ -1074,7 +875,6 @@
   var onResize = function () {
     var w = window.innerWidth, h = window.innerHeight;
     if (!FINE_POINTER && w === S.vw && Math.abs(h - S.ih) <= S.ih * 0.25) return;
-    Detour.cancel();
     measure(); ys = window.scrollY; ping();
   };
 
@@ -1127,11 +927,7 @@
     return s * s * (3 - 2 * s);
   }
 
-  /* Where the journey is at scroll position y: the active leg i, that leg's
-   * own 0..1 progress u, and d, the distance travelled in px. A pure function
-   * of y — tick() draws from it, and Detour inverts it (scrollForD) to find
-   * the scroll position that puts the car at a given point on the road. */
-  function posAt(y) {
+  function tick(y) {
     var n = S.n;
     var i = 0;
     while (i < n - 1 && y >= S.legTop[i + 1]) i++;
@@ -1147,30 +943,7 @@
     var p = curve(u, S.ein[i], S.eout[i], S.vpeak[i]);
     var from = i === 0 ? 0 : S.rests[i - 1];
     var to = S.rests[i];
-    return { i: i, u: u, d: RM ? 0 : from + (to - from) * p };
-  }
-
-  /* The scroll position whose d is `d` — posAt inverted by bisection. d only
-   * ever grows with y, so this converges on the one answer; 40 halvings of
-   * any real page length is far below a pixel. */
-  function scrollForD(d) {
-    var lo = 0, hi = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    for (var k = 0; k < 40; k++) {
-      var mid = (lo + hi) / 2;
-      if (posAt(mid).d < d) lo = mid; else hi = mid;
-    }
-    return hi;
-  }
-
-  /* Zoom hides S.crop px off each side. Where a segment's subject runs to the
-   * frame edge — the dam does — slide the window toward it, giving up the
-   * emptier side instead of cutting the subject in half. */
-  function panAt(d) {
-    return trackAt(R.bias, (d + S.vh / 2) / S.scale) * S.crop;
-  }
-
-  function tick(y) {
-    var pos = posAt(y), i = pos.i, u = pos.u, d = pos.d;
+    var d = RM ? 0 : from + (to - from) * p;
     var prog = S.travel ? d / S.travel : 0;      // 0..1 across the whole journey
 
     /* measured speed — everything reactive keys off this, so it all settles to
@@ -1180,20 +953,20 @@
     vsm = vsm * .68 + Math.min(1, v / (S.vh * .013)) * .32;
     var vs = vsm < .01 ? 0 : vsm;
 
-    var pan = panAt(d);
+    /* Zoom hides S.crop px off each side. Where a segment's subject runs to the
+     * frame edge — the dam does — slide the window toward it, giving up the emptier
+     * side instead of cutting the subject in half. */
+    var pan = trackAt(R.bias, (d + S.vh / 2) / S.scale) * S.crop;
     el.ribbon.style.transform =
       'translate3d(' + (-pan).toFixed(2) + 'px,' + (-d).toFixed(2) + 'px,0)';
 
     cullTiles(d);
 
-    /* the car keeps to the painted road even where it wanders, and rides the pan —
-     * plus, only while a "take me here" detour is driving it off the road, that
-     * detour's own offset and heading (S.det, see Detour) */
+    /* the car keeps to the painted road even where it wanders, and rides the pan */
     var cx = trackAt(R.roadCentre, (d + S.carY) / S.scale) * S.scale - pan;
-    var det = S.det || { x: 0, y: 0, rot: 0 };
     el.car.style.transform =
-      'translate3d(' + (cx + det.x).toFixed(2) + 'px,' + (-5 * vs + det.y).toFixed(2) + 'px,0) ' +
-      'rotate(' + (Math.sin(d / (S.vh * .7)) * 1.6 * vs + det.rot).toFixed(3) + 'deg)';
+      'translate3d(' + cx.toFixed(2) + 'px,' + (-5 * vs).toFixed(2) + 'px,0) ' +
+      'rotate(' + (Math.sin(d / (S.vh * .7)) * 1.6 * vs).toFixed(3) + 'deg)';
 
     if (!RM) {
       /* The smear only exists while moving. At vs 0 it is hidden outright,
