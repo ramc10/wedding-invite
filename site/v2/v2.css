@@ -156,18 +156,20 @@ html.ready #scene { opacity: 1; }
   font-size: 1.1rem !important; line-height: 1;
 }
 
-.autoplay {
-  height: 44px; border-radius: 999px; padding: 0 18px 0 14px;
-  display: inline-flex; align-items: center; gap: 8px;
+/* guided drive: "Next: <event>" glides the car to the next event */
+.guide {
+  height: 44px; border-radius: 999px; padding: 0 14px 0 18px;
+  display: inline-flex; align-items: center; gap: 6px;
   font-size: 1.02rem !important; letter-spacing: .02em; color: #FFF6E8 !important;
 }
-.autoplay-icon { width: 13px; height: 13px; fill: var(--gold); flex: none; }
-.autoplay .i-pause, .autoplay[aria-pressed="true"] .i-play { display: none; }
-.autoplay[aria-pressed="true"] .i-pause { display: inline; }
+.guide-icon { width: 13px; height: 13px; color: var(--gold); flex: none; }
+.guide[aria-pressed="true"] .guide-icon { animation: guide-nudge 1s ease-in-out infinite; }
+@keyframes guide-nudge { 50% { transform: translateX(3px); } }
+.guide:disabled { opacity: .45; pointer-events: none; }
 
 @media (max-width: 640px) {
   .music-toggle { width: 40px; height: 40px; font-size: 1rem !important; }
-  .autoplay { height: 40px; padding: 0 14px 0 12px; font-size: .95rem !important; }
+  .guide { height: 40px; padding: 0 12px 0 15px; font-size: .95rem !important; }
 }
 
 /* HUD waits for the scene; before that the loader owns the screen */
@@ -324,6 +326,19 @@ html.ready .cue.gone {
   15%  { opacity: 1; }
   70%  { transform: translateY(-12px); opacity: 1; }
   100% { transform: translateY(-12px); opacity: 0; }
+}
+/* the same hint, smaller, back on the road after a "Take me here" (ui/overlays.js toggles .on) */
+.cue-next { height: 44px; gap: 10px; padding: 0 18px 0 14px; }
+.cue-next .cue-text { font-size: .8rem; letter-spacing: .16em; }
+.cue-next .cue-gesture { width: 16px; height: 22px; }
+html.ready .cue-next {
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 14px); animation: none;
+  transition: opacity .4s ease, transform .4s ease, visibility 0s linear .4s;
+}
+html.ready .cue-next.on {
+  opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0);
+  transition: opacity .6s ease .3s, transform .7s cubic-bezier(.2, .9, .25, 1.1) .3s, visibility 0s .3s;
+  animation: cue-hop 4s ease-in-out 2.5s infinite;
 }
 @keyframes cue-wheel { 0% { transform: translateY(0); opacity: 1; } 70% { transform: translateY(6px); opacity: 0; } 100% { transform: translateY(0); opacity: 0; } }
 .cue-chev {

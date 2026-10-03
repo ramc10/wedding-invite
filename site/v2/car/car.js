@@ -931,6 +931,8 @@ function update(dt, s) {
     off.a = Math.min(OFF_A, off.a + OFF_JERK * dt);
     off.v = Math.min(OFF_V, Math.max(off.v + off.a * dt, clamp(scroll.v, 0, OFF_V)));
     off.s = Math.max(off.s + off.v * dt, s);
+  } else if (off.s != null && scroll.cut) {
+    off.s = null; off.v = off.a = 0; off.rew = false;   // a jump back (Back to start, scrollbar drag): the car is simply home
   } else if (off.s != null) {
     off.v = off.a = 0;
     // gap = (g0+1)^u − 1, u running 1 → 0 over the first REWIND metres scrolled back from where the

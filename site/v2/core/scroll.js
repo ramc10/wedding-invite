@@ -13,10 +13,11 @@
  *   scroll.goTo(s, smooth=true)       scroll the page to where s lives
  *   scroll.place(s)                   jump car + page to s at once (no easing back)
  *   scroll.cut        true for one frame after s jumped (camera snaps)
- *   scroll.autoplay(on)               drive by itself; any user input stops it
- *   scroll.onAutoplay(fn)             fn(on) when autoplay starts/stops
+ *   scroll.glideTo(s, done?)          drive there by itself (ease in, cruise, ease out); any
+ *                                     user scroll/touch/key, or a lock, stops it short
+ *   scroll.gliding / scroll.onGlide(fn)  fn(on) when a glide starts/ends
  */
-import { PACING, END_S, STOPS } from './timeline.js';
+import { PACING, END_S } from './timeline.js';
 import { damp, clamp } from './noise.js';
 
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -79,25 +80,25 @@ function layout() {
 }
 
 const state = { s: 0, sTarget: 0, v: 0, progress: 0, cut: false };
-let locked = false, lockY = 0, auto = false, autoFns = [], autoPause = 0;
-let lastY = 0;
+let locked = false, lockY = 0, glide = null;
+const glideFns = [];
 
 // The scroll event only marks the position stale; scrollY is read once, at
 // the top of the next frame (scroll.update runs before anything writes
 // styles, so layout is still clean and the read is free). Reading it inside
-// the event forced a synchronous layout on every scroll. While autoplaying,
-// the position is the one stepAutoplay just set, so it isn't read at all.
+// the event forced a synchronous layout on every scroll. While gliding, the
+// position is the one stepGlide just set, so it isn't read at all.
 let curY = 0, stale = false;
 addEventListener('scroll', () => { stale = true; }, { passive: true });
 function readTarget() {
-  if (stale && !auto) curY = scrollY;
+  if (stale && !glide) curY = scrollY;
   stale = false;
   state.sTarget = pxToS(Math.max(0, curY));
 }
 
 function update(dt) {
   if (!locked) readTarget();
-  if (auto) stepAutoplay(dt);
+  if (glide) stepGlide(dt);
   const prev = state.s;
   // a jump too far to drive (scrollbar drag, restore, goTo(…, false)): cut, don't race
   state.cut = Math.abs(state.sTarget - state.s) > 350;
@@ -109,6 +110,7 @@ function update(dt) {
 }
 
 function lock() {
+  stopGlide();
   if (locked) return;
   locked = true; lockY = scrollY;
   root.classList.add('scroll-locked');
@@ -137,37 +139,43 @@ function goTo(s, smooth = true) {
   scrollTo({ top: sToPx(clamp(s, 0, END_S)), behavior: smooth && !RM ? 'smooth' : 'auto' });
 }
 
-// Autoplay: advance the page scroll at cruising speed, pause at each stop.
-// s follows curY every frame; the page itself is scrolled there ~10 times a
-// second (and at stops, and when autoplay ends): scrollTo every frame made
-// the browser lay out and dispatch a scroll event each frame.
-const CRUISE = 22; // m/s
+// Glide: s follows a timed ease-in-out from where the page is to the target, at
+// road pace (~45 m/s, 2.5-10 s a leg). The page itself is scrolled there ~10
+// times a second and at the end: scrollTo every frame made the browser lay
+// out and dispatch a scroll event each frame.
 let syncT = 0, pageY = 0;
 function syncPage() { syncT = 0; if (Math.abs(pageY - curY) > 0.5) { pageY = curY; scrollTo(0, curY); } }
-function stepAutoplay(dt) {
-  if (autoPause > 0) { autoPause -= dt; return; }
-  const s = state.sTarget;
-  const stop = STOPS.find(st => s < st.s && s + CRUISE * dt >= st.s);
-  const next = Math.min(END_S, s + CRUISE * dt * (PACING.some(p => s >= p.from && s < p.to) ? 0.45 : 1));
-  lastY = sToPx(stop ? stop.s : next);
-  curY = lastY;
-  syncT += dt;
-  if (stop || syncT > 0.1) syncPage();
-  if (stop) autoPause = 4;
-  if (next >= END_S) autoplay(false);
+function glideTo(s1, done) {
+  s1 = clamp(s1, 0, END_S);
+  if (locked) return;
+  stopGlide();
+  curY = pageY = scrollY; stale = false; syncT = 0;
+  const s0 = pxToS(curY), d = Math.abs(s1 - s0);
+  if (RM || d < 1) { place(s1); if (done) done(); return; }
+  glide = { s0, s1, t: 0, T: clamp(d / 45, 2.5, 10), done };
+  glideFns.forEach(f => f(true));
 }
-function autoplay(on) {
-  if (auto === !!on) return;
-  auto = !!on; autoPause = 0;
-  if (auto) { curY = pageY = scrollY; stale = false; syncT = 0; }   // start from where the page is
-  else syncPage();                                           // leave the page where the car is
-  autoFns.forEach(f => f(auto));
+function stepGlide(dt) {
+  const g = glide;
+  g.t += dt;
+  const k = Math.min(1, g.t / g.T), e = 0.5 - 0.5 * Math.cos(Math.PI * k);
+  state.sTarget = g.s0 + (g.s1 - g.s0) * e;
+  curY = sToPx(state.sTarget);
+  syncT += dt;
+  if (k >= 1) { glide = null; syncPage(); glideFns.forEach(f => f(false)); if (g.done) g.done(); }
+  else if (syncT > 0.1) syncPage();
+}
+function stopGlide() {
+  if (!glide) return;
+  glide = null;
+  syncPage();                                       // leave the page where the car is
+  glideFns.forEach(f => f(false));
 }
 ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(ev =>
   addEventListener(ev, e => {
-    if (!auto) return;
-    if (e.target.closest && e.target.closest('[data-autoplay]')) return;
-    autoplay(false);
+    if (!glide) return;
+    if (e.target.closest && e.target.closest('[data-guide]')) return;
+    stopGlide();
   }, { passive: true }));
 
 addEventListener('resize', layout);
@@ -181,8 +189,8 @@ export const scroll = {
   get progress() { return state.progress; },
   get locked() { return locked; },
   get cut() { return state.cut; },   // true on the frame s jumped instead of easing
-  get autoplaying() { return auto; },
-  update, lock, unlock, goTo, place, autoplay,
-  onAutoplay(fn) { autoFns.push(fn); },
+  get gliding() { return !!glide; },
+  update, lock, unlock, goTo, place, glideTo, stopGlide,
+  onGlide(fn) { glideFns.push(fn); },
   sToPx, pxToS
 };

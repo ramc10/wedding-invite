@@ -35,9 +35,9 @@
 <div id="track" aria-hidden="true"></div>
 
 <div class="hud">
-  <button type="button" class="autoplay" id="autoplay" data-autoplay aria-pressed="false">
-    <svg class="autoplay-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path class="i-play" d="M5 3.2v9.6L12.6 8z"/><path class="i-pause" d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z"/></svg>
-    <span>Drive for me</span>
+  <button type="button" class="guide" id="guideNext" data-guide aria-pressed="false">
+    <span>Next: Reception</span>
+    <svg class="guide-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M5.6 2.8 10.8 8l-5.2 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
   <button type="button" class="music-toggle" id="musicToggle" aria-label="Play sound" aria-pressed="false">&#9834;</button>
 </div>
@@ -94,6 +94,12 @@
 </button>
 
 <!-- first-time hint; ui/overlays.js hides it once the drive starts, a tap nudges the car forward -->
+<!-- back on the road after a "Take me here": how to carry on (ui/overlays.js) -->
+<button type="button" class="cue cue-next" id="cueNext" aria-label="Move forward" tabindex="-1" aria-hidden="true">
+  <svg class="cue-gesture cue-touch" viewBox="0 0 24 32" aria-hidden="true" focusable="false"><rect class="cue-phone" x="2" y="1" width="20" height="30" rx="4"/><circle class="cue-finger" cx="12" cy="21" r="3.2"/></svg>
+  <svg class="cue-gesture cue-mouse" viewBox="0 0 24 32" aria-hidden="true" focusable="false"><rect class="cue-phone" x="4" y="2" width="16" height="26" rx="8"/><rect class="cue-wheel" x="10.8" y="8" width="2.4" height="5" rx="1.2"/></svg>
+  <span class="cue-text"><span class="cue-touch">Swipe up to move forward</span><span class="cue-mouse">Scroll down to move forward</span></span>
+</button>
 <button type="button" class="cue" id="cue" aria-label="Start the drive">
   <svg class="cue-gesture cue-touch" viewBox="0 0 24 32" aria-hidden="true" focusable="false"><rect class="cue-phone" x="2" y="1" width="20" height="30" rx="4"/><circle class="cue-finger" cx="12" cy="21" r="3.2"/></svg>
   <svg class="cue-gesture cue-mouse" viewBox="0 0 24 32" aria-hidden="true" focusable="false"><rect class="cue-phone" x="4" y="2" width="16" height="26" rx="8"/><rect class="cue-wheel" x="10.8" y="8" width="2.4" height="5" rx="1.2"/></svg>

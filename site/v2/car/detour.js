@@ -142,7 +142,6 @@ async function go(stop) {
   if (busy || !stop) return;
   busy = true;
   detour.active = true;
-  scroll.autoplay(false);
   try {
     if (RM.matches || !stop.route) {
       scroll.lock();

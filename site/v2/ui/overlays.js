@@ -4,7 +4,12 @@
  * nothing depends on CSS transitions catching up.
  *
  * Also here: the "Take me here" callouts (STOPS[].callout), the opening
- * scroll cue, and html.at-end (the credit steps forward at the ending). */
+ * scroll cue, the "move forward" hint shown back on the road after a detour,
+ * and html.at-end (the credit steps forward at the ending).
+ *
+ * After a detour its callout stays down while the car is still within that
+ * stop's callout span (it'd offer the same venue straight back); leaving the
+ * span either way re-arms it. */
 import { OVERLAYS, STOPS, END_S } from '../core/timeline.js';
 import { smoothstep } from '../core/noise.js';
 
@@ -15,8 +20,9 @@ const RISE = 14;   // px the text travels while fading
 const BLUR = 6;    // px of blur at zero opacity
 
 const blocks = [];      // {el, last}
-const callouts = [];    // {el, stop, on}
+const callouts = [];    // {el, stop, on, done}
 let cue = null, cueGone = false, atEnd = null, scroll = null, busy = false;
+let cueNext = null, nextAt = null, nextOn = false;   // nextAt: s the car came back to the road at
 let detourMod = null;
 
 function init(ctx) {
@@ -30,22 +36,29 @@ function init(ctx) {
     const el = document.getElementById('callout-' + stop.id);
     if (!el) return;
     el.setAttribute('aria-label', 'Take me to ' + stop.label);
-    el.addEventListener('click', () => go(stop, el));
-    callouts.push({ el, stop, on: false });
+    const c = { el, stop, on: false, done: false };
+    el.addEventListener('click', () => go(c));
+    callouts.push(c);
   });
 
   cue = document.getElementById('cue');
   // tapping the hint shows what a scroll does: the car rolls off the title
   if (cue && scroll) cue.addEventListener('click', () => scroll.goTo(45));
+
+  cueNext = document.getElementById('cueNext');
+  if (cueNext && scroll) cueNext.addEventListener('click', () => scroll.goTo(scroll.sTarget + 40));
 }
 
-async function go(stop, el) {
+async function go(c) {
+  const { stop, el } = c;
   if (busy) return;
   busy = true;
   window.track('take_me_here', { venue: stop.id });
   try {
     detourMod = detourMod || (await import('../car/detour.js')).detour;
     await detourMod.go(stop);
+    c.done = true;                                // back on the road: don't offer it again here
+    nextAt = scroll ? scroll.sTarget : null;
   } catch (e) {
     console.error('[v2] detour failed', e);
   } finally {
@@ -53,7 +66,10 @@ async function go(stop, el) {
     // the sheet hands focus back to its opener; if the detour hid the callout
     // meanwhile that focus fell to <body>, so put it back once the callout is up
     const a = document.activeElement;
-    if ((!a || a === document.body) && el.classList.contains('on')) el.focus({ preventScroll: true });
+    if (!a || a === document.body) {
+      if (el.classList.contains('on')) el.focus({ preventScroll: true });
+      else if (nextAt != null && cueNext) { cueNext.tabIndex = 0; cueNext.focus({ preventScroll: true }); }
+    }
   }
 }
 
@@ -81,7 +97,9 @@ function update(dt, s) {
 
   const detourOn = !!(detourMod && detourMod.active);
   for (const c of callouts) {
-    const on = !detourOn && s > c.stop.callout[0] && s < c.stop.callout[1];
+    const inSpan = s > c.stop.callout[0] && s < c.stop.callout[1];
+    if (!inSpan && !detourOn) c.done = false;
+    const on = !detourOn && inSpan && !c.done;
     if (on === c.on) continue;
     c.on = on;
     c.el.classList.toggle('on', on);
@@ -89,7 +107,17 @@ function update(dt, s) {
     if (on) c.el.removeAttribute('aria-hidden'); else c.el.setAttribute('aria-hidden', 'true');
   }
 
-  if (cue && !cueGone && (s > 6 || (scroll && scroll.autoplaying))) {
+  // the hint stays until the car moves on (or back), or a guided drive starts
+  if (nextAt != null && !detourOn && (Math.abs(s - nextAt) > 4 || (scroll && scroll.gliding))) nextAt = null;
+  const nOn = nextAt != null && !detourOn;
+  if (cueNext && nOn !== nextOn) {
+    nextOn = nOn;
+    cueNext.classList.toggle('on', nOn);
+    cueNext.tabIndex = nOn ? 0 : -1;
+    if (nOn) cueNext.removeAttribute('aria-hidden'); else cueNext.setAttribute('aria-hidden', 'true');
+  }
+
+  if (cue && !cueGone && s > 6) {
     cueGone = true;
     cue.classList.add('gone');
   }

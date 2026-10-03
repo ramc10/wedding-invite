@@ -41,7 +41,6 @@ function open(id) {
   st = { resolve: [], opener: document.activeElement, ownLock: false };
   state.set(d, st);
   if (!scroll.locked) { scroll.lock(); st.ownLock = true; }
-  if (scroll.autoplaying) scroll.autoplay(false);
   d.classList.remove('closing', 'dragged', 'dragging', 'settling');
   d.style.removeProperty('--drag');
   d.showModal();
