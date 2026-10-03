@@ -27,7 +27,7 @@ const PLW = 3.6, PLH = 0.5, PLD = 0.9;
 /* ---------- fonts: the site's own files, never a silent fallback ---------- */
 
 let FONTS = null;
-function loadFonts() {
+export function loadFonts() {
   if (!FONTS) FONTS = Promise.all([
     new FontFace('EB Garamond', 'url(../fonts/eb-garamond-600.woff2)', { weight: '600' }),
     new FontFace('Mrs Saint Delafield', 'url(../fonts/mrs-saint-delafield-400.woff2)', { weight: '400' })

@@ -5,7 +5,7 @@
  *
  * Exports helpers the cove reuses: duneGrass(ctx, opts), coastRocks(ctx, opts).
  */
-import { onEventSite, eventDist, COURTS, SITES } from '../core/timeline.js';
+import { onEventSite, eventDist, COURTS, SITES, EVENTS } from '../core/timeline.js';
 import * as THREE from 'three';
 import { makeWater } from './water.js';
 import { plant, band as band0 } from './flora.js';
@@ -300,7 +300,8 @@ function duneH(s, lat, wall, shore) {
 }
 
 // the venue sites (forecourt and deck): the sand stays well below their paving and boards
-const inCourt = (s, l) => Object.values(SITES).some(S => s > S.a - 1 && s < S.d1 + 1 && l < -3.4 && l > S.lat[1] - 0.8);
+const inCourt = (s, l) => Object.values(SITES).some(S => s > S.a - 1 && s < S.d1 + 1 && l < -3.4 && l > S.lat[1] - 0.8)
+  || (s > EVENTS.submarine.s0 - 1 && s < EVENTS.submarine.s1 + 1 && l < -3.4 && l > EVENTS.submarine.lat[1] - 0.8);   // the submarine's deck
 
 export function sandBeach(ctx, { s0, s1, wallLat, fadeIn = 24, fadeOut = 24 }) {
   const { path, world } = ctx;
@@ -599,6 +600,9 @@ export default {
         const sh = shoreLat(ctx, s, 0);
         const lat = WALL - 2.5 - Rp() * Math.max(1, (WALL - sh) * -0.55);
         if (onEventSite(s, lat, 3)) return null;
+        // keep the sightline from the road to the submarine's bow clear
+        const M = EVENTS.submarine;
+        if (s > M.s0 - 40 && s < M.s0 && lat > M.lat[1] - 2) return null;
         return { s, lateral: lat, yaw: Math.PI + (Rp() - 0.5) * 1.2 + ctx.path.sample(s).heading };
       }
     }));
@@ -633,7 +637,9 @@ export default {
     // the city side of Beach Road, and its street lamps
     group.add(beachBlocks(ctx, { s0: s0 + 20, s1: s1 - 10 }));
     { let l0 = s0 + 16;
-      for (const c of gaps) { if (c.s0 - 3 - l0 > 4) group.add(promenadeLamps(ctx, { s0: l0, s1: c.s0 - 3, lat: WALL + 0.45 })); l0 = c.s1 + 3; }
+      // no lamp standards in front of the submarine's bow
+      const lampGaps = [...gaps, { s0: EVENTS.submarine.s0 - 10, s1: EVENTS.submarine.s0 + 16 }].sort((a, b) => a.s0 - b.s0);
+      for (const c of lampGaps) { if (c.s0 - 3 - l0 > 4) group.add(promenadeLamps(ctx, { s0: l0, s1: c.s0 - 3, lat: WALL + 0.45 })); l0 = c.s1 + 3; }
       if (s1 - l0 > 4) group.add(promenadeLamps(ctx, { s0: l0, s1, lat: WALL + 0.45 })); }
 
     T('city');

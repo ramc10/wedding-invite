@@ -17,13 +17,17 @@ import { path } from './path.js';
 const Z = byId;
 const at = (id, u) => Z[id].s0 + (Z[id].s1 - Z[id].s0) * u;
 
-// The Vizag leg is a journey along Beach Road: the Palm Beach Hotel board on
-// the right, then the three events on the sand to the left, in order.
+// The Vizag leg is a journey along Beach Road: the INS Kursura submarine museum
+// on its paved deck to the left, then the Palm Beach Hotel board on the right,
+// then the three events on the sand to the left, in order.
 // Each scene stands on a level deck spanning `lat` (road-relative metres,
 // negative = left/sea side) and s ± len/2. biomes/events/*.js build them,
 // and the beach legs keep their palms, grass and props off these footprints.
 export const EVENTS = {
-  board:     { s: 442, lateral: 9.5 },
+  board:     { s: 530, lateral: 9.5 },       // past the submarine, before the Reception's forecourt
+  // biomes/events/submarine.js: a road-level paved deck s0…s1 × lat (behind the sea wall), the hull's
+  // axis at lateral ax from its bow (s = bow, facing oncoming cars) for 91.3 m toward +s
+  submarine: { s0: 405, s1: 513, lat: [-6.3, -19.5], ax: -13.2, bow: 414 },
   reception: { s: 600, lat: [-6.8, -20.2], len: 30 },
   haldi:     { s: 860, lat: [-6.8, -20.2], len: 26 },
   muhurtham: { s: 1070, lat: [-6.8, -20.2], len: 28 }
@@ -101,7 +105,8 @@ export function eventDist(s, lateral) {
     const cs = Math.max(0, c.s0 - s, s - c.s1), cl = Math.max(0, lateral - c.lat[0], c.lat[1] - lateral);
     d = Math.min(d, Math.hypot(cs, cl));
   }
-  return d;
+  const m = EVENTS.submarine;
+  return Math.min(d, Math.hypot(Math.max(0, m.s0 - s, s - m.s1), Math.max(0, lateral - m.lat[0], m.lat[1] - lateral)));
 }
 /** true if (s, lateral) falls on an event's footprint, grown by pad metres */
 export function onEventSite(s, lateral, pad = 2) {
@@ -112,6 +117,8 @@ export function onEventSite(s, lateral, pad = 2) {
     if (s > c.s0 - pad && s < c.s1 + pad && lateral < c.lat[0] + pad && lateral > c.lat[1] - pad) return true;
   }
   if (s > karimS + 20 && s < karimS + 106 && lateral > 3.4 && lateral < 64) return true;   // AMR Unnati's lot and apron
+  const m = EVENTS.submarine;
+  if (s > m.s0 - pad && s < m.s1 + pad && lateral < m.lat[0] + pad && lateral > m.lat[1] - pad) return true;
   const b = EVENTS.board;
   return Math.abs(s - b.s) < 4 + pad && Math.abs(lateral - b.lateral) < 3 + pad;
 }
@@ -185,7 +192,7 @@ export const OVERLAYS = [
   // the names wait for the first scroll: hidden at rest, written in over the first few metres
   { id: 'title', els: ['title'], from: 9, to: at('garden', 0.3), fade: 8, fadeOut: 40 },
   { id: 'titleVenue', els: ['titleVenue'], from: -1e9, to: at('garden', 0.3), fade: 40 },   // gone before the garden opens up
-  { id: 'vizag', els: ['venue'], from: EVENTS.board.s - 10, to: EVENTS.muhurtham.s + 70, fade: 40 },  // the hotel, the whole way along the beach
+  { id: 'vizag', els: ['venue'], from: Z['garden-beach'].s0 + 40, to: EVENTS.muhurtham.s + 70, fade: 40 },  // the hotel, the whole way along the beach
   cap('reception', ['capReception']),
   cap('haldi', ['capHaldi']),
   cap('muhurtham', ['capMuhurtham']),
