@@ -1069,5 +1069,6 @@ export const car = {
   // the drive-off: metres driven on past the end, and the pose the ending camera frames
   get away() { return off.s == null ? 0 : Math.max(0, off.s - scroll.s); },
   parkPos, parkFwd,
-  get accel() { return state.acc; }
+  get accel() { return state.acc; },
+  get blinkT() { return blinkT; }   // the lamp clock, so audio/car.js ticks on it
 };

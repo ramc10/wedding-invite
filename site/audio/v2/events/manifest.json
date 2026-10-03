@@ -1,33 +1,43 @@
 [
   {
     "file": "reception.mp3",
-    "purpose": "Reception (evening, beach-side): crowd murmur, glass clinks, faint Indian bamboo flute. Stereo loop, 38.2 s, RMS -24.",
-    "freesound_id": 133819,
-    "url": "https://freesound.org/s/133819/",
-    "author": "ecfike",
-    "license": "CC0",
-    "start": 2.0,
-    "len": 38.2,
+    "purpose": "Reception (evening, beach-side): a live Carnatic concert (vocal, violin, mridangam, tanpura) in a Chennai sabha as the music, a real wedding-reception crowd murmur far behind, two faint glass clinks. Stereo loop, 62.0 s, -21.0 LUFS, peak -6.7 dBFS.",
+    "freesound_id": 180616,
+    "url": "https://freesound.org/s/180616/",
+    "author": "xserra",
+    "license": "CC-BY 4.0",
+    "start": 86.75,
+    "len": 62.0,
     "layers": [
-      {"freesound_id": 44337, "url": "https://freesound.org/s/44337/", "author": "ananth-pattabi", "license": "CC-BY 4.0", "start": 31.5, "gain_db": -10, "role": "bamboo flute (Indian), band-limited 200 Hz-6 kHz with a light echo so it reads as distant live music"},
-      {"freesound_id": 567248, "url": "https://freesound.org/s/567248/", "author": "cabled_mess", "license": "CC0", "role": "9 isolated glass clinks (0.9 s each) placed every 3.5-5 s, -4 to -10 dB, panned across the field"}
+      {
+        "freesound_id": 133819,
+        "url": "https://freesound.org/s/133819/",
+        "author": "ecfike",
+        "license": "CC0",
+        "start": 2.0,
+        "gain_db": -14,
+        "role": "wedding-reception crowd walla, src 2.0-47.5 s chained with 3 s crossfades to fill the loop, 4-pole HPF 160 Hz + 4-pole LPF 4 kHz; RMS 14 dB under the music (13-18 dB under it in every band)"
+      },
+      {
+        "freesound_id": 567248,
+        "url": "https://freesound.org/s/567248/",
+        "author": "cabled_mess",
+        "license": "CC0",
+        "role": "2 isolated glass clinks (src 17.1 s and 44.0 s, 1.1 s each, band 500 Hz-6 kHz) at 14.0 s (pan left) and 44.5 s (pan right), faint"
+      }
     ],
-    "notes": "Base is a real wedding-reception crowd (Zoom H4n, author says loopable): dense, even walla, no single foreground voice in the spectrogram, 4-pole high-pass at 140 Hz to lose mic rumble. Flute loop seam placed on breath gaps (source 33.5 s / 71.7 s) so the crossfade does not cut a phrase. Rejected: 451596 (indoor hall, loud burst at 80-90 s), 72848 (actors improvising a posh English dinner party, intelligible speech), 850373 clinks (clipped, peaks over 0 dBFS), 125655 veena (very uneven level). Mix built with a numpy premix, then mkloop. Attribution needed for the flute (CC-BY)."
+    "notes": "Music: 'Fragment of a Carnatic music concert by Vignesh Ishwar, accompanied by Akshay Anantapadmanabhan on the mridangam, plus a violin and a tanpura, Dec 24 2012, Brahma Gana Sabha, Chennai' (Sony PCM-D50, CompMusic). A real live South Indian kutcheri, the same kind of warm live recording as the Muhurtham nadaswaram, and a different sound from every other music bed (voice + violin + mridangam). Chain: HPF 70 Hz, -5 dB high shelf at 5 kHz, LPF 9 kHz, 3:1 compressor (5 ms attack, threshold -28 dB) to take the edge off the mridangam strokes; no added reverb (the hall is already in the recording). Window 86.75-148.75 s is inside the continuous concert (the first 20 s of the file are tuning), no applause, with 2 s levels flat at -23 to -25 dBFS; both ends are local dips (-29 and -31 dBFS). Seam: tail-copy corr 0.991, splice step 0.010 (p99 of normal sample steps 0.029). WEAK POINT: it is dense (mridangam plays throughout), so it is less 'soft' than a solo instrument; lyrics are Carnatic (Telugu/Sanskrit), no English. Previous build used sitar 125985, withdrawn because music/travel.mp3 uses the same recording. Rejected in this round: 125654 santur (Peyman Heydarian playing Iranian music, not Indian), 193926 Carnatic vocal aalap (full-band digital dropouts every few seconds, abrupt edits), 185553 surmandal (played on an iPhone app), 164083 Hindustani alap Raag Desh with swarmandal (electronic tanpura drone dominates the level, reads like a demonstration), 193928/193929 Subroto Roy Chowdhury (lecture-demonstrations, sitar again), 177474 Vande Mataram, 532428 sarangi (sparse ambient, rumble), 395024 (drum procession); no jaltarang, shehnai or Indian santoor exists under CC0/CC-BY. Earlier rejects: 339970/350547/37715/42192/754604 sitar takes (hiss, practice, sparse), 11200 (muddy). Attribution needed (CC-BY). 2026-10-01 soothing pass: Rebuilt from stems (scratchpad/soothe-ev/rec.json, evening/build.py): crowd walla -14 -> -20 dB under the music, bed LPF 4 -> 3.2 kHz; glass clinks 4 dB softer, LPF 6 -> 4.5 kHz; music chain darker (high shelf -7 dB @4.5 kHz, LPF 9 -> 7.5 kHz); premix -3 dB bell EQ at 6 kHz (de-ess). 4-8 kHz share -1.7 dB, 8-16 kHz -4 dB. Loop 62.0 s, -21.0 LUFS (was -21.0), peak -6.7 dBTP. Seam: tail corr 0.994, splice step 0.016 (< in-file p99.9 0.041)."
   },
   {
     "file": "haldi.mp3",
-    "purpose": "Haldi (daytime, joyful): street dhol with an Indian folk song and cymbals, women's laughter, ghungroo (anklet bells). Stereo loop, 28.04 s, RMS -24.",
-    "freesound_id": 728135,
-    "url": "https://freesound.org/s/728135/",
-    "author": "deep_",
-    "license": "CC0",
-    "start": 0.3,
-    "len": 28.04,
-    "layers": [
-      {"freesound_id": 438419, "url": "https://freesound.org/s/438419/", "author": "craigsmith", "license": "CC0", "role": "3 laughter bursts (3.5 s, src 14.0/52.5/24.5 s) at about 6 dB under the music, panned"},
-      {"freesound_id": 700521, "url": "https://freesound.org/s/700521/", "author": "bashrambali", "license": "CC0", "role": "3 ghungroo jingles (src 2/22/30 s), quiet, panned"}
-    ],
-    "notes": "Source is a real Holi street performance recorded in India (dhol, sung folk song, hand cymbals): unmistakably Indian and festive, no clipping (peak -3 dBFS). It is a mono phone recording, so the laughter and ghungroo layers are panned to give it width. Loop is 11 song cycles (period 2.56 s) with the best seam score. WEAK POINT: the music lasts only about 34 s, so the loop is 28 s, just under the 30 s target, and it is a phone recording, not studio quality. No usable dholak-and-women-singing (sangeet/haldi) recording exists on Freesound under CC0/CC-BY. Rejected: 418780 Indian Wedding Dhols (heavily clipped, +3 dBFS), 272178 Goa Holi drums (boomy, procession rather than gathering), 865161 dholak jam (dry and aimless), 175435 bangles (too quiet and hissy to use)."
+    "purpose": "Haldi (morning, light and joyful): a chorus with a solo woman's voice, accompanied by sitar, flute, tabla and esraj. Recorded live one morning at a school in Kolkata. Stereo loop, 52.52 s, -21.0 LUFS, true peak -2.7 dBTP.",
+    "freesound_id": 125980,
+    "url": "https://freesound.org/s/125980/",
+    "author": "xserra",
+    "license": "CC-BY 4.0",
+    "start": 23.75,
+    "len": 52.52,
+    "notes": "Source: 'Tagore-festival-3', part of a Rabindranath Tagore theatre play. A chorus and a solo female voice sing with sitar, flute, tabla and esraj, recorded on a Sony PCM-D50. The level is even (-19 to -28 dBFS per 0.5 s), with little above 5 kHz and no clipping. There is no hiss. The loop is 23.75-76.27 s, which contains one natural phrase breath at about 32 s. The seam was picked in two passes: first a chroma plus band-spectrum match over the 4 s crossfade (0.60), then L was fine-tuned by onset-envelope correlation (0.41, the best of the 30 candidates) so the tabla strokes line up. After the build, xcorr at the splice is 0.998 and the sample step is 0.009 (the mean |diff| is 0.007), so there is no click, and the spectrogram across the seam is continuous. The loop is 52 s of through-sung melody, so it does not repeat a short cycle like the old 2.56 s one did. Rejected: 179166 (Hindi kirtan by the roadside, mono, broadband noise and constant cymbal hiss), 798948 (women's kirtan buried under honks and a sound system), 750897 (Hare Krishna procession, loud kartals, clipping, fades away), 466273/468347 (Sundarbans folk: extracted from video, constant bright cymbal band at 5.5 kHz, peaks over 0 dBFS, men only), 172456 (Bangladeshi village group song, a cappella with stops and clipping), 140143 (Moroccan wedding chant, not Indian), 797580 (27 s, rickshaw). No CC0/CC-BY dholak with women singing, manjira, bathukamma or Telugu folk recording was found. The searches for dholki, mehndi, garba, dandiya, manjira, kartal and bathukamma returned nothing. 2026-10-01 soothing pass: Source 125980 pre-filtered whole (afftdn nr 6 dB, -3 dB bell @6 kHz, high shelf -4 dB @4.5 kHz, LPF 8 kHz), then mkloop at the same start 23.75. Len changed 52.522 -> 52.52 to MATCH events.js LEN (old file was 88 samples longer than the code's len: splice step 0.276 = audible click risk each loop; now 0.031, < p99.9 0.033, corr 0.999). 4-8 kHz share -2.1 dB, 8-16 kHz -11 dB. -20.9 LUFS (was -21.0), peak -2.6 dBTP. Manifest len should read 52.52."
   },
   {
     "file": "muhurtham.mp3",
@@ -42,28 +52,44 @@
   },
   {
     "file": "dawat.mp3",
-    "purpose": "Dawat (dinner at convention hall): busy Indian restaurant chatter, plates and cutlery, faint kitchen sizzle. Stereo loop, 44 s, RMS -24.",
-    "freesound_id": 508874,
-    "url": "https://freesound.org/s/508874/",
-    "author": "SoundEnsemble",
-    "license": "CC0",
-    "start": 30.0,
-    "len": 44.0,
+    "purpose": "Dawat (dinner at convention hall): soft sarod alap-style melody as the music, a faint Indian restaurant murmur and cutlery underneath. Stereo loop, 60.25 s, -21.1 LUFS, peak -8.5 dBFS.",
+    "freesound_id": 126404,
+    "url": "https://freesound.org/s/126404/",
+    "author": "xserra",
+    "license": "CC-BY 4.0",
+    "start": 7.25,
+    "len": 60.25,
     "layers": [
-      {"freesound_id": 325558, "url": "https://freesound.org/s/325558/", "author": "burkay", "license": "CC0", "start": 8.0, "gain_db": -3, "role": "dinner party recorded from above: cutlery and plate clinks plus murmur"},
-      {"freesound_id": 862622, "url": "https://freesound.org/s/862622/", "author": "bassimat", "license": "CC0", "start": 5.0, "gain_db": -12, "role": "steady pan sizzle, high-passed at 1.2 kHz (4-pole) so only the fizz remains, about 11 dB under the room in the highs"}
+      {
+        "freesound_id": 508874,
+        "url": "https://freesound.org/s/508874/",
+        "author": "SoundEnsemble",
+        "license": "CC0",
+        "start": 30.0,
+        "gain_db": -17,
+        "role": "busy south Indian restaurant in Delhi (Hindi voices, plates), 4-pole HPF 160 Hz + 4-pole LPF 3.5 kHz; RMS 17 dB under the sarod"
+      },
+      {
+        "freesound_id": 325558,
+        "url": "https://freesound.org/s/325558/",
+        "author": "burkay",
+        "license": "CC0",
+        "start": 4.0,
+        "gain_db": -21,
+        "role": "dinner-party cutlery and plate clinks, HPF 300 Hz + LPF 4.5 kHz; RMS 21 dB under the sarod"
+      }
     ],
-    "notes": "Base is a busy south Indian restaurant in Delhi (Zoom H2n), with Indian voices and an even level (-26 to -31 dBFS per 5 s). Cutlery clinks are clearly visible as broadband ticks throughout. The loop is level-flat (-21 to -25 per 2 s) with no one-off bangs. Rejected: 72848 (English theatre improvisation), 480724 (level drifts by 10 dB), 432151/563892 sizzles (clunks, birds). 325558 may carry some English murmur, but it sits 3 dB under the Hindi room and is not intelligible in the spectrogram."
+    "notes": "Music is a sarod recording by Parag Chordia (xserra's CompMusic set): warm and low (spectral centroid ~400 Hz), continuous melody with meend, stereo, clean. Sarod chosen because Freesound has no usable CC0/CC-BY sarangi (532428 is a sparse ambient piece with rumble; 177474 is Vande Mataram) and the drive already uses bansuri/veena/santoor; it differs from the reception sitar (fretless, darker, sustained). Chain: HPF 55 Hz, -5 dB high shelf at 5 kHz, LPF 9.5 kHz, 2.5:1 compressor (threshold -26 dB) to tame the louder runs at 37 s and 48 s of the source, light 47/79 ms echo. Window 7.25-67.5 s: both ends are phrase gaps (-28 and -31 dBFS, 11-13 dB under context). First pass had the beds at -14/-18 and the restaurant + cutlery matched or beat the sarod above 2 kHz (cutlery +6 dB at 4-8 kHz), which on a phone would read as a canteen, so they were pulled to -17/-21 with lower LPFs. Seam: tail-copy corr 0.992, splice step 0.011 (p99 of normal steps 0.015). The old sizzle layer (862622) is dropped. Attribution needed (CC-BY) for the sarod. NOTE for the lead: site/v2/audio/events.js hardcodes LEN; it must become reception 63.5 and karimnagar 60.25. 2026-10-01 soothing pass: Rebuilt from stems (soothe-ev/daw.json): restaurant bed -17 -> -23 dB, cutlery -21 -> -27 dB, both LPF 3 kHz; music high shelf -7 dB @4.5 kHz, LPF 9.5 -> 7.5 kHz. 2-4 kHz share -1.7 dB, 4-8 kHz -3.9 dB. Loop 60.25 s, -21.1 LUFS (was -21.1), peak -8.8 dBTP. Seam: corr 0.996, step 0.010 (< p99.9 0.022)."
   },
   {
     "file": "arrive.mp3",
-    "purpose": "Event-card open: one soft handbell strike with natural decay. Stereo one-shot, 3.6 s, peak -6 dBFS.",
-    "freesound_id": 448510,
-    "url": "https://freesound.org/s/448510/",
-    "author": "Faranta",
-    "license": "CC0",
+    "purpose": "Event-card open: one soft strike of a brass bell with a long natural decay. Stereo one-shot, 5.0 s, peak -6.0 dBFS (true peak -6.2).",
+    "freesound_id": 263659,
+    "url": "https://freesound.org/s/263659/",
+    "author": "stefansmulovitz",
+    "license": "CC-BY 4.0",
     "start": 0.0,
-    "len": 3.6,
-    "notes": "Single clean strike of a small handbell (G, fundamental about 1.58 kHz, gentle beating shimmer). It decays from -39 to -72 dBFS RMS over 3 s, then gets mkloop's 0.4 s fade. Two 4-pole high-passes at 300 Hz remove the recorder's low rumble. Chosen over 331676 (brass bell: the clapper strikes three times in 0.35 s), 212541 (Indian finger-cymbal ring: pleasant, but 4 kHz, piercing and clipped on the attack), 452379/862762 (decay under 1 s), 390202/148849 (noisy background) and 271627 (repeated temple bells, busy). Not specifically Indian; the Indian-flavoured alternative is 212541 (CC0) at the same settings."
+    "len": 5.0,
+    "notes": "A single clean strike on a brass bell. The fundamental is about 930 Hz and dominant, with partials at 2.28 kHz (strong), 3.8 kHz and 5.7 kHz. The upper partials die within about 1-2 s, leaving a warm, slowly beating hum. The level decays from -18 to -47 dBFS RMS over 4.5 s, and mkloop's shot mode adds a 5 ms fade-in and a 0.4 s fade-out. Honest caveat: the author says it is a ship's bell hanging by his door, so it is not a puja ghanti. Tonally it reads as a small brass temple bell struck once, and it is lower and softer than the old 1.58 kHz handbell. Rejected Indian options: 271627 (several temple bells, busy), 274328 (processed/stretched ghanta, clipped), 444342 ('Indian desert bell': a clapper double-hit at +0.75 s and a clipped attack), 212541 (finger cymbal, piercing at 4 kHz), 390202/148849 (noisy background). Rejected others: 668647 (large 318 Hz Japanese-style temple bell, too heavy), 422677/79540/417300/508730 (bright, dominant above 2 kHz or clipped), 87401/531028/29946 (several strikes). 2026-10-01 soothing pass: Re-cut from 263659 (0-5 s): high shelf -6 dB @3 kHz + 2x LPF 6 kHz, 8 ms sine-squared fade-in (was 5 ms linear), 0.4 s fade-out, sample peak -9.3 dBFS (was -6.0; -9.9 dBTP), -19.8 LUFS (was -18.5). Spectral centroid of the strike 1650 -> 1430 Hz, >2 kHz energy share -1.3 dB. 5.0 s one-shot."
   }
 ]

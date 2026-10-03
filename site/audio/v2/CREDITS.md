@@ -2,6 +2,8 @@
 
 All from [Freesound](https://freesound.org). CC0 needs no credit; CC BY 4.0 sources are **bold** and must stay credited.
 
+Every file here is an edit of its source, not the original recording: trimmed, filtered (high-pass, notch, EQ), layered, crossfaded into a loop and levelled; the steady beds (water-rush, hills-wind, sea-wind, crickets) are mixed to mono. CC BY 4.0 asks that changes be indicated, so site/v2/credits.html says so too.
+
 ## nature
 - `forest-birds.mp3`: "bratendu", https://freesound.org/s/565439/ (CC0)
 - `garden-birds.mp3`: "Sagnik_Basu", https://freesound.org/s/398860/ (CC0)
@@ -24,14 +26,18 @@ All from [Freesound](https://freesound.org). CC0 needs no credit; CC BY 4.0 sour
 - `engine-off.mp3`: "AlexanderChe", https://freesound.org/s/362944/ (CC0)
 
 ## events
+- `reception.mp3`: **"xserra", https://freesound.org/s/180616/ (CC-BY 4.0)**
 - `reception.mp3`: "ecfike", https://freesound.org/s/133819/ (CC0)
-- `reception.mp3`: **"ananth-pattabi", https://freesound.org/s/44337/ (CC-BY 4.0)**
 - `reception.mp3`: "cabled_mess", https://freesound.org/s/567248/ (CC0)
-- `haldi.mp3`: "deep_", https://freesound.org/s/728135/ (CC0)
-- `haldi.mp3`: "craigsmith", https://freesound.org/s/438419/ (CC0)
-- `haldi.mp3`: "bashrambali", https://freesound.org/s/700521/ (CC0)
+- `haldi.mp3`: **"xserra", https://freesound.org/s/125980/ (CC-BY 4.0)**
 - `muhurtham.mp3`: **"xserra", https://freesound.org/s/320245/ (CC-BY 4.0)**
+- `dawat.mp3`: **"xserra", https://freesound.org/s/126404/ (CC-BY 4.0)**
 - `dawat.mp3`: "SoundEnsemble", https://freesound.org/s/508874/ (CC0)
 - `dawat.mp3`: "burkay", https://freesound.org/s/325558/ (CC0)
-- `dawat.mp3`: "bassimat", https://freesound.org/s/862622/ (CC0)
-- `arrive.mp3`: "Faranta", https://freesound.org/s/448510/ (CC0)
+- `arrive.mp3`: **"stefansmulovitz", https://freesound.org/s/263659/ (CC-BY 4.0)**
+
+## music
+- `opening.mp3`: **"xserra", https://freesound.org/s/125852/ (CC-BY 4.0)**
+- `closing.mp3`: **"xserra", https://freesound.org/s/125852/ (CC-BY 4.0)**
+- `garden.mp3`: "iskweldog", https://freesound.org/s/216060/ (CC0)
+- `travel.mp3`: **"xserra", https://freesound.org/s/125985/ (CC-BY 4.0)**

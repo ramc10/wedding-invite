@@ -1,0 +1,50 @@
+[
+  {
+    "file": "opening.mp3",
+    "purpose": "Opening / forest: live Carnatic venu (South Indian bamboo flute) alapana over the concert tanpura drone (tonic D#), with the violinist's soft shadowing in the second half. Stereo loop, 61.5 s (+0.5 s head appended), about -21 LUFS.",
+    "freesound_id": 125852,
+    "url": "https://freesound.org/s/125852/",
+    "author": "xserra",
+    "license": "CC-BY 4.0",
+    "start": 13.0,
+    "len": 61.5,
+    "layers": [],
+    "notes": "Source: alap by T Sashidhar (venu) with V V Ravi (violin), Music Academy Madras, Chennai, 18 Apr 2011 (CompMusic). Passage = the flute's first entry from silence over the drone, slow, lower-middle register. Pre-processing before mkloop: HPF 70 Hz, -6 dB shelf at 5 kHz, LPF 10 kHz, adeclick (faint audience clicks), gentle limiter to tame transients. Seam: loop start at the pre-entry gap (13.0 s, -53 dB flute band), loop end at a breath gap (74.5 s); decoded head/tail correlation 0.996, splice sample step 0.0017 (below median step 0.0028). Rejected: 44337 ananth-pattabi (sound-check noodling, no drone, bouncy, clipping at the end), 860575 Swaraj_Sonavane (only 32 s of playing, huge reverb), 859898/859882 Swaraj_Sonavane (granular synthesis / pads, not acoustic), 179697 sankalp (21 s, practice fragments with stops), 125980 xserra (Tagore choir, vocals dominate). No CC0/CC-BY bansuri-with-tanpura alap exists on Freesound; this concert venu alap is the best flute-over-drone recording. Opening and closing are two separate, non-overlapping passages of it (13-78 s vs 86-150 s)."
+  },
+  {
+    "file": "closing.mp3",
+    "purpose": "Closing / creek at sunrise: a later passage of the same venu alapana, starting on a long held Pa then calm phrases around the upper Sa. Stereo loop, 60.3 s (+0.5 s head appended), about -21 LUFS.",
+    "freesound_id": 125852,
+    "url": "https://freesound.org/s/125852/",
+    "author": "xserra",
+    "license": "CC-BY 4.0",
+    "start": 85.7,
+    "len": 60.3,
+    "layers": [],
+    "notes": "Same processing chain as opening. Seam: start on a gap before the held Pa (85.7 s, -46 dB), end on a breath gap (146.0 s); decoded head/tail correlation 0.988, splice step 0.0002. The true resolving descent of the alap (238-272 s) is only ~35 s before the violin's solo turn begins at ~273 s, too short for a 45 s loop, so the calmer held-note passage was used instead. The violin's own alap (273-307 s) and the applause after it are excluded."
+  },
+  {
+    "file": "garden.mp3",
+    "purpose": "Garden: Saraswati veena (Carnatic), moderate, even plucking over the veena's own drone strings. Stereo loop, 58.5 s body (+0.5 s head), about -21 LUFS.",
+    "freesound_id": 216060,
+    "url": "https://freesound.org/s/216060/",
+    "author": "iskweldog",
+    "license": "CC0",
+    "start": 12.25,
+    "len": 58.5,
+    "layers": [],
+    "notes": "Only three veena recordings on Freesound are CC0 or CC-BY. This one is a live veena played by a student at a high-school show, through a guitar pickup and a DI (dry, no audience noise). Taken from the calmest stretch (0-90 s, about 2.5 onsets/s; later sections go up to 5/s). Processing: HPF 90 Hz, LPF 5.5 kHz, -3 dB shelf at 4 kHz, 2:1 compression, and a synthetic decorrelated early-reflection room (wet -8 dB, LPF 3 kHz) to give the mono DI signal width and air. The seam is on a phrase gap (-6.6 dB) with a head/tail spectral correlation of 0.57. Rejected: 125655 (xserra, a CompMusic Carnatic veena, but it plays like a demo: isolated low-string strokes with long silences and 20 dB level jumps), 161580 (a single sampled note), 222987 (a produced track with electronic sub-bass), 125654 (Persian santur, Peyman Heydarian, so not Indian)."
+  },
+  {
+    "file": "travel.mp3",
+    "purpose": "Cove + hills: Hindustani sitar alap (slow, unmetred introduction) over an electronic tanpura/shruti box, from a concert. Stereo loop, 67.5 s body (+0.5 s head), about -21 LUFS.",
+    "freesound_id": 125985,
+    "url": "https://freesound.org/s/125985/",
+    "author": "xserra",
+    "license": "CC-BY 4.0",
+    "start": 24.75,
+    "len": 67.5,
+    "layers": [],
+    "notes": "Sitar fallback: no Indian santoor exists on Freesound under CC0/CC-BY (125654 'Santur' is Persian, 45135 is a granular time-stretch, 222987 is produced with electronic bass). Performer Sourav Ganguly, recorded on a Sony PCM-D50 at the ITC Sangeet Research Academy, Kolkata, 3 May 2011. Processing: HPF 90 Hz, LPF 6 kHz, -3 dB shelf at 4 kHz, 2:1 compression, and a light synthetic room (wet -8 dB). The window avoids a handling/low-frequency thump at 121-125 s. The seam is on a -7.5 dB gap with a spectral correlation of 0.83. Rejected: 126404 (Parag Chordia sarod/sitar, clips at +2 dBFS), 37715 and 350547 (Kaiho, amateur basement sitar, sparse and noodling), 11200 and 402336 (echo/glitch-processed)."
+  }
+]
