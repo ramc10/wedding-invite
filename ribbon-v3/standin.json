@@ -3,9 +3,8 @@
   "out_width": 0,
   "road_width": 94,
   "overlap": 200,
-  "chunk_height": 2048,
-  "chunk_overlap": 4,
-  "_chunking": "The ribbon ships as ~2048-row tiles, each running chunk_overlap rows past the next tile's start. One 8000-row chunk (the old setting, chosen to dodge seams) decoded to ~53MB at 1758x7528 - past the 4096px max texture size of many mobile GPUs, so the browser re-decoded/downsampled it on raster. Plain butt-joined chunks showed a faint hairline between separately-rasterized <img>s at fractional scale even with identical pixels either side (the artifact 25aa6c5 fixed by merging chunks); the overlap fixes that instead: each tile's bottom edge is covered by the next tile (road.js stacks later tiles on top and places them at the exact, unrounded row*scale), and the next tile's top edge lands on identical pixels. Overlap rows that are not fully opaque (a padded segment's EDGE_FEATHER fade) are cleared in the lower tile, since drawing semi-transparent pixels twice makes them more opaque. Keep chunk_height + chunk_overlap <= 4096. Validated seam-free at every tile boundary against the single-image build at DPR 1/1.5/2/2.625/3.",
+  "chunk_height": 8000,
+  "_chunking": "chunk_height must stay above the full stitched height (~7431px with creek-conclusion.png added) since almost every join past garden-beach.png is a soft overlap:200 blend, not a hard cut - an internal chunk boundary not pinned to a hard cut shows as a faint seam between two separately-rasterized <img> elements even when the pixels either side are identical (the same class of artifact 25aa6c5 fixed once already by merging chunks). Revisit if the route grows past 8000px stitched.",
   "segments": [
     {
       "src": "plates/garden-lead.png",

@@ -74,14 +74,10 @@ body {
 .streaks {
   position: absolute; top: 0; left: 50%;
   height: 300vh; opacity: 0;
-  /* hidden, not just transparent, whenever it isn't moving — road.js flips
-     this on only while measured speed is above zero (see tick()) */
-  visibility: hidden;
-  pointer-events: none;
+  pointer-events: none; mix-blend-mode: overlay;
   will-change: transform, opacity;
-  /* normal blend on purpose: the background tile set from road.js is
-     pre-rendered so plain alpha blending matches what overlay used to do,
-     without overlay's extra per-frame render passes (see start()) */
+  /* mask-image/-size/-repeat are set from road.js, alongside the background
+     that they need to line up with */
 }
 
 .vignette {
@@ -104,88 +100,20 @@ body {
     radial-gradient(36% 15% at 11% 85%, rgba(255,252,246,.34), rgba(255,252,246,0) 76%);
 }
 
-/* normal blending on purpose — see the DAY table in road.js for why, and
- * for how its tint colours were fitted to match the old soft-light look */
-.tint  { position: fixed; inset: 0; z-index: 18; pointer-events: none; background-color: rgba(255,226,70,.046); }
+.tint  { position: fixed; inset: 0; z-index: 18; pointer-events: none; mix-blend-mode: soft-light; background-color: rgba(255,217,160,.14); }
 .dusk  { position: fixed; inset: 0; z-index: 19; pointer-events: none; background-color: rgba(20,26,40,0); }
-/* Film grain. This used to be an feTurbulence SVG at opacity .10 with
- * mix-blend-mode: overlay — and because the ribbon underneath moves every
- * scroll frame, an overlay layer has to be re-blended against a fresh
- * backdrop every frame (a separate render surface plus a blend pass over the
- * whole viewport), for an effect that measured at ~1 level out of 255.
- * Overlay against grey noise really does just two things here: a faint
- * lift (the noise averages above 50% grey) and sub-level speckle. So the
- * tile is now pre-rendered offline (art/grain*.png) from the very same
- * noise field Chromium rasterised for the old SVG, least-squares
- * fitted to what overlay produced over the scene's real colours, and
- * reduced to a 4-entry palette (2-bit PNG) of warm near-white speckles at
- * four strengths — drawn with plain normal blending, which the compositor
- * can do without reading the backdrop at all.
- *
- * Why the tiny opacity rather than baking alpha into the PNG: the fitted
- * alphas are ~.004-.011, i.e. 1-3 steps of an 8-bit alpha channel, which
- * would quantise the four strengths into two. Storing them at near-full
- * range in the palette and scaling with opacity keeps them distinct.
- *
- * Why three resolutions: feTurbulence was rendered at device resolution,
- * so on a 3x phone the old grain had 3x the detail per CSS px. image-set
- * picks the matching tile (5 / 18 / 38 KB, one download); the plain url()
- * line is the fallback for browsers without image-set. */
-.grain {
-  position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: .011;
-  background-image: url("art/grain@2x.png");
-  background-image: -webkit-image-set(url("art/grain.png") 1x, url("art/grain@2x.png") 2x, url("art/grain@3x.png") 3x);
-  background-image: image-set(url("art/grain.png") 1x, url("art/grain@2x.png") 2x, url("art/grain@3x.png") 3x);
-  background-size: 140px 140px;
-}
+.grain { position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: .10; mix-blend-mode: overlay; background-size: 140px 140px; }
 
 /* ------------------------------------------------------------------ car */
 
 .car-anchor {
-  /* 56% of the *stable* (address-bar-hidden) viewport height, matching
-     S.carY = 0.56 * S.vh in road.js, where S.vh is read from a 100lvh probe.
-     A plain % would follow the visible height as a phone's toolbar moves while
-     the maths doesn't, putting the car off the road. road.js also sets this in
-     px on every measure(); these lines only cover the first paint before it
-     runs, and engines without lvh keep the 56vh line. */
-  position: fixed; top: 56vh; top: 56lvh; left: 0; right: 0;
+  position: fixed; top: 56%; left: 0; right: 0;
   z-index: 12; display: flex; justify-content: center;
   transform: translateY(-50%); pointer-events: none;
 }
 .car-drop  { animation: carIn 2.5s cubic-bezier(.28,1.12,.6,1) both; }
 .car-track { will-change: transform; }
-/* The car's shadow used to be `filter: drop-shadow()` on .car-idle. That filter
-   wraps a WebGL canvas inside #car, which tick() translates AND rotates every
-   frame while moving - a filter the compositor keeps as its own render
-   surface and re-applies (a GPU blur pass) as the car moves. .car-shadow
-   instead is a plain box-shadow on a static element inside the same moving
-   layer: it's
-   rasterised once, then just carried along by #car's transform as a bitmap -
-   it still rotates/bobs with the car exactly as the drop-shadow did.
-   isolation gives .car-idle its own stacking context so z-index:-1 can put
-   the shadow behind the canvas/img without dropping below the road. */
-.car-idle  { position: relative; isolation: isolate; }
-/* Sized off .car-idle itself (insets in %), so it follows the car's width set
-   in measure() and the height the canvas (Car3D.resize) or the fallback <img>
-   gives it - no JS needed, and it survives fallback() swapping the canvas.
-   A rounded rect with the car's rough top-down outline stands in for its
-   real silhouette; offset/blur/alpha were tuned against screenshots of the
-   old drop-shadow rather than copied (a box-shadow of a rect reads darker
-   than the drop-shadow of a car outline with glass/mirror gaps, hence .35
-   not .45, and 14px for the softer edge the outline gave).
-   A box-shadow isn't painted under its own element's box, which would leave
-   a hole under the car's glass and rounded ends - so the element is parked
-   1000px above where the shadow belongs and the shadow is offset back down
-   by the same amount, leaving the whole shadow drawn and nothing else. */
-.car-shadow {
-  position: absolute; z-index: -1; pointer-events: none;
-  left: 2%; right: 2%; top: -1000px; bottom: 1000px;
-  border-radius: 45% / 20%;
-  box-shadow: 0 calc(1000px + 8px) 14px rgba(10,16,8,.35);
-}
-/* no car drawn yet (3D model still loading) -> no shadow either; road.js
-   adds .has-car once the model or the fallback image is in */
-.car-idle:not(.has-car) .car-shadow { display: none; }
+.car-idle  { filter: drop-shadow(0 8px 12px rgba(10,16,8,.45)); }
 .car-idle img { display: block; width: 100%; height: auto; transform: rotate(180deg); }
 /* the 3D car's canvas is sized in JS (measure()) to match the painted
    image's old width/height contract - width comes from CAR_ROAD same as
@@ -269,7 +197,7 @@ body {
    the road passes through, so it doesn't scroll away with the art the way
    section captions would. */
 /* align-items: flex-start + this padding, not center, keeps the text clear
-   of the car — it sits fixed at 56lvh (.car-anchor), and a
+   of the car — it sits fixed at 56% viewport height (.car-anchor), and a
    true vertical center overlaps that line directly. 18% leaves a clear gap
    of open road between the bottom of the text and the car. */
 .title {
@@ -391,139 +319,10 @@ body {
 }
 .dam-caption p { margin: 0; }
 
-/* ------------------------------------------------------- event sheets */
-
-/* The glass pop-ups the painted venue callouts open (see Sheets in
-   road.js). Frosted, translucent and light-edged over the scene: a
-   bottom sheet on phones, a centred card on wider screens. */
-html.sheet-open { overflow: hidden; }
-
-.sheet {
-  --glass: rgba(255, 255, 255, .14);
-  --glass-edge: rgba(255, 255, 255, .32);
-  --glass-hi: rgba(255, 255, 255, .22);
-  --ink-soft: rgba(255, 255, 255, .72);
-  width: min(440px, calc(100vw - 32px));
-  max-height: min(78vh, 640px);
-  margin: auto;
-  padding: 10px 22px 22px;
-  border: 1px solid var(--glass-edge);
-  border-radius: 28px;
-  background:
-    linear-gradient(160deg, rgba(255,255,255,.20), rgba(255,255,255,.04) 45%, rgba(255,255,255,.08)),
-    var(--glass);
-  backdrop-filter: blur(28px) saturate(170%);
-  -webkit-backdrop-filter: blur(28px) saturate(170%);
-  box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    inset 0 -1px 0 rgba(255, 255, 255, .06),
-    0 24px 60px rgba(0, 0, 0, .45);
-  color: var(--text);
-  font-family: "EB Garamond", Georgia, serif;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
-  animation: sheet-in .38s cubic-bezier(.2, .9, .25, 1.05);
-}
-.sheet::backdrop {
-  background: rgba(10, 14, 8, .35);
-  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  animation: sheet-fade .3s ease;
-}
-.sheet.closing { animation: sheet-out .22s ease forwards; }
-.sheet.closing::backdrop { animation: sheet-fade .22s ease reverse forwards; }
-
-@keyframes sheet-in  { from { opacity: 0; transform: translateY(24px) scale(.97); } }
-@keyframes sheet-out { to   { opacity: 0; transform: translateY(24px) scale(.97); } }
-@keyframes sheet-fade { from { opacity: 0; } }
-
-.sheet-grab {
-  width: 38px; height: 5px; margin: 0 auto 8px; border-radius: 3px;
-  background: rgba(255, 255, 255, .45);
-}
-.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.sheet-title { margin: 4px 0 0; font-weight: 500; font-size: 1.6rem; line-height: 1.15; }
-.sheet-sub { margin: 2px 0 0; color: var(--ink-soft); font-style: italic; font-size: 1.05rem; }
-.sheet-close {
-  flex: none; width: 34px; height: 34px; margin-top: 4px; border-radius: 50%;
-  border: 1px solid var(--glass-edge); background: rgba(255, 255, 255, .12);
-  color: var(--text); font-size: 1.4rem; line-height: 1; cursor: pointer;
-}
-.sheet-close:hover { background: rgba(255, 255, 255, .22); }
-
-/* segmented control, iOS style: a sliding pill behind the active tab */
-.sheet-tabs {
-  position: relative; display: flex; margin: 18px 0 4px; padding: 3px;
-  border-radius: 14px; background: rgba(0, 0, 0, .18);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .2);
-}
-.sheet-pill {
-  position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 11px;
-  background: rgba(255, 255, 255, .26);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 2px 8px rgba(0, 0, 0, .18);
-  transition: transform .32s cubic-bezier(.3, .9, .3, 1), width .32s ease;
-}
-.sheet-tabs [role="tab"] {
-  position: relative; flex: 1; padding: 8px 6px;
-  border: 0; background: none; color: var(--ink-soft);
-  font: inherit; font-size: 1.02rem; cursor: pointer;
-  transition: color .2s ease;
-}
-.sheet-tabs [aria-selected="true"] { color: var(--text); }
-.sheet-tabs [role="tab"]:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; border-radius: 11px; }
-
-.sheet-panel { padding-top: 14px; animation: sheet-fade .25s ease; }
-.sheet-event { margin: 0 0 12px; font-weight: 500; font-size: 1.3rem; color: var(--gold); }
-.sheet-facts { margin: 0; display: grid; gap: 10px; }
-.sheet-facts div { display: grid; grid-template-columns: 6.5rem 1fr; gap: 10px; }
-.sheet-facts dt { color: var(--ink-soft); font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; padding-top: 3px; }
-.sheet-facts dd { margin: 0; font-size: 1.05rem; line-height: 1.35; }
-.sheet-swatches { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.sheet-swatches span { display: inline-flex; align-items: center; gap: 6px; }
-.sheet-swatches span::before {
-  content: ""; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--c); border: 1px solid rgba(255, 255, 255, .55);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
-}
-.sheet-note {
-  margin: 16px 0 0; padding: 12px 14px; border-radius: 14px;
-  background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .14);
-  font-style: italic; line-height: 1.4;
-}
-.sheet-directions {
-  display: block; margin-top: 18px; padding: 12px; border-radius: 14px;
-  text-align: center; text-decoration: none; color: #1b2416;
-  background: rgba(232, 198, 106, .92); text-shadow: none;
-  font-size: 1.1rem; font-weight: 500;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 4px 14px rgba(0, 0, 0, .25);
-}
-.sheet-directions:active { transform: scale(.98); }
-
-/* browsers without backdrop-filter get a solid-enough tint to stay legible */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sheet { background: rgba(27, 36, 22, .94); }
-}
-
-/* phones: a bottom sheet rather than a floating card */
-@media (max-width: 640px) {
-  .sheet {
-    width: 100vw; max-width: 100vw; margin: auto 0 0;
-    border-radius: 28px 28px 0 0; border-bottom: 0;
-    padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
-    animation-name: sheet-up;
-  }
-  .sheet.closing { animation-name: sheet-down; }
-  .sheet-facts div { grid-template-columns: 5.5rem 1fr; }
-}
-@media (min-width: 641px) { .sheet-grab { display: none; } }
-@keyframes sheet-up   { from { transform: translateY(100%); } }
-@keyframes sheet-down { to   { transform: translateY(100%); } }
-
 /* ------------------------------------------------------- reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
   .car-drop, .cue span { animation: none !important; }
   .streaks { display: none !important; }
   .title, .details, .dam-caption, .venue, .music-toggle { transition: none; }
-  .sheet, .sheet::backdrop, .sheet-panel, .sheet-pill { animation: none !important; transition: none !important; }
 }
